@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 6.0.  Last change: Wed Jul 21 2004 8:55:37 AM
+*dbext.txt*	For Vim version 6.0.  Last change: Tue Sep 14 2004 5:48:25 PM
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,14 +7,17 @@
                      David Fishburn <fishburn@ianywhere.com>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 2.01
+	  	dbext.vim version 2.10
 
 For instructions on installing this file, type
 	:help add-local-help
 |add-local-help| inside Vim.
 
+Homepage: http://vim.sourceforge.net/script.php?script_id=356
+SourceForge: $Revision: 1.17 $
+
 *dbext* *dbext.vim* *db_ext* *db_ext.vim* *database-extension* *pgsql* *mysql*
-*asa* *ase* *ingres* *interbase* *sqlsrv* *ora* *db2*
+*asa* *ase* *ingres* *interbase* *sqlite* *sqlsrv* *ora* *db2*
 
 1.  Overview					|dbext-overview|
 2.  Installation				|dbext-install|
@@ -46,20 +49,47 @@ For instructions on installing this file, type
 ------------------------------------------------------------------------------
 What's New						*dbext-new*
 
+Version 2.10
+
+ New Features
+ ------------
+ - Added support for the database SQLite (thanks to Ron Aaron).
+ - Added a tutorial in the documentation for first time users.
+ - New functionality for better integration with the Intellisense SQL plugin.
+ - Ability to change the title of the window/buffer.
+ - Integrated Login support for windows.
+ - Added new functionality to these commands:   |dbext-mappings|
+     DBGetOption
+     DBSetOption
+     DBExecRangeSQL
+ - Added 4 new options:                         |dbext-configure-variables| 
+     replace_title                                
+     custom_title
+     use_tbl_alias
+     delete_temp_file
+
+ Bug Fixes
+ ---------
+ - dbname was not defaulting correctly.
+ - Overhauled the DB2 support. 
+ - bin_path did not work correctly on windows platforms.
+ - Updated the connection text in the Result buffer.
+
 Version 2.00
 
- In version 2.00 the following new features have been added to dbext.
- Connection Profiles                            |dbext-connect-profiles|
- Modeline Support                               |dbext-connect-modelines|
- Object Completion                              |dbext-completion|
- Viewing Lists of Objects                       |dbext-list-objects|
+ - In version 2.00 the following new features have been added to dbext.
+ - Connection Profiles                          |dbext-connect-profiles|
+ - Modeline Support                             |dbext-connect-modelines|
+ - Object Completion                            |dbext-completion|
+ - Viewing Lists of Objects                     |dbext-list-objects|
          Tables
          Procedures
          Views
          Columns
- FileType Support Added                         |dbext-filetypes|
+ - FileType Support Added                       |dbext-filetypes|
          Supported PHP, Java, JSP, JavaScript, jProperties, Perl, SQL, Vim
- Intellisense Addin Support                     |dbext-intellisense|
+ - Intellisense Addin Support                   |dbext-intellisense|
+=======
 
 ------------------------------------------------------------------------------
 1. Overview						*dbext-overview*
@@ -67,7 +97,7 @@ Version 2.00
  This plugin contains functions/mappings/commands to enable Vim to access 
  several databases. Currently Mysql, PostgreSQL, Ingres, Oracle, 
  Sybase Adaptive Server Anywhere, Sybase Adaptive Server Enterprise, 
- Microsoft SQL Server, DB2 and Interbase are supported.
+ SQLite, Microsoft SQL Server, DB2 and Interbase are supported.
 
  It does this by shelling out to the operating system and calling the 
  command line tools that come with the client software for the database.
@@ -89,7 +119,7 @@ Version 2.00
  statement that has a syntax error in it) the output error messages from the
  database will be displayed in the Result buffer.
 
- In addition to the 9 currently supported relation databases (RDBMS), you can
+ In addition to the 10 currently supported relation databases (RDBMS), you can
  easily add support for new database's. See |dbext-newdb| for details.  
 
  On the supported databases you can execute any SQL statements (insert,
@@ -169,7 +199,7 @@ Version 2.00
     dbext_default_port
 <       - Default port to connect to >
     dbext_default_use_result_buffer
-<       - Whether to use the result buffer, or echo the results of the cmd >
+<       - Whether to use the result buffer, or echo the results of the command >
     dbext_default_use_sep_result_buffer
 <       - Whether to use separate result buffers for each file >
     dbext_default_buffer_lines
@@ -194,8 +224,41 @@ Version 2.00
 <       - Changes the title of the buffer to show connection information.
           This is useful if you are using a scratch buffer to test statements, 
           it will show you which database you are connected to visually by
-          glancing at the buffer title.
-
+          glancing at the buffer title. >
+    dbext_default_custom_title 
+<       - If the default format of the replace title feature does not meet
+          your needs, you can set a custom title.  To retrieve settings
+          from the dbext plugin you can use: >
+            :let new_title = 'Srvr: ' . DB_listOption('srvname')
+            :exec 'DBSetOption type=ASA:replace_title=1:custom_title='.new_title
+    dbext_default_use_tbl_alias
+<       - DBListColumn (by default) will create a column list with an
+          alias attached to each column.  This option has three 
+          settings: >
+            n - do not use an alias
+            d - use the default (calculated) alias
+            a - ask to confirm the alias name
+<       - An alias is determined following a few rules:
+            1. If the table name has an '_', then use it as a separator: >
+               MY_TABLE_NAME --> MTN
+               my_table_name --> mtn
+               My_table_NAME --> MtN
+<           2. If the table name does NOT an '_', but DOES use mixed case 
+               then the case is used as a separator: >
+               MyTableName --> MTN
+<           3. If the table name does NOT an '_', and does NOT use mixed case 
+               then the first letter of the table is used: >
+               mytablename --> m
+               MYTABLENAME --> M
+<       - The option can be turned on and off via the DBSetOption command. >
+            :DBSetOption use_tbl_alias=n
+    dbext_default_delete_temp_file 
+<       - If debugging, it can be useful to view the SQL file that
+          dbext generated to be executed by the database.  Setting this
+          option to 0 (off) will leave the temporary file in the
+          $TEMP directory for viewing. >
+            :DBSetOption delete_temp_file=0
+<
  Buffer variables
     You can check all options for the buffer without specifying an option name
     this will open the Result buffer and list all settings: >
@@ -311,6 +374,9 @@ Version 2.00
         dbext_default_INTERBASE_cmd_header     = ''
         dbext_default_INTERBASE_cmd_terminator = ''
         dbext_default_INTERBASE_cmd_options    = ''
+        dbext_default_SQLITE_bin               = 'sqlite'
+        dbext_default_SQLITE_cmd_header        = ".mode column\n.headers ON\n"
+        dbext_default_SQLITE_cmd_terminator    = ';'
         dbext_default_SQLSRV_bin               = "osql"
         dbext_default_SQLSRV_cmd_header        = ""
         dbext_default_SQLSRV_cmd_terminator    = ""
@@ -499,6 +565,10 @@ Version 2.00
     DBCompleteTable - Sets up table name completion for the buffer
     DBCompleteProcedure - Sets up table name completion for the buffer
     DBCompleteView  - Sets up table name completion for the buffer
+    DBListTable     - Lists all tables (optional wildcard)
+    DBListProcedure - Lists all procedures (optional wildcard)
+    DBListView      - Lists all views (optional wildcard)
+    DBListColumn    - Comma separated list of columns for the given table
 
 ------------------------------------------------------------------------------
 5. Adding new database types				*dbext-newdb*
@@ -712,6 +782,22 @@ To specify the type of database you connect to most often, you can place the
      // dbext:profile=ASA_generic:host=my_desktop
 <
  This has the same effect as issuing the following commands: >
+     DBSetOption type=ASA
+     DBSetOption user=dba
+     DBSetOption dsnname=My DSN with spaces
+     DBSetOption passwd=sql
+     DBSetOption host=my_desktop
+<
+ To deal with running different versions of database software on your 
+ machine you can also set the binary path, or the binary itself from within
+ modelines. >
+     -- dbext:type=SQLITE:SQLITE_bin=D:\Programs\POPFile\sqlite3.exe:dbname=D:\Programs\POPFile\popfile.db'
+<
+ Or in the case where the binary has the same name, but the directories are
+ different: >
+     -- dbext:type=SQLITE:bin_path=D:\Programs\POPFile:dbname=D:\Programs\POPFile\popfile.db'
+<
+
 
 7.5 Ask for connection parameters	           *dbext-connect-ask*
 

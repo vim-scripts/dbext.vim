@@ -1,19 +1,20 @@
-" dbext.vim - Common Database Utility
+" dbext.vim - Commn Database Utility
 " ---------------------------------------------------------------
-" Version:  2.01
+" Version:  2.10
 " Authors:  Peter Bagyinszki <petike1@dpg.hu>
 "           David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Wed Jul 21 2004 8:41:43 PM
+" Last Modified: Tue Sep 14 2004 5:48:10 PM
 " Based On: sqlplus.vim (author: Jamis Buck <jgb3@email.byu.edu>)
 " Created:  2002-05-24
 " Homepage: http://vim.sourceforge.net/script.php?script_id=356
 " Contributors:  Joerg Schoppet <joerg.schoppet@web.de>
 "                Hari Krishna Dara <hari_vim@yahoo.com>
+"                Ron Aaron
 " Dependencies:
 "   - Requires multvals.vim to be installed. Download from:
 "       http://www.vim.org/script.php?script_id=171
 "
-" SourceForge: $Revision: 1.22 $
+" SourceForge: $Revision: 1.30 $
 "
 " Help:     :h dbext.txt 
 
@@ -27,7 +28,7 @@ if !exists("loaded_multvals") || loaded_multvals < 304
     echomsg "dbext: You need to have multvals version 3.4 or higher"
     finish
 endif
-let g:loaded_dbext = 200
+let g:loaded_dbext = 210
 
 " Script variable defaults {{{
 let s:mv_sep = ","
@@ -38,7 +39,7 @@ let s:dbext_settings_comp_str = ''
 
 " Build internal lists {{{
 function! s:DB_buildLists()
-    " Available DB types
+    " Available DB types - maintainer in ()
     let s:db_types_mv = ''
     "sybase adaptive server anywhere (fishburn)
     let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'ASA')
@@ -58,6 +59,8 @@ function! s:DB_buildLists()
     let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'PGSQL')
     "microsoft sql server (fishburn)
     let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'SQLSRV')
+    "sqlite (fishburn)
+    let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'SQLITE')
 
     " Integrated Login Supported DB types
     let s:intlogin_types_mv = ''
@@ -97,6 +100,9 @@ function! s:DB_buildLists()
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dict_procedure_file')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dict_view_file')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'replace_title')
+    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'custom_title')
+    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'use_tbl_alias')
+    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'delete_temp_file')
 
     " DB server specific params
     " See below for 3 additional DB2 items
@@ -258,28 +264,114 @@ function! s:DB_execFuncTypeWCheck(name,...)
     endif
 endfunction
 
-function! s:DB_setTitle() 
-    if s:DB_get("replace_title") == 1
-        let &titlestring = '' .
-                \ s:DB_option('T(', s:DB_get("type"),    ')  ') .
-                \ s:DB_option('H(', s:DB_get("host"),    ')  ') .
-                \ s:DB_option('P(', s:DB_get("port"),    ')  ') .
-                \ s:DB_option('S(', s:DB_get("srvname"), ')  ') .
-                \ s:DB_option('O(', s:DB_get("dsnname"), ')  ') .
-                \ s:DB_option('D(', s:DB_get("dbname"),  ')  ')
+function! s:DB_getTblAlias(table_name) 
+    let owner      = s:DB_getObjectOwner(a:table_name)
+    let table_name = s:DB_getObjectName(a:table_name)
+    let tbl_alias = ''
+    if s:DB_get("use_tbl_alias") != 'n'
 
-        if s:DB_get("integratedlogin") == '1'
-            if has("win32")
-                let &titlestring = &titlestring . 
-                    \ s:DB_option('U(', expand("$USERNAME"), ')  ') 
+        if 'da' =~? s:DB_get("use_tbl_alias")
+            if table_name =~ '_'
+                " Treat _ as separators since people often use these
+                " for word separators
+                let save_keyword = &iskeyword
+                setlocal iskeyword-=_
+
+                " Get the first letter of each word
+                " [[:alpha:]] is used instead of \w 
+                " to catch extended accented characters
+                "
+                let initials = substitute( 
+                            \ table_name, 
+                            \ '\<[[:alpha:]]\+\>_\?', 
+                            \ '\=strpart(submatch(0), 0, 1)', 
+                            \ 'g'
+                            \ )
+                " Restore original value
+                let &iskeyword = save_keyword
+            elseif table_name =~ '\u\U'
+                let initials = substitute(
+                            \ table_name, '\(\u\)\U*', '\1', 'g')
+            else
+                let initials = strpart(table_name, 0, 1)
+            endif
+
+            if 'a' =~? s:DB_get("use_tbl_alias")
+                let tbl_alias = inputdialog("Enter table alias:", initials)
+            else
+                let tbl_alias = initials
+            endif
+        endif
+        " Following a word character, make sure there is a . and no spaces
+        let tbl_alias = substitute(tbl_alias, '\w\zs\.\?\s*$', '.', '')
+    endif
+
+    return tbl_alias
+endfunction 
+
+function! s:DB_setTitle() 
+    let no_defaults = 0
+
+    if s:DB_get("replace_title") == 1 && s:DB_get("type", no_defaults) != ''
+        if s:DB_get("custom_title") == ''
+            let &titlestring = '' .
+                    \ s:DB_option('T(', s:DB_get("type"),    ')  ') .
+                    \ s:DB_option('H(', s:DB_get("host"),    ')  ') .
+                    \ s:DB_option('P(', s:DB_get("port"),    ')  ') .
+                    \ s:DB_option('S(', s:DB_get("srvname"), ')  ') .
+                    \ s:DB_option('O(', s:DB_get("dsnname"), ')  ') .
+                    \ s:DB_option('D(', s:DB_get("dbname"),  ')  ')
+
+            if s:DB_get("integratedlogin") == '1'
+                if has("win32")
+                    let &titlestring = &titlestring . 
+                        \ s:DB_option('U(', expand("$USERNAME"), ')  ') 
+                else
+                    let &titlestring = &titlestring . 
+                        \ s:DB_option('U(', expand("$USER"), ')  ') 
+                endif
             else
                 let &titlestring = &titlestring . 
-                    \ s:DB_option('U(', expand("$USER"), ')  ') 
+                        \ s:DB_option('U(', s:DB_get("user"), ')  ')
             endif
+
+            " exec 'setlocal title titlestring='.&titlestring
+            " setlocal title
+            " augroup dbext
+            "     au!
+            "     autocmd BufReadPost * if &modeline == 1 | call s:DB_checkModeline() | endif
+            "     autocmd BufDelete   * call s:DB_auBufDelete( bufnr(expand("<afile>")) )
+            "     autocmd VimLeavePre * call s:DB_auVimLeavePre()
+            " augroup END
+
+            " Check to see if the checkforupdates autocommand exists
+            " redir @"
+            " silent! exec 'au dbext_title'.bufnr('%')
+            " redir END
+
+            " if @" =~ 'E216'
+            "     let filename = expand("%:p")
+            "     if has('win32')
+            "         let filename = substitute(filename, '\\', '/', 'g')
+            "     endif
+
+            "     silent! exec 'augroup dbext_title'.bufnr('%')
+            "     exec "au BufEnter " . filename . " :let &titlestring='".&titlestring."'"
+            "     augroup END
+            "     let msg = msg . 'Now checking buffer:'.bufnr('%').' for updates ...'
+            " else
+            "     " Using a autogroup allows us to remove it easily with the following
+            "     " command.  If we do not use an autogroup, we cannot remove this 
+            "     " single :checktime command
+            "     " augroup! checkforupdates
+            "     silent! exec 'au! dbext_title'.bufnr('%')
+            "     silent! exec 'augroup! dbext_title'.bufnr('%')
+            "     let msg = msg . 'No longer setting dbext_title:'.bufnr('%')
+            " endif
         else
-            let &titlestring = &titlestring . 
-                    \ s:DB_option('U(', s:DB_get("user"), ')  ')
+            let &titlestring = s:DB_get("custom_title")
         endif
+
     endif
 endfunction 
 
@@ -434,6 +526,8 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "parse_statements"        |return (exists("g:dbext_default_parse_statements")?g:dbext_default_parse_statements.'':'select,update,delete,insert,call,exec,with')
     elseif a:name ==# "always_prompt_for_variables" |return (exists("g:dbext_default_always_prompt_for_variables")?g:dbext_default_always_prompt_for_variables.'':0)
     elseif a:name ==# "replace_title"           |return (exists("g:dbext_default_replace_title")?g:dbext_default_replace_title.'':0)
+    elseif a:name ==# "use_tbl_alias"           |return (exists("g:dbext_default_use_tbl_alias")?g:dbext_default_use_tbl_alias.'':'d')
+    elseif a:name ==# "delete_temp_file"        |return (exists("g:dbext_default_delete_temp_file")?g:dbext_default_delete_temp_file.'':'1')
     elseif a:name ==# "ASA_bin"                 |return (exists("g:dbext_default_ASA_bin")?g:dbext_default_ASA_bin.'':'dbisql')
     elseif a:name ==# "ASA_cmd_terminator"      |return (exists("g:dbext_default_ASA_cmd_terminator")?g:dbext_default_ASA_cmd_terminator.'':';')
     elseif a:name ==# "ASA_cmd_options"         |return (exists("g:dbext_default_ASA_cmd_options")?g:dbext_default_ASA_cmd_options.'':'-nogui')
@@ -465,6 +559,9 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "ORA_cmd_terminator"      |return (exists("g:dbext_default_ORA_cmd_terminator")?g:dbext_default_ORA_cmd_terminator.'':";\nquit;")
     elseif a:name ==# "PGSQL_bin"               |return (exists("g:dbext_default_PGSQL_bin")?g:dbext_default_PGSQL_bin.'':'psql')
     elseif a:name ==# "PGSQL_cmd_terminator"    |return (exists("g:dbext_default_PGSQL_cmd_terminator")?g:dbext_default_PGSQL_cmd_terminator.'':';')
+    elseif a:name ==# "SQLITE_bin"              |return (exists("g:dbext_default_SQLITE_bin")?g:dbext_default_SQLITE_bin.'':'sqlite')
+    elseif a:name ==# "SQLITE_cmd_header"       |return (exists("g:dbext_default_SQLITE_cmd_header")?g:dbext_default_SQLITE_cmd_header.'':".mode column\n.headers ON\n")
+    elseif a:name ==# "SQLITE_cmd_terminator"   |return (exists("g:dbext_default_SQLITE_cmd_terminator")?g:dbext_default_SQLITE_cmd_terminator.'':';')
     elseif a:name ==# "SQLSRV_bin"              |return (exists("g:dbext_default_SQLSRV_bin")?g:dbext_default_SQLSRV_bin.'':'osql')
     elseif a:name ==# "SQLSRV_cmd_options"      |return (exists("g:dbext_default_SQLSRV_cmd_options")?g:dbext_default_SQLSRV_cmd_options.'':'-w 10000 -r -b -n')
     elseif a:name ==# "prompt_profile"          |return (exists("g:dbext_default_prompt_profile")?g:dbext_default_prompt_profile.'':"" .
@@ -862,6 +959,31 @@ function! s:DB_stripLeadFollowQuotesSpace(str)
                 \ '\1', 'g' )
 endfunction
 
+function! s:DB_stripLeadFollowSpaceLines(str)
+    " Thanks to Benji Fisher
+    " This seems to remove leading spaces on Linux:
+    "     :echo substitute(@a, '\(^\|\n\)\zs\s\+', '', 'g')
+    " And this should remove trailing spaces:  
+    "     :echo substitute(@a, '\s\+\ze\($\|\n\)', '', 'g')
+    "
+    " Remove any blank lines in the output:
+    " This substitution is tough since we are dealing with a 
+    " string, not a buffer.
+    " '^\(\s*\n\)*\    - From the beginning of the string, 
+    "                    remove any blank lines
+    " |\n\s*\n\@='     - Any middle or ending blank lines
+    " thanks to suresh govindachari and klaus bosau
+    "let stripped = substitute(a:str, 
+    "            \ '^\(\s*\n\)*\|\n\s*\n\@=', 
+    "            \ '', 'g')
+    "
+    " Hmm, the sent the CPU to 100%, unless I broke it into 2
+    let stripped = substitute(a:str, '^[ \t\r\n]\+', '', '')
+    let stripped = substitute(stripped, '[ \t\r\n]\+$', '\n', '')
+
+    return stripped
+endfunction
+
 function! s:DB_stripComments(mdl_options)
     let rc = 0
     let comment_chars = ""
@@ -894,7 +1016,12 @@ function! s:DB_setMultipleOptions(multi_options)
     " On win32 platforms, must do something special for the bin_path
     " parameter, since it can have C:\
     if has("win32")
+        " Replace the : with a !, and correct it later
         let options_mv = substitute(options_mv, 'bin_path\s*=\s*.\zs:\ze\\', 
+                    \ '!', '' )
+        let options_mv = substitute(options_mv, '\w\+_bin\s*=\s*.\zs:\ze\\', 
+                    \ '!', '' )
+        let options_mv = substitute(options_mv, 'dbname\s*=\s*.\zs:\ze\\', 
                     \ '!', '' )
     endif
 
@@ -914,7 +1041,14 @@ function! s:DB_setMultipleOptions(multi_options)
             let opt_value = matchstr(option, '=\zs.*')
             let opt_value = s:DB_stripLeadFollowQuotesSpace(opt_value)
 
-            if has("win32") && opt_name ==? 'bin_path'
+            if has("win32") && (
+                        \ opt_name ==? 'bin_path'
+                        \ || 
+                        \ opt_name =~? '\w\+_bin'
+                        \ || 
+                        \ opt_name ==? 'dbname'
+                        \ )
+                " Now flip the ! back to a :
                 let opt_value = substitute(opt_value, '!', ':', '')
             endif
             call s:DB_set(opt_name, opt_value)
@@ -1209,7 +1343,7 @@ function! s:DB_ASA_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
+    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1244,10 +1378,14 @@ function! s:DB_ASA_execSql(str)
     let cmd = cmd .  '" ' . 
                 \ ' read ' . tempfile
     let result = s:DB_runCmd(cmd, output)
-    let rc = delete(tempfile)
-    if rc != 0
-        echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+
+    if s:DB_get("delete_temp_file") == 1
+        let rc = delete(tempfile)
+        if rc != 0
+            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+        endif
     endif
+
     return result
 endfunction
 
@@ -1297,10 +1435,11 @@ endfunction
 
 function! s:DB_ASA_stripHeaderFooter(result)
     " Strip off column headers ending with a newline
-    " let stripped = substitute( a:result, '\_.*-\s*'."[\<C-V>\<C-J>]", '', '' )
     let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
     " Strip off query statistics
     let stripped = substitute( stripped, '(First \d\+ rows\_.*', '', '' )
+    " Strip off trailing spaces
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
     return stripped
 endfunction 
 
@@ -1338,7 +1477,7 @@ function! s:DB_ASE_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
+    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1359,10 +1498,14 @@ function! s:DB_ASE_execSql(str)
                 \ ' -i ' . tempfile
 
     let result = s:DB_runCmd(cmd, output)
-    let rc = delete(tempfile)
-    if rc != 0
-        echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+
+    if s:DB_get("delete_temp_file") == 1
+        let rc = delete(tempfile)
+        if rc != 0
+            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+        endif
     endif
+
     return result
 endfunction
 
@@ -1449,6 +1592,8 @@ function! s:DB_ASE_stripHeaderFooter(result) "{{{
     let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
     " Strip off query statistics
     let stripped = substitute( stripped, '(\d\+ rows\_.*', '', '' )
+    " Strip off trailing spaces
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
     return stripped
 endfunction "}}}
 
@@ -1515,7 +1660,7 @@ function! s:DB_DB2_execSql(str)
         let output = s:DB_getWType("cmd_header") . a:str
         " Only include a command terminator if one has not already
         " been added
-        if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
+        if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
             let output = output . s:DB_getWType("cmd_terminator")
         endif
 
@@ -1551,7 +1696,7 @@ function! s:DB_DB2_execSql(str)
         let output = s:DB_getWType("db2cmd_cmd_header") . connect_str . a:str
         " Only include a command terminator if one has not already
         " been added
-        if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
+        if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
             let output = output . s:DB_getWType("cmd_terminator")
         endif
 
@@ -1570,10 +1715,14 @@ function! s:DB_DB2_execSql(str)
 
 
     let result = s:DB_runCmd(cmd, output)
-    let rc = delete(tempfile)
-    if rc != 0
-        echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+
+    if s:DB_get("delete_temp_file") == 1
+        let rc = delete(tempfile)
+        if rc != 0
+            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+        endif
     endif
+
     return result
 endfunction
 
@@ -1581,7 +1730,12 @@ function! s:DB_DB2_describeTable(table_name)
     let save_use_db2batch = s:DB_getWType("use_db2batch")
     call s:DB_setWType("use_db2batch", 0)
 
-    call s:DB_DB2_execSql("DESCRIBE TABLE ".a:table_name)
+    call s:DB_DB2_execSql(
+                \ "DESCRIBE TABLE ".a:table_name." SHOW DETAIL".
+                \ s:DB_getWType("cmd_terminator") .
+                \ "\n" .
+                \ "DESCRIBE INDEXES FOR TABLE ".a:table_name." SHOW DETAIL"
+                \ )
 
     call s:DB_setWType("use_db2batch", save_use_db2batch)
 endfunction
@@ -1612,6 +1766,7 @@ endfunction
 function! s:DB_DB2_getListTable(table_prefix)
     return s:DB_DB2_execSql(
                 \ "select CAST(tabname AS VARCHAR(40)) AS tabname " .
+                \ "     , CAST(tabschema AS VARCHAR(15)) AS tabschema " .
                 \ "     , CAST(definer AS VARCHAR(15)) AS definer " .
                 \ "     , card " .
                 \ " from syscat.tables ".
@@ -1622,6 +1777,7 @@ endfunction
 function! s:DB_DB2_getListProcedure(proc_prefix)
     return s:DB_DB2_execSql(
                 \ "select CAST(procname AS VARCHAR(40)) AS procname " .
+                \ "     , CAST(procschema AS VARCHAR(15)) AS procschema " .
                 \ "     , CAST(definer AS VARCHAR(15)) AS definer " .
                 \ "     , parm_count " .
                 \ "     , deterministic " .
@@ -1635,6 +1791,7 @@ endfunction
 function! s:DB_DB2_getListView(view_prefix)
     return s:DB_DB2_execSql(
                 \ "select CAST(viewname AS VARCHAR(40)) AS viewname " .
+                \ "     , CAST(viewschema AS VARCHAR(15)) AS viewschema " .
                 \ "     , CAST(definer AS VARCHAR(15)) AS definer " .
                 \ "     , readonly " .
                 \ "     , valid " .
@@ -1660,10 +1817,21 @@ function! s:DB_DB2_getListColumn(table_name)
 endfunction 
 
 function! s:DB_DB2_stripHeaderFooter(result) 
-    " Strip off column headers ending with a newline
-    let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
-    " Strip off query statistics
-    let stripped = substitute( stripped, 'Number of rows\_.*', '', '' )
+    if s:DB_getWType("use_db2batch") == '1'
+        " Strip off column headers ending with a newline
+        let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
+        " Strip off trailing spaces
+        let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+        " Strip off query statistics
+        let stripped = substitute( stripped, 'Number of rows\_.*', '', '' )
+    else
+        " Strip off column headers ending with a newline
+        let stripped = substitute( a:result, '\_.*-\s*', '', '' )
+        " Strip off query statistics
+        let stripped = substitute( stripped, "\n".'\s*\d\+\s\+record(s)\s\+selected\_.*', '', '' )
+        " Strip off trailing spaces
+        let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    endif
     return stripped
 endfunction 
 
@@ -1701,7 +1869,7 @@ function! s:DB_INGRES_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
+    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1717,10 +1885,14 @@ function! s:DB_INGRES_execSql(str)
                 \ s:DB_option('', s:DB_getWType("cmd_options"), ' ') .
                 \ ' < ' . tempfile
     let result = s:DB_runCmd(cmd, output)
-    let rc = delete(tempfile)
-    if rc != 0
-        echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+
+    if s:DB_get("delete_temp_file") == 1
+        let rc = delete(tempfile)
+        if rc != 0
+            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+        endif
     endif
+
     return result
 endfunction
 
@@ -1730,24 +1902,28 @@ endfunction
 
 function! s:DB_INGRES_describeProcedure(procedure_name)
     echo 'Feature not yet available'
+    return -1
     " return s:DB_INGRES_execSql("help ".a:procedure_name.";")
 endfunction
 
 function! s:DB_INGRES_getListTable(table_prefix)
     echo 'Feature not yet available'
+    return -1
 endfunction
 
 function! s:DB_INGRES_getListProcedure(proc_prefix)
     echo 'Feature not yet available'
+    return -1
 endfunction
 
 function! s:DB_INGRES_getListView(view_prefix)
     echo 'Feature not yet available'
+    return -1
 endfunction 
 
 function! s:DB_INGRES_getListColumn(table_name) 
     echo 'Feature not yet available'
-    return
+    return -1
 endfunction 
 
 function! s:DB_INGRES_stripHeaderFooter(result)
@@ -1776,7 +1952,7 @@ function! s:DB_INTERBASE_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
+    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1794,10 +1970,14 @@ function! s:DB_INTERBASE_execSql(str)
                 \ '-input ' . tempfile .
                 \ s:DB_option(' ', s:DB_get("dbname"), '')
     let result = s:DB_runCmd(cmd, output)
-    let rc = delete(tempfile)
-    if rc != 0
-        echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+
+    if s:DB_get("delete_temp_file") == 1
+        let rc = delete(tempfile)
+        if rc != 0
+            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+        endif
     endif
+
     return result
 endfunction
 
@@ -1807,24 +1987,28 @@ endfunction
 
 function! s:DB_INTERBASE_describeProcedure(procedure_name)
     echo 'Feature not yet available'
+    return -1
     " return s:DB_INTERBASE_execSql("show procedure ".a:procedure_name.";")
 endfunction
 
 function! s:DB_INTERBASE_getListTable(table_prefix)
     echo 'Feature not yet available'
+    return -1
 endfunction
 
 function! s:DB_INTERBASE_getListProcedure(proc_prefix)
     echo 'Feature not yet available'
+    return -1
 endfunction
 
 function! s:DB_INTERBASE_getListView(view_prefix)
     echo 'Feature not yet available'
+    return -1
 endfunction 
 
 function! s:DB_INTERBASE_getListColumn(table_name) 
     echo 'Feature not yet available'
-    return
+    return -1
 endfunction 
 
 function! s:DB_INTERBASE_stripHeaderFooter(result)
@@ -1853,7 +2037,7 @@ function! s:DB_MYSQL_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
+    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1873,10 +2057,14 @@ function! s:DB_MYSQL_execSql(str)
                 \ s:DB_option(' -D ', s:DB_get("dbname"), '') .
                 \ ' < ' . tempfile
     let result = s:DB_runCmd(cmd, output)
-    let rc = delete(tempfile)
-    if rc != 0
-        echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+
+    if s:DB_get("delete_temp_file") == 1
+        let rc = delete(tempfile)
+        if rc != 0
+            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+        endif
     endif
+
     return result
 endfunction
 
@@ -1886,6 +2074,7 @@ endfunction
 
 function! s:DB_MYSQL_describeProcedure(procedure_name)
     echo 'Feature not yet available'
+    return -1
     " return s:DB_MYSQL_execSql("describe ".a:procedure_name)
 endfunction
 
@@ -1898,10 +2087,12 @@ endfunction
 
 function! s:DB_MYSQL_getListProcedure(proc_prefix)
     echo 'Feature not yet available'
+    return -1
 endfunction
 
 function! s:DB_MYSQL_getListView(view_prefix)
     echo 'Feature not yet available'
+    return -1
 endfunction 
 
 function! s:DB_MYSQL_getListColumn(table_name) "{{{
@@ -1924,6 +2115,8 @@ function! s:DB_MYSQL_stripHeaderFooter(result) "{{{
     let stripped = substitute( stripped, '|.*Tables_in.*'."[\<C-V>\<C-J>]", '', '' )
     " Strip off preceeding and ending |s
     let stripped = substitute( stripped, '|', '', 'g' )
+    " Strip off trailing spaces
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
     return stripped
 endfunction "}}}
 
@@ -1942,6 +2135,149 @@ function! s:DB_MYSQL_getDictionaryView() "{{{
     return '-1'
 endfunction "}}}
 "}}}
+" SQLITE exec {{{
+function! s:DB_SQLITE_execSql(str)
+
+    if s:DB_get("dbname") == ""
+        call s:DB_errorMsg("You must specify a database name/file")
+        return -1
+    endif
+
+    " All defaults are specified in the DB_getDefault function.
+    " This contains the defaults settings for all database types
+    let output = s:DB_getWType("cmd_header") . a:str
+    " Only include a command terminator if one has not already
+    " been added, since builtin commands beginning with a "."
+    " cannot be ended with a ;, check the last line in the command
+    " to determine if it is a . command.
+    " Some sample . commands:
+    "    .tables
+    "    .schema
+    "    .mode csv
+    "    .headers on
+    let last_line = substitute(a:str, '.*\n\(.*\)\n', '\1', '')
+
+    " If it does not start with a .
+    " and it does not end with a ;
+    if last_line !~ '^\.' && 
+                \ last_line !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
+        let output = output . s:DB_getWType("cmd_terminator")
+    endif
+
+    let tempfile = tempname()
+    exe 'redir! > ' . tempfile
+    silent echo output
+    redir END
+
+    let dbext_bin = s:DB_fullPath2Bin(s:DB_getWType("bin"))
+
+    let cmd = dbext_bin .  ' ' . s:DB_getWType("cmd_options")
+    let cmd = cmd .
+                \ s:DB_option(' ', s:DB_get("dbname"), '') .
+                \ ' < ' . tempfile
+    let result = s:DB_runCmd(cmd, output)
+
+    if s:DB_get("delete_temp_file") == 1
+        let rc = delete(tempfile)
+        if rc != 0
+            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+        endif
+    endif
+
+    return result
+endfunction
+
+function! s:DB_SQLITE_describeTable(table_name)
+    let query =   ".schema " . a:table_name
+    return s:DB_SQLITE_execSql(query)
+endfunction
+
+function! s:DB_SQLITE_describeProcedure(procedure_name)
+    echo 'Feature not yet available'
+    return -1
+endfunction
+
+function! s:DB_SQLITE_stripHeaderFooter(result)
+    " Strip off column headers ending with a newline
+    let stripped = a:result
+    let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
+    " " Strip off query statistics
+    " let stripped = substitute( stripped, '(\d\+ rows\_.*', '', '' )
+    " " Strip off trailing spaces
+    " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    return stripped
+endfunction
+
+function! s:DB_SQLITE_getListColumn(table_name)
+    let l:prev_use_result_buffer = s:DB_get('use_result_buffer')
+    call s:DB_set('use_result_buffer', 0)
+    
+    let result = s:DB_SQLITE_describeTable(a:table_name)
+    
+    call s:DB_set('use_result_buffer', l:prev_use_result_buffer)
+    " \<C-J> = Enter
+    " Remove all newlines
+    let result = substitute( result, '[ '."\<C-J>".']', ' ', 'g' )
+    " Strip off beginning create table command
+    let result = substitute( result, '^\s*create.*table\s\+'.a:table_name.'\s*(\s*', '', '' )
+    " Strip off trailing part of create table statement
+    let result = substitute( result, 'primary\s\+key\s*(.*', '', '' )
+    " Strip off trailing part of create table statement
+    let result = substitute( result, 'unique\s*(.*', '', '' )
+    " Strip off trailing part of create table statement
+    let result = substitute( result, '\s*)\s*;', ',', '' )
+    " Strip off data types
+    let result = substitute( result, '\s*\(\w\+\).\{-}\([,]\+\|$\)', '\1, ', 'g' )
+    " Strip off trailing ,
+    let result = substitute( result, ',\s*$', "\n", '' )
+    " Strip off all following spaces and newlines
+    " let result = substitute( result, '\w\>\zs[ '."\<C-J>".']*$', '\1', '' )
+
+    return s:DB_SQLITE_stripHeaderFooter(result)
+endfunction 
+
+function! s:DB_SQLITE_getListTable(table_prefix)
+    let query  = ".tables " . a:table_prefix
+    let l:prev_use_result_buffer = s:DB_get('use_result_buffer')
+    call s:DB_set('use_result_buffer', 0)
+    
+    let result = s:DB_SQLITE_execSql(query)
+    
+    call s:DB_set('use_result_buffer', l:prev_use_result_buffer)
+
+    let result = "Tables\n------\n".
+                \ substitute( result, '\w\zs\s\+\ze\w', '\n', 'g' )
+
+    call s:DB_addToResultBuffer(result, "clear")
+
+    return result
+endfunction
+
+function! s:DB_SQLITE_getListProcedure(proc_prefix)
+    echo 'Feature not yet available'
+    return -1
+endfunction
+
+function! s:DB_SQLITE_getListView(view_prefix)
+    echo 'Feature not yet available'
+    return -1
+endfunction 
+
+function! s:DB_SQLITE_getDictionaryTable()
+    let result = s:DB_SQLITE_getListTable('')
+    return s:DB_SQLITE_stripHeaderFooter(result)
+endfunction 
+
+function! s:DB_SQLITE_getDictionaryProcedure() 
+    echo 'Feature not yet available'
+    return -1
+endfunction 
+
+function! s:DB_SQLITE_getDictionaryView()
+    echo 'Feature not yet available'
+    return -1
+endfunction 
+"}}}
 " ORA exec {{{
 function! s:DB_ORA_execSql(str)
     " All defaults are specified in the DB_getDefault function.
@@ -1949,7 +2285,7 @@ function! s:DB_ORA_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
+    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1967,10 +2303,14 @@ function! s:DB_ORA_execSql(str)
                 \ s:DB_option('@', s:DB_get("srvname"), '') .
                 \ ' @' . tempfile
     let result = s:DB_runCmd(cmd, output)
-    let rc = delete(tempfile)
-    if rc != 0
-        echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+
+    if s:DB_get("delete_temp_file") == 1
+        let rc = delete(tempfile)
+        if rc != 0
+            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+        endif
     endif
+
     return result
 endfunction
 
@@ -2046,11 +2386,13 @@ endfunction "}}}
 
 function! s:DB_ORA_stripHeaderFooter(result) "{{{
     " Strip off column headers ending with a newline
-    let stripped = substitute( a:result, '\_.*-\s*'."[\<C-V>\<C-J>]", '', '' )
+    let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
     " Strip off query statistics
     let stripped = substitute( stripped, '\d\+ rows\_.*', '', '' )
     " Strip off no rows selected
     let stripped = substitute( stripped, 'no rows selected\_.*', '', '' )
+    " Strip off trailing spaces
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
     return stripped
 endfunction "}}}
 
@@ -2090,7 +2432,7 @@ function! s:DB_PGSQL_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
+    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -2109,10 +2451,14 @@ function! s:DB_PGSQL_execSql(str)
                 \ s:DB_option('-p ', s:DB_get("port"), ' ') .
                 \ '-q -f ' . tempfile
     let result = s:DB_runCmd(cmd, output)
-    let rc = delete(tempfile)
-    if rc != 0
-        echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+
+    if s:DB_get("delete_temp_file") == 1
+        let rc = delete(tempfile)
+        if rc != 0
+            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+        endif
     endif
+
     return result
 endfunction
 
@@ -2192,9 +2538,11 @@ endfunction
 
 function! s:DB_PGSQL_stripHeaderFooter(result)
     " Strip off column headers ending with a newline
-    let stripped = substitute( a:result, '\_.*-\s*'."[\<C-V>\<C-J>]", '', '' )
+    let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
     " Strip off query statistics
     let stripped = substitute( stripped, '(\d\+ rows\_.*', '', '' )
+    " Strip off trailing spaces
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
     return stripped
 endfunction 
 
@@ -2232,7 +2580,7 @@ function! s:DB_SQLSRV_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
+    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -2258,10 +2606,14 @@ function! s:DB_SQLSRV_execSql(str)
                 \ s:DB_option(' -d ', s:DB_get("dbname"), ' ') .
                 \ ' -i ' . tempfile
     let result = s:DB_runCmd(cmd, output)
-    let rc = delete(tempfile)
-    if rc != 0
-        echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+
+    if s:DB_get("delete_temp_file") == 1
+        let rc = delete(tempfile)
+        if rc != 0
+            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
+        endif
     endif
+
     return result
 endfunction
 
@@ -2275,9 +2627,11 @@ endfunction
 
 function! s:DB_SQLSRV_stripHeaderFooter(result)
     " Strip off column headers ending with a newline
-    let stripped = substitute( a:result, '\_.*-\s*'."[\<C-V>\<C-J>]", '', '' )
+    let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
     " Strip off query statistics
     let stripped = substitute( stripped, '(\d\+ rows\_.*', '', '' )
+    " Strip off trailing spaces
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
     return stripped
 endfunction
 
@@ -2407,7 +2761,7 @@ endfunction
 
 function! s:DB_describeTable(...)
     if(a:0 > 0)
-        let table_name = substitute(a:1,'\s*\(\w*\)\s*','\1','')
+        let table_name = substitute(a:1, '\s*\(\S\+\).*', '\1', '')
     else
         let table_name = expand("<cword>")
     endif
@@ -2416,7 +2770,7 @@ endfunction
 
 function! s:DB_describeProcedure(...)
     if(a:0 > 0)
-        let procedure_name = a:1
+        let procedure_name = substitute(a:1, '\s*\(\S\+\).*', '\1', '')
     else
         let procedure_name = expand("<cword>")
     endif
@@ -2426,7 +2780,7 @@ endfunction
 function! DB_getListColumn(...) 
     if(a:0 > 0) 
         " Strip any leading or trailing spaces
-        let table_name = substitute(a:1,'\s*\(\w*\)\s*','\1','')
+        let table_name = substitute(a:1, '\s*\(\S\+\).*', '\1', '')
     else
         let table_name = expand("<cword>")
     endif
@@ -2465,23 +2819,34 @@ function! DB_getListColumn(...)
         return ''
     endif
 
+    let col_list = s:DB_stripLeadFollowSpaceLines(col_list)
+
     " Remove all blanks and carriage returns to check for an empty string
-    if strlen(substitute( col_list, "[ \<C-J>]*", '', 'g' )) == 0
+    if strlen(col_list) < 2
         if silent_mode == 0
             call s:DB_warningMsg( 'Table not found: ' . table_name )
         endif
         return ''
     endif
 
-    " \<C-J> = Enter
-    " Strip off all leading spaces and newlines
-    let col_list = substitute( col_list, '^[ '."\<C-J>".']*\ze\w', '', '' )
-    " Strip off all following spaces and newlines
-    let col_list = substitute( col_list, '\w\>\zs[ '."\<C-J>".']*$', '\1', '' )
+    " " \<C-J> = Enter
+    " " Strip off all leading spaces and newlines
+    " let col_list = substitute( col_list, '^[ '."\<C-J>".']*\ze\w', '', '' )
+    " " Strip off all following spaces and newlines
+    " let col_list = substitute( col_list, '\w\>\zs[ '."\<C-J>".']*$', '\1', '' )
 
+    if s:DB_get("use_tbl_alias") != 'n'
+        let tbl_alias = s:DB_getTblAlias( table_name )
+        " Add table alias to each column
+        let col_list = substitute( col_list, '\<\w\+\>', tbl_alias.'&', 'g' )
+    endif
+    
     if use_newline_sep == 0
         " Convert newlines into commas
-        let col_list = substitute( col_list, '\w\>\zs[ '."\<C-J>".']*\ze\w', '\1, ', 'g' )
+        " let col_list = substitute( col_list, '\w\>\zs[ '."\<C-J>".']*\ze\w', '\1, ', 'g' )
+        let col_list = substitute( col_list, '\w\>\zs[^.].\{-}\ze\<\w', ', ', 'g' )
+    else
+        let col_list = substitute( col_list, ',\s*', "\n", 'g' )
     endif
 
     if &clipboard == 'unnamed'
@@ -2727,6 +3092,31 @@ function! s:DB_getObjectName(object) "{{{
     let object  = matchstr( a:object, '^\("\?\w*"\?\.\)\?"\?\zs\w*' )
     return object
 endfunction "}}}
+
+"" Get buffer parameter value
+function! DB_execCmd(name, ...)
+
+    let l:prev_use_result_buffer = s:DB_get('use_result_buffer')
+    call s:DB_set('use_result_buffer', 0)
+    " Could not figure out how to do this with an unlimited #
+    " of variables, so I limited this to 4.  Currently we only use
+    " 1 parameter in the code (May 2004), so that should be fine.
+    " return s:DB_execFuncTypeWCheck('describeTable', table_name)
+    if a:0 == 0
+        let result = s:DB_execFuncWCheck(a:name)
+    elseif a:0 == 1
+        let result = s:DB_execFuncWCheck(a:name, a:1)
+    elseif a:0 == 2
+        let result = s:DB_execFuncWCheck(a:name, a:1, a:2)
+    elseif a:0 == 3
+        let result = s:DB_execFuncWCheck(a:name, a:1, a:2, a:3)
+    else
+        let result = s:DB_execFuncWCheck(a:name, a:1, a:2, a:3, a:4)
+    endif
+    call s:DB_set('use_result_buffer', l:prev_use_result_buffer)
+    
+    return result
+endfunction
 "}}}
 " Dictionary (Completion) Functions {{{
 function! s:DB_addBufDictList( buf_nbr ) "{{{
@@ -2773,32 +3163,14 @@ function! DB_DictionaryCreate( drop_dict, which ) "{{{
     call s:DB_set('use_result_buffer', l:prev_use_result_buffer)
 
     if dict_list != '-1'
-        " Thanks to Benji Fisher
-        " This seems to remove leading spaces on Linux:
-        "     :echo substitute(@a, '\(^\|\n\)\zs\s\+', '', 'g')
-        " And this should remove trailing spaces:  
-        "     :echo substitute(@a, '\s\+\ze\($\|\n\)', '', 'g')
-        "
-        " Remove any blank lines in the output:
-        " This substitution is tough since we are dealing with a 
-        " string, not a buffer.
-        " '^\(\s*\n\)*\    - From the beginning of the string, 
-        "                    remove any blank lines
-        " |\n\s*\n\@='     - Any middle of ending blank lines
-        " Thanks to Suresh Govindachari and Klaus Bosau
-        let dict_list = substitute(dict_list, 
-                    \ '^\(\s*\n\)*\|\n\s*\n\@=', 
-                    \ '', 'g')
-        " Remove trailing blanks on each name
-        let dict_list = substitute(dict_list, 
-                    \ '\s*\n', '\n', 'g')
-        
+        let dict_list = s:DB_stripLeadFollowSpaceLines(dict_list)
+
         " Create a new temporary file with the table names
         " let b:dbext_dict_{a:which}_file = tempname()
         let temp_file = tempname()
         call s:DB_set("dict_".which_dict."_file", temp_file )
         exe 'redir! > ' . temp_file
-        silent echo dict_list
+        silent echo dict_list."\n"
         redir END
         
         " Add the new temporary file to the dictionary setting for this buffer
@@ -3547,6 +3919,7 @@ call s:DB_buildLists()
 call s:DB_resetGlobalParameters()
 augroup dbext
     au!
+    autocmd BufEnter    * call s:DB_setTitle()
     autocmd BufReadPost * if &modeline == 1 | call s:DB_checkModeline() | endif
     autocmd BufDelete   * call s:DB_auBufDelete( bufnr(expand("<afile>")) )
     autocmd VimLeavePre * call s:DB_auVimLeavePre()
