@@ -1,0 +1,819 @@
+*dbext.txt*	For Vim version 6.0.  Last change: Sun Jul 11 2004 8:00:15 AM
+
+
+                	  VIM REFERENCE MANUAL 
+                                by 
+                     Peter Bagyinszki <petike1@dpg.hu>
+                     David Fishburn <fishburn@ianywhere.com>
+
+	  	Database extension plugin (dbext.vim) manual
+	  	dbext.vim version 2.00
+
+For instructions on installing this file, type
+	:help add-local-help
+|add-local-help| inside Vim.
+
+*dbext* *dbext.vim* *db_ext* *db_ext.vim* *database-extension* *pgsql* *mysql*
+*asa* *ase* *ingres* *interbase* *sqlsrv* *ora* *db2*
+
+1.  Overview					|dbext-overview|
+2.  Installation				|dbext-install|
+3.  Configuration				|dbext-configure|
+    3.1 Displaying Results                      |dbext-configure-results|
+    3.2 Script Variables                        |dbext-configure-variables|
+    3.3 Database Specific Options               |dbext-configure-options|
+4.  Mappings and commands			|dbext-mappings|
+5.  Adding new database types			|dbext-newdb|
+6.  Prompting for input parameters		|dbext-prompting|
+7.  Setting up connection information		|dbext-connect|
+    7.1 Connection Parameters                  	|dbext-connect-parameters|
+    7.2 Prompting for Parameters                |dbext-connect-prompting|
+    7.3 Connection profiles                     |dbext-connect-profiles|
+    7.4 Connection information in modelines     |dbext-connect-modelines|
+    7.5 Asking for connection parameters        |dbext-connect-ask|
+8.  Creating mappings using dbext commands	|dbext-in-mappings|
+9.  Object Completion                          	|dbext-completion|
+10. Listing Objects in the Database            	|dbext-list-objects|
+11. Intellisense integration             	|dbext-intellisense|
+12. Filetype support                         	|dbext-filetypes|
+    12.1 Using filetype support                 |dbext-filetypes-using|
+    12.2 Adding new filetypes                   |dbext-filetypes-adding|
+13. Open Source                         	|dbext-sourceforge|
+
+{Vi does not have any of this}
+
+------------------------------------------------------------------------------
+What's New						*dbext-new*
+
+Version 2.00
+
+ In version 2.00 the following new features have been added to dbext.
+ Connection Profiles                            |dbext-connect-profiles|
+ Modeline Support                               |dbext-connect-modelines|
+ Object Completion                              |dbext-completion|
+ Viewing Lists of Objects                       |dbext-list-objects|
+         Tables
+         Procedures
+         Views
+         Columns
+ FileType Support Added                         |dbext-filetypes|
+         Supported PHP, Java, JSP, JavaScript, Perl, SQL, Vim
+ Intellisense Addin Support                     |dbext-intellisense|
+
+------------------------------------------------------------------------------
+1. Overview						*dbext-overview*
+
+ This plugin contains functions/mappings/commands to enable Vim to access 
+ several databases. Currently Mysql, PostgreSQL, Ingres, Oracle, 
+ Sybase Adaptive Server Anywhere, Sybase Adaptive Server Enterprise, 
+ Microsoft SQL Server, DB2 and Interbase are supported.
+
+ It does this by shelling out to the operating system and calling the 
+ command line tools that come with the client software for the database.
+ For example, if you are connecting to an Oracle database, dbext.vim will call
+ sqlplus to execute the SQL statements, for MySQL it uses the
+ mysql binary, for ASA it uses the DBISQL binary.
+ 
+ When a command is executed, a read only buffer (Result) is opened (see
+ options |dbext-configure-variables|): >
+     use_result_buffer 
+     buffer_lines
+<
+ The output from the command is displayed in this buffer.  The buffer can be
+ moved or deleted.  The next time a command is executed, it will be created,
+ or cleared out and the new results will be placed within.
+
+ If a select statement is executed, its results will be displayed in this
+ buffer.  If a syntax error occurs during a command (for example running a
+ statement that has a syntax error in it) the output error messages from the
+ database will be displayed in the Result buffer.
+
+ In addition to the 9 currently supported relation databases (RDBMS), you can
+ easily add support for new database's. See |dbext-newdb| for details.  
+
+ On the supported databases you can execute any SQL statements (insert,
+ update, delete, create, alter, drop ...), describe tables, describe stored
+ procedures, see table lists, create column lists and so on. >
+
+ TIP:
+<You can create dbext modelines |dbext-connect-modelines| in your files to
+ automatically specify connection information.  In your |.vimrc| you can
+ also create dbext connection profiles |dbext-connect-profiles| to specify
+ common connection information (for example by projects).  The first time you
+ execute SQL, you will be prompted to choose these profiles (if not already
+ set via a modeline or default profile).  This is the easiest and most
+ efficient use of specifying connection information.  It also has the added
+ benefit of hiding userids, passwords and so on, in your |.vimrc| instead
+ of in the files themselves.
+
+ In the event of an error, the command line used to execute the command
+ against the database is displayed in the Result buffer.  This is done to 
+ help determine what is the cause of the problem might be.  
+
+------------------------------------------------------------------------------
+2. Installing the plugin				*dbext-install*
+
+ You can use this script as a plugin by copying it to your plugin directory. 
+ See |add-global-plugin| for instructions.
+ 
+ You can also |:source| it from your |.vimrc|.
+
+ To install this help file |add-local-help| inside Vim.
+ 	:help add-local-help
+	:helptags $VIM/vimfiles/doc (Windows)
+	:helptags $VIM/.vim/doc     (Unix)
+
+ dbext has a dependency on the multvals.vim plugin. Download from:
+      http://www.vim.org/script.php?script_id=171
+ 
+------------------------------------------------------------------------------
+3. Configuration					*dbext-configure*
+
+ The behavior of dbext.vim are governed by several variables. These variables
+ are used as the default database connection information.  These variables can
+ be assigned global defaults which can be set in your |.vimrc|. See the script
+ for details.  Otherwise, each buffer maintains its own values.  So each
+ buffer can be connected to different databases, even different relational
+ databases (one buffer connect to Oracle, another buffer to MySQL).
+
+ A menu has been added to gvim with available commands in all modes.
+
+3.1 Displaying Results                          *dbext-configure-results*
+
+ When any command is run, by default a window is opened with a read-only 
+ buffer.  By default, the window is called Result.  Each buffer will clear
+ out and re-populate this buffer with the results of the last command.
+ To control the size of the Result window, you can set the following: >
+        let g:dbext_default_buffer_lines = 5 (default)
+<If you want each buffer to have its OWN Result buffer, you can define: >
+        let g:dbext_default_use_sep_result_buffer = 1 (default=0)
+<
+3.2 Script Variables                            *dbext-configure-variables* 
+
+ Global variables: >
+    dbext_default_type
+<       - Default relational database to connect to >
+    dbext_default_user
+<       - Default user id >
+    dbext_default_passwd
+<       - Default password >
+    dbext_default_dbname
+<       - Default database to connect to >
+    dbext_default_host
+<       - Default host the server is running on >
+    dbext_default_port
+<       - Default port to connect to >
+    dbext_default_use_result_buffer
+<       - Whether to use the result buffer, or echo the results of the cmd >
+    dbext_default_use_sep_result_buffer
+<       - Whether to use separate result buffers for each file >
+    dbext_default_buffer_lines
+<       - How many lines the Result window should be >
+    dbext_default_parse_statements 
+<       - Which statements are parsed for input parameters (See section 6) >
+    dbext_default_variable_def
+<       - List of variables and rules on how to search and prompt for variable
+          names within a statement that starts with any of the words listed in
+          dbext_parse_statements.
+
+ Buffer variables
+    These are set initially by the above defaults.
+    Many of these can also be set by running PromptForBufferParameters.
+    For each buffer these variables can be changed by running >
+        :DBSetOption user=DBA
+        :DBSetOption type=ASA:dsnname=Can Include Spaces:user=DBA
+< 
+    You can check the value of an option by: >
+        :DBGetOption user
+< >
+    type
+<       - Relational database to connect to >
+    user
+<       - User id >
+    passwd
+<       - Password >
+    dsnname
+<       - ODBC DSN to connect to >
+    srvname
+<       - Server name >
+    dbname
+<       - Which database on the server to connect to >
+    host
+<       - Machine name or IP address of server >
+    port
+<       - Port server is running on >
+    on_error
+<       - Whether the commands should continue executing if an error is 
+          encountered.  This is not supported by all databases. >
+    bin_path
+<       - If tools provided by the database are not in the path, you can 
+          optionally supply full path to the binaries. >
+    use_result_buffer
+<       - You can turn on or off the use of the Result buffer >
+    buffer_lines
+<        - How large the Result buffer is >
+    display_cmd_line
+<       - Optionally display the command line used to execute the command
+          in the Result buffer >
+    cmd_terminator
+<       - Command terminator (varies per database, see following section) >
+    cmd_options
+<       - Optionally specify (or override) additional command line switches
+          for the database tool. >
+    parse_statements 
+<       - Which statements are parsed for input parameters |dbext-prompting| >
+    variable_def 
+<       - List of variables and rules on how to search and prompt for variable
+          names within a statement that starts with any of the words listed in
+          parse_statements. >
+    suppress_version_warning
+<       - If a user had a previous version version of dbext installed
+          a warning message is displayed if some configuration parameters
+          still exist.  This will prevent the message from begin 
+          displayed.
+
+
+3.3 Database Specific Options                   *dbext-configure-options*
+    The command terminator is automatically added to a command before it is
+    sent to the database.  The command options are also added to the command
+    line used to execute the statement. >
+        dbext_default_PGSQL_bin                = 'psql'
+        dbext_default_PGSQL_cmd_header         = ''
+        dbext_default_PGSQL_cmd_terminator     = ''
+        dbext_default_PGSQL_cmd_options        = ''
+        dbext_default_MYSQL_bin                = 'isql'
+        dbext_default_MYSQL_cmd_header         = ''
+        dbext_default_MYSQL_cmd_terminator     = ''
+        dbext_default_MYSQL_cmd_options        = ''
+        dbext_default_ASA_bin                  = 'dbisql'
+        dbext_default_ASA_cmd_header           = ''
+        dbext_default_ASA_cmd_terminator       = ';'
+        dbext_default_ASA_cmd_options          = '-nogui'
+        dbext_default_INGRES_bin               = 'sql'
+        dbext_default_INGRES_cmd_header        = ''
+        dbext_default_INGRES_cmd_terminator    = '\p\g'
+        dbext_default_INGRES_cmd_options       = ''
+        dbext_default_ASE_bin                  = "isql"
+        dbext_default_ASE_cmd_header           = ""
+        dbext_default_ASE_cmd_terminator       = "\ngo\n"
+        dbext_default_ASE_cmd_options          = '-w 10000'
+        dbext_default_INTERBASE_bin            = ''
+        dbext_default_INTERBASE_cmd_header     = ''
+        dbext_default_INTERBASE_cmd_terminator = ''
+        dbext_default_INTERBASE_cmd_options    = ''
+        dbext_default_SQLSRV_bin               = "isql"
+        dbext_default_SQLSRV_cmd_header        = ""
+        dbext_default_SQLSRV_cmd_terminator    = ""
+        dbext_default_SQLSRV_cmd_options       = '-w 10000 -r -b'
+        dbext_default_ORA_bin                  = "sqlplus"
+        dbext_default_ORA_cmd_header           = 
+                                \ "set pagesize 10000\n" .
+                                \ "set wrap off\n" .
+                                \ "set sqlprompt \"\"\n" .
+                                \ "set sqlprompt \"\"\n" .
+                                \ "set flush off\n" .
+                                \ "set colsep \"\t\"\n" .
+                                \ "set tab off\n\n"
+        dbext_default_ORA_cmd_terminator       = ";\nquit;"
+        dbext_default_ORA_cmd_options          = '-S'
+        dbext_default_DB2_bin                  = 'db2batch'
+        dbext_default_DB2_cmd_header           = ''
+        dbext_default_DB2_cmd_terminator       = ''
+        dbext_default_DB2_cmd_options          = '-q del -s off'
+<    
+
+------------------------------------------------------------------------------
+4. Mappings and commands				*dbext-mappings*
+
+ Default visual/normal mode mappings (|:vmap|,|:nmap|):
+ 
+    mnemonic s - sql
+
+ Visual mode mapping (|:vmap|):
+ 
+    " Execute SQL visually selected
+    vnoremap <unique> <Leader>se <Plug>ExecVisualSQL
+
+    " select * from the table visually selected
+    " Very useful if you need to include an owner name for a table
+    " ie DBA.Customer
+    " mnemonic sql - table
+    vnoremap <unique> <leader>st <Plug>SelectFromTable
+
+    " Describe the table visually selected
+    " Very useful if you need to include an owner name for a table
+    " ie DBA.Customer
+    " mnemonic sql - describe - table
+    vnoremap <unique> <Leader>sdt <Plug>DescribeTable
+
+    " Describe the procedure visually selected
+    " Very useful if you need to include an owner name for a table
+    " ie DBA.sp_GetCustomerList
+    " mnemonic sql - describe - procedure
+    vnoremap <unique> <Leader>sdp <Plug>DescribeProcedure
+
+    " Display a list of tables with a specified prefix
+    " sql - list - table
+    vnoremap <unique> <Leader>slt <Plug>DBListTable
+    
+    " Display a list of procedures/packages/functions with a specified prefix
+    " sql - list - procedures
+    vnoremap <unique> <Leader>slp <Plug>DBListProcedure
+    
+    " Display a list of views with a specified prefix
+    " sql - list - views
+    vnoremap <unique> <Leader>slv <Plug>DBListView
+    
+    " Display a list of columns for a given table
+    " sql - list - column
+    vnoremap <unique> <Leader>slc <Plug>DBListColumn
+    
+ Normal mode mapping (|:nmap|):
+
+    " Execute SQL query under cursor. You need a semicolon at the 
+    " end of the query
+    " sql - execute
+    nnoremap <unique> <Leader>se <Plug>ExecSQL
+
+    " select * from the table under the cursor
+    " sql - table
+    nnoremap <unique> <Leader>st <Plug>SelectFromTable
+
+    " select * from the table under the cursor prompt for where clause
+    " sql - table - where 
+    nnoremap <unique> <Leader>stw <Plug>SelectFromTableWithWhere
+
+    " Describe the table under the cursor
+    " sql - describe - table
+    nnoremap <unique> <Leader>sd <Plug>DescribeTable
+
+    " Describe the table prompt for the name
+    " sql - describe - table - ask name
+    nnoremap <unique> <Leader>sda <Plug>DescribeTableAskName
+
+    " Describe the procedure under the cursor
+    " sql -  describe - procedure
+    nnoremap <unique> <Leader>sdp <Plug>DescribeProcedure
+
+    " Describe the procedure prompt for the name
+    " sql - describe - procedure - ask name
+    nnoremap <unique> <Leader>sdpa <Plug>DescribeProcedureAskName
+    
+    " Display a list of tables with a specified prefix
+    " sql - list - table
+    nnoremap <unique> <Leader>slt <Plug>DBListTable
+    
+    " Display a list of procedures/packages/functions with a specified prefix
+    " sql - list - procedures
+    nnoremap <unique> <Leader>slp <Plug>DBListProcedure
+    
+    " Display a list of views with a specified prefix
+    " sql - list - views
+    nnoremap <unique> <Leader>slv <Plug>DBListView
+    
+    " Display a list of columns for a given table
+    " sql - list - column
+    nnoremap <unique> <Leader>slc <Plug>DBListColumn
+    
+    " Prompt for connection information
+    " [Optional] Profile
+    " [Required] Database type - MySQL, ASA, Ingress, Oracle (see above) 
+    " [Optional] Database user
+    " [Optional] User password 
+    " [Optional] ODBC DSN
+    " [Optional] Server name
+    " [Optional] Database name
+    " [Optional] Host name
+    " [Optional] Port name 
+    " [Optional] Directory for database tools (if not in path already)
+    " sql - buffer prompt 
+    nnoremap <unique> <Leader>sbp <Plug>PromptForBufferParameters
+		
+ These are the default mappings.  If you choose your own keys, the plugin
+ will use your mappings and will not create the default mappings.  You can
+ also specify the following to disable the default mappings: >
+        let g:dbext_default_usermaps = 0
+<    
+ Commands
+    (In addition to the above mappings)
+    DBExecSQL   - Enter any command you want sent to the database
+    Select      - Enter the remainder of a select (ie :Select from customer)
+    Update      - Enter the remainder of an update
+    Insert      - Enter the remainder of an insert
+    Delete      - Enter the remainder of an delete
+    Drop        - Enter the remainder of a drop
+    Alter       - Enter the remainder of an alter
+    Create      - Enter the remainder of a create
+    DBSetOption - Allow you to set options from the command line.  This is
+                  useful in functions and mappings, see |dbext-in-mappings|.
+
+------------------------------------------------------------------------------
+5. Adding new database types				*dbext-newdb*
+
+ Select a unique name for your extension. Add it's uppercase name to 
+ the list of other supported databases in the s:DB_buildLists() function.
+ 
+ Next database specific functions need to be created.  Note: You must create
+ all the functions, even if a particular feature is not supported by
+ the database server you are adding.  Currently the following functions
+ must be created for each new database. >
+    DB_NEW_describeProcedure
+    DB_NEW_describeTable
+    DB_NEW_execSql
+    DB_NEW_getDictionaryProcedure
+    DB_NEW_getDictionaryTable
+    DB_NEW_getDictionaryView
+    DB_NEW_getListColumn
+    DB_NEW_getListProcedure
+    DB_NEW_getListTable
+    DB_NEW_getListView
+    DB_NEW_stripHeaderFooter
+<
+ Assuming the unique name for your extension was 'NEW'.  To begin with a 
+ new database, copy all the DB_ASA_* functions and modify them to suite
+ your needs.  Please consult the other databases for more ideas and
+ examples.
+
+------------------------------------------------------------------------------
+6. Prompting for input parameters			*dbext-prompting*
+
+ This plugin has the ability to parse the statement being executed and
+ prompt the user for input parameters.  The logic differs based on what type
+ of file you are editing.  The default behaviour will only parse the SQL
+ statements if the statement begins with any of the following: >
+         select, update, delete, insert, call, exec
+<
+ Stored procedures routinely use parameters in SQL statements, so we do not
+ want to prompt for values during a CREATE PROCEDURE statement.  
+ 
+ By default the plugin searches the statement for this style of input 
+ parameters: >
+    ?
+    @variable
+    :variable
+    $variable 
+<
+ If the statement has any of: (?,@,:,$), then the user will be prompted to ask
+ whether the plugin should check and prompt for input parameters.  If your
+ response is No, the statement is executed as is.  If you response is Yes,
+ there are some rules surrounding the search and replacement of variables.
+ Generally, any of the above formats surrounded in single quotes ('), will be
+ ignored as input parameters.  
+
+ To turn off this feature: >
+        let g:dbext_default_prompt_for_parameters=0  (globally)
+        DBSetOption prompt_for_parameters=0          (just for the buffer)
+<
+ To change which statements get parsed: >
+        let g:dbext_default_parse_statements='select,update' (globally)
+        DBSetOption parse_statements=select,update      (just for the buffer)
+<
+ The feature is best described with examples: >
+        SELECT varexists('@dave'), column2
+          INTO p1, p2
+          FROM customer
+         WHERE name    = @name
+           AND address = ?
+           AND phone   = :phone_nbr
+           AND email   = 'bob@something.com'
+           AND c2      = 'property:name';
+<
+ In this case we are demonstrating what is parsed from the statement and
+ prompted for.
+    1.  The INTO clause is removed, so the output is displayed in the Result
+        buffer.
+    2.  ?, @something, :something are stripped out of the query.  You are
+        prompted to enter a suitable value for each one, and the resulting 
+        query is sent to the database.
+    3.  '@dave','bob@something.com' and 'property:name' are not stripped
+        out of the query since they are surrounded in single quotes.
+    4.  When prompted for a value for @name, I would enter 'Homer' (including
+        the single quotes).
+    5.  When prompted for a value for ? it will indicate which ? this is, by
+        counting them and prompting you for a value for ? number 6.
+ 
+ To modify what variables that are searched for consider the following
+ example: >
+        INSERT INTO sync_log ( user_id, table_name, line )
+        VALUES( i_user, i_table_name, i_str );
+<This is an INSERT statement within a stored procedure.  The stored procedure
+ takes 3 input parameters.  The author of the stored procedure places a i_
+ ahead of all input variables.  You can modify the buffer variable for this
+ file as follows: >
+        DBSetOption variable_def='?WQ,@wq,$wq,i_wq'
+<
+ or more specifically: >
+        DBSetOption variable_def='i_wq'
+<
+ Adding new search and replace criteria must follow these rules:
+        i_ - look for this string
+        w  - MUST have word characters after it
+        W  - cannot have any word characters after it
+        q  - quotes do not matter
+        Q  - CANNOT be surrounded in quotes
+        ,  - delimits between the identifiers
+>
+        DBSetOption variable_def='i_wq,'
+<
+ This instructs the plugin to find all words that begin with "i_", with a
+ series of \w characters following, that is NOT surrounded in quotes.  If the
+ plugin finds more matches that expected, you can choose Cancel when prompted
+ for the variable name, and choose Skip, to move to the next match.
+ 
+ For more information on specific filetype support see |dbext-filetypes|
+
+------------------------------------------------------------------------------
+7. Setting up connection information			*dbext-connect*
+
+ Connection information is setup for each buffer.  This way you can have one
+ buffer connected to an Oracle database and another buffer connected to a
+ Sybase database.
+
+ If no connection information has been provided, the first time you run a
+ command, you will be prompted for connection information before the command
+ executes.
+
+ The most efficient use of the dbext plugin is to create connection profiles
+ in your|.vimrc|.  When profiles exist, you can choose from a list of these
+ profiles when a command is first executed (assuming connection information
+ has not already been set via modelines |dbext-connect-modelines| or default
+ profiles).
+
+ 
+7.1 Connection Parameters                         *dbext-connect-parameters*
+
+To specify the type of database you connect to most often, you can place the
+ following in your |.vimrc| file: >
+        let g:dbext_default_type   = 'ASA'
+<
+ If you have a standard login, this can also be specified: >
+        let g:dbext_default_user   = 'DBA'
+        let g:dbext_default_passwd = 'SQL'
+<
+7.2 Prompting for Parameters                      *dbext-connect-prompting*
+
+ If you want the plugin to prompt you for connection parameters for the
+ particular buffer you are in, you can run the command: >
+       :PromptForBufferParameters
+<
+       or <Leader>sbp  (default mapping - mnemonic sql buffer prompt)
+
+7.3 Connection profiles                           *dbext-connect-profiles*
+
+ In your |.vimrc| file, you can define global database profiles.  A profile is
+ a series of settings for a given database.  This is the easiest and most
+ efficient use of specifying connection information.  It also has the added
+ benefit of hiding userids, passwords and so on, in your |.vimrc| instead of
+ in the files themselves.  When you issue a :PromptForBufferParameters or
+ default map <Leader>sbp) if you have any connection profiles defined, you are
+ prompted with a number list, which allows you to choose which profile you
+ would like to use.  This is convenient since it can be difficult to remember
+ the names of your profiles.  This feature can also be used with the dbext
+ modelines (see section 7.4).
+
+ In your |.vimrc| you can define the following: >
+     let g:dbext_default_profile_ASA_generic = 'type=ASA:user=DBA:passwd=SQL'
+<
+ If you created the following dbext modeline in your file: >
+     // dbext:profile=ASA_generic:host=my_desktop
+<
+ This has the same effect as issuing the following commands: >
+     DBSetOption type=ASA
+     DBSetOption user=DBA
+     DBSetOption passwd=SQL
+     DBSetOption host=my_desktop
+<
+ You can create as many profiles in your |.vimrc| file as you like.  The
+ dbext modeline is recursive, so if it finds a profile, it will execute all
+ settings within it and continue with the remaining settings of the modeline.
+ Profiles cannot be nested.
+
+ Profiles are always specified in this format in your |.vimrc| file: >
+     let g:dbext_default_profile_[your_profile_name] = 'type=ORA:user=scott'
+<
+7.4 Connection information in modelines           *dbext-connect-modelines*
+
+ See |modeline| for details on what are modelines.  dbext uses a similar
+ format to vim modelines.  This feature is enabled if the vim option 'modeline'
+ is enabled and the 'modelines' option is > 0.
+
+ When a new buffer is opened the top 5 (vim default for 'modelines' and bottom
+ 5 lines of of the buffer are checked for the dbext modeline.  If found,
+ dbext will iterate through each option and set a corresponding local buffer
+ variable to that value.  See section |dbext-configure|, "Buffer variables"
+ for a list of the variables available.
+
+ Example, assume I had the following commented line in a SQL file on the third
+ line of my file: >
+     // dbext:type=ASA:user=dba:dsnname=My DSN with spaces:passwd=sql
+
+<This has the same effect as issuing the following commands: >
+     DBSetOption type=ASA
+     DBSetOption user=dba
+     DBSetOption dsnname=My DSN with spaces
+     DBSetOption passwd=sql
+<
+ If you specify a profile in a modeline, it must be the first
+ option specified: >
+     // dbext:profile=ASA_generic:host=my_desktop
+<
+ This has the same effect as issuing the following commands: >
+
+7.5 Ask for connection parameters	           *dbext-connect-ask*
+
+ Modelines can also take three special values: @askg, @askb, @ask.
+
+ @askg - Will prompt the user and set the value globally for all Vim buffers.
+ @askb - Will prompt the user and set the value only for this Vim buffer.
+ @ask  - Will prompt the user and set the value each time dbext is used.
+
+ Example, assume I had the following commented line in a SQL file on the third
+ line of my file: >
+     // dbext:type=@askg:user=@askb:passwd=@ask
+
+<This will prompt you once to specify which database type you want to connect
+ to and use this value for all buffers.  It will prompt you once for your
+ userid for each buffer.  You will also be prompted for your password each
+ time dbext is used.
+
+------------------------------------------------------------------------------
+8. Creating mappings using dbext commands        	*dbext-in-mappings*
+
+ dbext's commands can be used within mappings.  Here is a simple example 
+ that:
+     a) Sets connection information (based on "your_profile"). >
+           profile=your_profile
+<       This assumes you have the following in your |.vimrc| >
+           let g:dbext_default_profile_your_profile = 'type=ASA:..."
+<    b) When the mapping is executed, the full command is displayed
+        in the dbext result window (useful for debugging). >
+           display_cmd_line=1
+<    c) Turns off parsing the statement and prompting the user for
+        input. >
+           prompt_for_parameters=0
+<    d) Uses the DBExecSQL command to execute a DELETE statement
+        that uses the current buffers file_name as part of the 
+        WHERE clause. >
+           nnoremap <buffer> <Leader>hx 
+           \ :DBSetOption profile=your_profile:display_cmd_line=1<CR>
+           \ :DBSetOption prompt_for_parameters=0<CR>
+           \ :let sql_cmd = "DBExecSQL delete from xsl " .
+           \      "where name = '" . expand("%:t") . "';"<CR>
+           \ :exec sql_cmd<CR>
+<
+------------------------------------------------------------------------------
+9. Object Completion                                 	*dbext-completion*
+
+ Table/Procedure/View (Keyword) Completion
+
+ dbext has the ability to retrieve a list of all tables, procedures and views 
+ and allow keyword completion using Vim's dictionary feature |i_CTRL-X_CTRL-K|.
+ For each buffer, to generate the dictionary file run: DBComplete[Object].
+ Once the command is completed, you can type in a partial table name, and use
+ CTRL-K to cycle through all tables that start with the given prefix. >
+        DBCompleteTables
+        DBCompleteProcedures
+        DBCompleteViews
+<        
+ If you no longer want to complete these items you can execute the following: >
+        DBCompleteTables!
+        DBCompleteProcedures!
+        DBCompleteViews!
+<
+ The Intellisense plugin uses this feature of dbext to populate it's popup
+ windows, see |dbext-intellisense|
+
+------------------------------------------------------------------------------
+10. Listing Ojects in the Database                     	*dbext-list-objects*
+
+ Many times you just want to see what is available in a given database.
+ DBListTable, DBListProcedure, DBListView will display a list of objects
+ in the result window.  You will be prompted for a prefix (the prefix is
+ treated as a wildcard).  The output varies per database you are connected to
+ but it usually contains the owner and the table names as a minimum.
+ The results are displayed in the usual result window.
+
+ DBList[ Table | Procedure |View ] takes 1 optional parameter.  A wildcard
+ pattern can be supplied, if omitted it will prompt the user for a pattern.
+ The query sent to the database uses the LIKE 'pattern%' operator.
+
+ DBListColumn is slightly different.  It will create a comma separated list
+ of all the columns of a table in the order they were specified in the 
+ CREATE TABLE statement used when the table was created.  This list is placed
+ in Vim's standard paste buffer, so "p" will paste the results.  This was
+ designed so that you could type: >
+        SELECT employee
+<
+ While the cursor is still on table_name you can type: >
+        <C-O><Leader>slc
+<
+ Now the paste buffer has a comma separated list of columns for the "employee"
+ table.  Hitting <Esc>diwp, will delete (inner word) the word "employee" and
+ replace it with the list of columns from the paste buffer.
+
+ If no table name is supplied, the current word is chosen as the table name.
+
+------------------------------------------------------------------------------
+11. Intellisense integration                     	*dbext-intellisense*
+
+ Intellisense.vim (http://www.vim.org/scripts/script.php?script_id=747) is a
+ plugin that provides a popup window that allows the user to choose from a
+ list of values.  The SQL intellisense plugin provides drop down windows for
+ various static elements (statements, functions, types, keywords, ...).
+ 
+ Intellisense can also provide dynamic lists for tables, procedures and views.
+ It does this by calling dbext's DBComplete[ Table | Procedure | View ]
+ commands, see |dbext-completion|.
+
+ dbext provides the database interface to the intellisense plugin.  To enable
+ the dynamic lists via Intellisense, you must install the dbext plugin.
+
+------------------------------------------------------------------------------
+12. Filetype support                         	        *dbext-filetypes*
+
+ SQL can be used from a variety of languages.  Each development language (PHP,
+ Perl, Java, ...) language has different syntax for creating SQL statements
+ that are sent to the database.  dbext has support for several different
+ filetypes, so that it can understand and correctly parse a SQL statement.
+
+ The current supported languages are:
+        PHP, Java, JSP, JavaScript, Perl, SQL, Vim
+
+12.1 Using filetype support                 	*dbext-filetypes-using*
+
+ For example assume you had the following Java code:
+>
+	String mySQL = 
+	    "SELECT s.script, ts.event, t.name                  " +
+	    "     , s.script_language, sv.name                  " +
+	    "  FROM ml_script s, ml_table_script ts, ml_table t " +
+            "     , ml_script_version sv                        " +
+	    " WHERE s.script_id   = " + script_version +
+	    "   AND ts.version_id = "+obj.method() +
+	    "   AND ts.table_id   = t.table_id                  ";
+< 
+ If you visually select from the "SELECT ... to the "; and ran 
+ :'<,'>DBExecSQL
+
+ The Java filetype support would concatenate each individual string into 
+ one single string.  In this case it removed the " + " and concatenated
+ the lines to result in the following (assuming this is on one line): >
+ 	     SELECT s.script, ts.event, t.name , s.script_language, sv.name
+	       FROM ml_script s, ml_table_script ts, ml_table t 
+                  , ml_script_version sv
+	      WHERE s.script_id   = " + script_version + "
+	        AND ts.version_id = "+obj.method() +"
+	        AND ts.table_id   = t.table_id 
+<
+ Next, it will prompt you for replacement values for the various variables or
+ objects you used in the string.
+ Assuming you had the default behaviour turned on, you would be prompted
+ to supply a value for: >
+                " + script_version + "
+                "+obj.method() +"
+<
+ So assuming you entered: >
+                100
+                'Project_Yahoo'
+<
+ Then the resulting string sent to your database would be (again, this would
+ technically be on one line): >
+ 	     SELECT s.script, ts.event, t.name , s.script_language, sv.name
+	       FROM ml_script s, ml_table_script ts, ml_table t 
+                  , ml_script_version sv
+	      WHERE s.script_id   = 100
+	        AND ts.version_id = 'Project_Yahoo'
+	        AND ts.table_id   = t.table_id 
+<
+ You did not have to test your SQL by cutting and pasting it into a separate
+ tool and replacing all the object and host variables yourself.  Just by
+ visually selecting the string and running the command DBExecSQL (or the
+ default mapping <Leader>se) the SQL statement was executed against the
+ database and allowed to you enter host variables.
+ 
+
+12.2 Adding new filetypes                   	*dbext-filetypes-adding*
+
+ It is very easy to add a new language, as long as you know the rules
+ for how strings are joined.  In dbext.vim, there are functions for
+ each language, DB_parse[filetype].  To add a new language, find a language
+ with rules most similar to the new language.  Copy and paste that function to
+ the new name and modify the regular expressions used to adapt to the 
+ syntax rules of the language you are adding.  
+
+ These expressions can be a bit complex, but the ones currently used have been
+ documented to make your task easier.
+
+ It can take as little as 5 minutes to add a new language.
+
+ If you do add a new language, please forward along the code to 
+ David Fishburn -and- Peter Bagyinszki for inclusion into future versions.
+ 
+------------------------------------------------------------------------------
+13 Open Source                         	        *dbext-sourceforge*
+
+ dbext is now an open source project found at:  >
+     https://sourceforge.net/projects/dbext/
+< 
+------------------------------------------------------------------------------
+  vim:tw=78:fo=tcq2:isk=!-~,^*,^\|,^\":ts=8:ft=help:norl:
