@@ -1,9 +1,9 @@
 " dbext.vim - Commn Database Utility
 " ---------------------------------------------------------------
-" Version:  2.10
+" Version:  2.11
 " Authors:  Peter Bagyinszki <petike1@dpg.hu>
 "           David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Tue Sep 14 2004 5:48:10 PM
+" Last Modified: Wed Sep 22 2004 10:35:18 AM
 " Based On: sqlplus.vim (author: Jamis Buck <jgb3@email.byu.edu>)
 " Created:  2002-05-24
 " Homepage: http://vim.sourceforge.net/script.php?script_id=356
@@ -14,7 +14,7 @@
 "   - Requires multvals.vim to be installed. Download from:
 "       http://www.vim.org/script.php?script_id=171
 "
-" SourceForge: $Revision: 1.30 $
+" SourceForge: $Revision: 1.31 $
 "
 " Help:     :h dbext.txt 
 
@@ -28,7 +28,7 @@ if !exists("loaded_multvals") || loaded_multvals < 304
     echomsg "dbext: You need to have multvals version 3.4 or higher"
     finish
 endif
-let g:loaded_dbext = 210
+let g:loaded_dbext = 211
 
 " Script variable defaults {{{
 let s:mv_sep = ","
@@ -103,6 +103,7 @@ function! s:DB_buildLists()
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'custom_title')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'use_tbl_alias')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'delete_temp_file')
+    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dbext_version')
 
     " DB server specific params
     " See below for 3 additional DB2 items
@@ -528,6 +529,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "replace_title"           |return (exists("g:dbext_default_replace_title")?g:dbext_default_replace_title.'':0)
     elseif a:name ==# "use_tbl_alias"           |return (exists("g:dbext_default_use_tbl_alias")?g:dbext_default_use_tbl_alias.'':'d')
     elseif a:name ==# "delete_temp_file"        |return (exists("g:dbext_default_delete_temp_file")?g:dbext_default_delete_temp_file.'':'1')
+    elseif a:name ==# "dbext_version"           |return (g:loaded_dbext)
     elseif a:name ==# "ASA_bin"                 |return (exists("g:dbext_default_ASA_bin")?g:dbext_default_ASA_bin.'':'dbisql')
     elseif a:name ==# "ASA_cmd_terminator"      |return (exists("g:dbext_default_ASA_cmd_terminator")?g:dbext_default_ASA_cmd_terminator.'':';')
     elseif a:name ==# "ASA_cmd_options"         |return (exists("g:dbext_default_ASA_cmd_options")?g:dbext_default_ASA_cmd_options.'':'-nogui')
@@ -1347,7 +1349,9 @@ function! s:DB_ASA_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    let tempfile = tempname()
+    " Ensure the tempfile has a .sql extension, windows automatically
+    " adds an extension, Linux does not.
+    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
     exe 'redir! > ' . tempfile
     silent echo output
     redir END
@@ -1481,7 +1485,9 @@ function! s:DB_ASE_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    let tempfile = tempname()
+    " Ensure the tempfile has a .sql extension, windows automatically
+    " adds an extension, Linux does not.
+    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
     exe 'redir! > ' . tempfile
     silent echo output
     redir END
@@ -1664,7 +1670,9 @@ function! s:DB_DB2_execSql(str)
             let output = output . s:DB_getWType("cmd_terminator")
         endif
 
-        let tempfile = tempname()
+        " Ensure the tempfile has a .sql extension, windows automatically
+        " adds an extension, Linux does not.
+        let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
         exe 'redir! > ' . tempfile
         silent echo output
         redir END
@@ -1700,7 +1708,9 @@ function! s:DB_DB2_execSql(str)
             let output = output . s:DB_getWType("cmd_terminator")
         endif
 
-        let tempfile = tempname()
+        " Ensure the tempfile has a .sql extension, windows automatically
+        " adds an extension, Linux does not.
+        let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
         exe 'redir! > ' . tempfile
         silent echo output
         redir END
@@ -1873,7 +1883,9 @@ function! s:DB_INGRES_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    let tempfile = tempname()
+    " Ensure the tempfile has a .sql extension, windows automatically
+    " adds an extension, Linux does not.
+    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
     exe 'redir! > ' . tempfile
     silent echo output
     redir END
@@ -1956,7 +1968,9 @@ function! s:DB_INTERBASE_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    let tempfile = tempname()
+    " Ensure the tempfile has a .sql extension, windows automatically
+    " adds an extension, Linux does not.
+    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
     exe 'redir! > ' . tempfile
     silent echo output
     redir END
@@ -2041,7 +2055,9 @@ function! s:DB_MYSQL_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    let tempfile = tempname()
+    " Ensure the tempfile has a .sql extension, windows automatically
+    " adds an extension, Linux does not.
+    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
     exe 'redir! > ' . tempfile
     silent echo output
     redir END
@@ -2164,7 +2180,9 @@ function! s:DB_SQLITE_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    let tempfile = tempname()
+    " Ensure the tempfile has a .sql extension, windows automatically
+    " adds an extension, Linux does not.
+    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
     exe 'redir! > ' . tempfile
     silent echo output
     redir END
@@ -2289,7 +2307,9 @@ function! s:DB_ORA_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    let tempfile = tempname()
+    " Ensure the tempfile has a .sql extension, windows automatically
+    " adds an extension, Linux does not.
+    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
     exe 'redir! > ' . tempfile
     silent echo output
     redir END
@@ -2436,7 +2456,9 @@ function! s:DB_PGSQL_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    let tempfile = tempname()
+    " Ensure the tempfile has a .sql extension, windows automatically
+    " adds an extension, Linux does not.
+    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
     exe 'redir! > ' . tempfile
     silent echo output
     redir END
@@ -2584,7 +2606,9 @@ function! s:DB_SQLSRV_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    let tempfile = tempname()
+    " Ensure the tempfile has a .sql extension, windows automatically
+    " adds an extension, Linux does not.
+    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
     exe 'redir! > ' . tempfile
     silent echo output
     redir END
@@ -2845,6 +2869,10 @@ function! DB_getListColumn(...)
         " Convert newlines into commas
         " let col_list = substitute( col_list, '\w\>\zs[ '."\<C-J>".']*\ze\w', '\1, ', 'g' )
         let col_list = substitute( col_list, '\w\>\zs[^.].\{-}\ze\<\w', ', ', 'g' )
+        " Make sure the column list does not end in a newline, makes
+        " pasting into a buffer more difficult since  you cannot 
+        " insert it between words
+        let col_list = substitute( col_list, "\\s*\\n$", '', '' )
     else
         let col_list = substitute( col_list, ',\s*', "\n", 'g' )
     endif

@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 6.0.  Last change: Tue Sep 14 2004 5:48:25 PM
+*dbext.txt*	For Vim version 6.0.  Last change: Wed Sep 22 2004 10:40:23 AM
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,14 +7,14 @@
                      David Fishburn <fishburn@ianywhere.com>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 2.10
+	  	dbext.vim version 2.11
 
 For instructions on installing this file, type
 	:help add-local-help
 |add-local-help| inside Vim.
 
 Homepage: http://vim.sourceforge.net/script.php?script_id=356
-SourceForge: $Revision: 1.17 $
+SourceForge: $Revision: 1.18 $
 
 *dbext* *dbext.vim* *db_ext* *db_ext.vim* *database-extension* *pgsql* *mysql*
 *asa* *ase* *ingres* *interbase* *sqlite* *sqlsrv* *ora* *db2*
