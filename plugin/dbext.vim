@@ -1,9 +1,9 @@
 " dbext.vim - Common Database Utility
 " ---------------------------------------------------------------
-" Version:  2.00
-" Author:   Peter Bagyinszki <petike1@dpg.hu>
-" CoAuthor: David Fisburn <fishburn@ianywhere.com>
-" Last Modified: Sun Feb 08 2004 9:02:12 PM
+" Version:  2.01
+" Authors:  Peter Bagyinszki <petike1@dpg.hu>
+"           David Fishburn <fishburn@ianywhere.com>
+" Last Modified: Wed Jul 21 2004 8:41:43 PM
 " Based On: sqlplus.vim (author: Jamis Buck <jgb3@email.byu.edu>)
 " Created:  2002-05-24
 " Homepage: http://vim.sourceforge.net/script.php?script_id=356
@@ -13,7 +13,9 @@
 "   - Requires multvals.vim to be installed. Download from:
 "       http://www.vim.org/script.php?script_id=171
 "
-" SourceForge: $Revision: 1.14 $
+" SourceForge: $Revision: 1.22 $
+"
+" Help:     :h dbext.txt 
 
 if exists('g:loaded_dbext') || &cp
     finish
@@ -30,7 +32,8 @@ let g:loaded_dbext = 200
 " Script variable defaults {{{
 let s:mv_sep = ","
 let s:dbext_buffers_with_dict_files = ''
-let s:unique_cnt = 0
+let s:dbext_unique_cnt = 0
+let s:dbext_settings_comp_str = ''
 " }}}
 
 " Build internal lists {{{
@@ -56,10 +59,18 @@ function! s:DB_buildLists()
     "microsoft sql server (fishburn)
     let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'SQLSRV')
 
+    " Integrated Login Supported DB types
+    let s:intlogin_types_mv = ''
+    "sybase adaptive server anywhere (fishburn)
+    let s:intlogin_types_mv = MvAddElement(s:intlogin_types_mv, s:mv_sep, 'ASA')
+    "microsoft sql server (fishburn)
+    let s:intlogin_types_mv = MvAddElement(s:intlogin_types_mv, s:mv_sep, 'SQLSRV')
+
     " Connection parameters
     let s:conn_params_mv = ''
     let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'profile')
     let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'type')
+    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'integratedlogin')
     let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'user')
     let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'passwd')
     let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'dsnname')
@@ -74,6 +85,7 @@ function! s:DB_buildLists()
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'use_result_buffer')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'use_sep_result_buffer')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'buffer_lines')
+    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'query_statements')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'parse_statements')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'prompt_for_parameters')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'prompting_user')
@@ -84,8 +96,10 @@ function! s:DB_buildLists()
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dict_table_file')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dict_procedure_file')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dict_view_file')
+    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'replace_title')
 
     " DB server specific params
+    " See below for 3 additional DB2 items
     let s:db_params_mv = ''
     let s:db_params_mv = MvAddElement(s:db_params_mv, s:mv_sep, 'bin')
     let s:db_params_mv = MvAddElement(s:db_params_mv, s:mv_sep, 'cmd_header')
@@ -108,12 +122,6 @@ function! s:DB_buildLists()
     endwhile
     call MvIterDestroy("MvConfigParams")
 
-    call MvIterCreate(s:db_params_mv, s:mv_sep, "MvDBParams", s:mv_sep)
-    while MvIterHasNext('MvDBParams')
-        let s:all_params_mv = MvAddElement(s:all_params_mv, s:mv_sep, MvIterNext('MvDBParams'))
-    endwhile
-    call MvIterDestroy("MvDBParams")
-
     let loop_count         = 0
     let s:prompt_type_list = "\n0. None\n"
 
@@ -124,11 +132,21 @@ function! s:DB_buildLists()
         let s:prompt_type_list = s:prompt_type_list . loop_count . '. ' . type_mv . "\n"
         call MvIterCreate(s:db_params_mv, s:mv_sep, "MvDBParams", s:mv_sep)
         while MvIterHasNext('MvDBParams')
-            let s:all_params_mv = MvAddElement(s:all_params_mv, s:mv_sep, MvIterNext('MvDBParams'))
+            " For each element in the db parameters, add the database
+            " type to the beginning of the string.
+            let s:all_params_mv = MvAddElement(
+                        \ s:all_params_mv, s:mv_sep, 
+                        \ type_mv.'_'.MvIterNext('MvDBParams'))
         endwhile
         call MvIterDestroy("MvDBParams")
     endwhile
     call MvIterDestroy("MvDBTypes")
+
+    " Add 3 additional DB2 special cases
+    let s:all_params_mv = MvAddElement(s:all_params_mv, s:mv_sep, 'DB2_use_db2batch')
+    let s:all_params_mv = MvAddElement(s:all_params_mv, s:mv_sep, 'DB2_db2cmd_bin')
+    let s:all_params_mv = MvAddElement(s:all_params_mv, s:mv_sep, 'DB2_db2cmd_cmd_options')
+
 
     " Any predefined global connection profiles in the users vimrc
     let s:conn_profiles_mv    = ''
@@ -173,13 +191,12 @@ function! s:DB_execFuncWCheck(name,...)
     let use_defaults = 1
     if s:DB_get("buffer_defaulted") != 1
         call s:DB_resetBufferParameters(use_defaults)
-        if s:DB_get("buffer_defaulted") != 1
-            call s:DB_warningMsg( "A valid database type must be chosen" )
-            return
-        elseif a:name == 'promptForParameters'
+        if a:name == 'promptForParameters'
             " Handle the special case where no parameters were defaulted
             " but the process of resettting them has defaulted them.
             call s:DB_warningMsg( "Connection parameters have been defaulted" )
+        elseif s:DB_get("buffer_defaulted") != 1
+            call s:DB_warningMsg( "A valid database type must be chosen" )
             return
         endif
     endif
@@ -241,6 +258,31 @@ function! s:DB_execFuncTypeWCheck(name,...)
     endif
 endfunction
 
+function! s:DB_setTitle() 
+    if s:DB_get("replace_title") == 1
+        let &titlestring = '' .
+                \ s:DB_option('T(', s:DB_get("type"),    ')  ') .
+                \ s:DB_option('H(', s:DB_get("host"),    ')  ') .
+                \ s:DB_option('P(', s:DB_get("port"),    ')  ') .
+                \ s:DB_option('S(', s:DB_get("srvname"), ')  ') .
+                \ s:DB_option('O(', s:DB_get("dsnname"), ')  ') .
+                \ s:DB_option('D(', s:DB_get("dbname"),  ')  ')
+
+        if s:DB_get("integratedlogin") == '1'
+            if has("win32")
+                let &titlestring = &titlestring . 
+                    \ s:DB_option('U(', expand("$USERNAME"), ')  ') 
+            else
+                let &titlestring = &titlestring . 
+                    \ s:DB_option('U(', expand("$USER"), ')  ') 
+            endif
+        else
+            let &titlestring = &titlestring . 
+                    \ s:DB_option('U(', s:DB_get("user"), ')  ')
+        endif
+    endif
+endfunction 
+
 "" Set buffer parameter value
 function! s:DB_set(name, value)
     if MvContainsElement(s:all_params_mv, s:mv_sep, a:name)
@@ -264,6 +306,10 @@ function! s:DB_set(name, value)
         endif
 
         let b:dbext_{a:name} = value
+
+        if s:DB_get("replace_title") == '1'
+            call s:DB_setTitle()
+        endif
     else
         call s:DB_warningMsg("Unknown parameter: " . a:name)
     endif
@@ -282,6 +328,46 @@ endfunction
 function! s:DB_setWType(name, value)
     let var_name = b:dbext_type."_".a:name
     call s:DB_set(var_name, a:value )
+endfunction
+
+"" Get buffer parameter value
+function! DB_listOption(...)
+    let use_defaults = 1
+
+    " Use defaults as the default for this function
+    if (a:0 > 0) && strlen(a:1) > 0
+        return s:DB_get(a:1, use_defaults)
+    endif
+
+    let option_cnt = 1
+    let option_list = 
+                \ "------------------------\n" .
+                \ "** Connection Options **\n" .
+                \ "------------------------\n"
+    call MvIterCreate(s:all_params_mv, s:mv_sep, "MvAllParams", s:mv_sep)
+    while MvIterHasNext('MvAllParams')
+        if option_cnt == (MvNumberOfElements(s:conn_params_mv, s:mv_sep) + 1) 
+            let option_list = option_list .
+                        \ "---------------------------\n" .
+                        \ "** Configuration Options **\n" .
+                        \ "---------------------------\n"
+        elseif option_cnt == (MvNumberOfElements(s:conn_params_mv, s:mv_sep) +
+                    \ MvNumberOfElements(s:config_params_mv, s:mv_sep) + 1)  
+            let option_list = option_list .
+                        \ "----------------------\n" .
+                        \ "** Database Options **\n" .
+                        \ "----------------------\n"
+        endif
+        let opt_name    = MvIterNext('MvAllParams')
+        let opt_value   = opt_name . ' = ' . s:DB_get(opt_name)
+        let option_list = option_list . opt_value . "\n"
+        let option_cnt  = option_cnt + 1
+    endwhile
+    call MvIterDestroy("MvAllParams")
+     
+    call s:DB_addToResultBuffer(option_list, "clear")
+
+    return ""
 endfunction
 
 "" Get buffer parameter value
@@ -321,72 +407,86 @@ endfunction
 "" Returns hardcoded defaults for parameters.
 function! s:DB_getDefault(name)
     " Must use g:dbext_default_profile.'' so that it is expanded
-    if a:name ==# "profile"                 |return (exists("g:dbext_default_profile")?g:dbext_default_profile.'':'@askb') | else
-    if a:name ==# "type"                    |return (exists("g:dbext_default_type")?g:dbext_default_type.'':'@askb') |else
-    if a:name ==# "user"                    |return (exists("g:dbext_default_user")?g:dbext_default_user.'':'@askb') |else
-    if a:name ==# "passwd"                  |return (exists("g:dbext_default_passwd")?g:dbext_default_passwd.'':'@askb') |else
+    if     a:name ==# "profile"                 |return (exists("g:dbext_default_profile")?g:dbext_default_profile.'':'@askb') 
+    elseif a:name ==# "type"                    |return (exists("g:dbext_default_type")?g:dbext_default_type.'':'@askb') 
+    elseif a:name ==# "integratedlogin"         |return (exists("g:dbext_default_integratedlogin")?g:dbext_default_integratedlogin.'':'0') 
+    elseif a:name ==# "user"                    |return (exists("g:dbext_default_user")?g:dbext_default_user.'':'@askb') 
+    elseif a:name ==# "passwd"                  |return (exists("g:dbext_default_passwd")?g:dbext_default_passwd.'':'@askb') 
+    elseif a:name ==# "dsnname"                 |return (exists("g:dbext_default_dsnname")?g:dbext_default_dsnname.'':'') 
+    elseif a:name ==# "srvname"                 |return (exists("g:dbext_default_srvname")?g:dbext_default_srvname.'':'') 
+    elseif a:name ==# "dbname"                  |return (exists("g:dbext_default_dbname")?g:dbext_default_dbname.'':'') 
+    elseif a:name ==# "host"                    |return (exists("g:dbext_default_host")?g:dbext_default_host.'':'') 
+    elseif a:name ==# "port"                    |return (exists("g:dbext_default_port")?g:dbext_default_port.'':'') 
+    elseif a:name ==# "bin_path"                |return (exists("g:dbext_default_bin_path")?g:dbext_default_bin_path.'':'') 
     " ? - look for a question mark
     " w - MUST have word characters after it
     " W - CANNOT have any word characters after it
     " q - quotes do not matter
     " Q - CANNOT be surrounded in quotes
     " , - delimiter between options
-    if a:name ==# "variable_def"            |return (exists("g:dbext_default_variable_def")?g:dbext_default_variable_def.'':'?WQ,@wq,:wq,$wq') |else
-    if a:name ==# "buffer_lines"            |return (exists("g:dbext_default_buffer_lines")?g:dbext_default_buffer_lines.'':5) | else
-    if a:name ==# "use_result_buffer"       |return (exists("g:dbext_default_use_result_buffer")?g:dbext_default_use_result_buffer.'':1) | else
-    if a:name ==# "use_sep_result_buffer"   |return (exists("g:dbext_default_use_sep_result_buffer")?g:dbext_default_use_sep_result_buffer.'':0) | else
-    if a:name ==# "display_cmd_line"        |return (exists("g:dbext_default_display_cmd_line")?g:dbext_default_display_cmd_line.'':0) | else
-    if a:name ==# "prompt_for_parameters"   |return (exists("g:dbext_default_prompt_for_parameters")?g:dbext_default_prompt_for_parameters.'':1) | else
-    if a:name ==# "parse_statements"        |return (exists("g:dbext_default_parse_statements")?g:dbext_default_parse_statements.'':'select,update,delete,insert,call,exec') | else
-    if a:name ==# "always_prompt_for_variables" |return (exists("g:dbext_default_always_prompt_for_variables")?g:dbext_default_always_prompt_for_variables.'':0) | else
-    if a:name ==# "ASA_bin"                 |return (exists("g:dbext_default_ASA_bin")?g:dbext_default_ASA_bin.'':'dbisql') |else
-    if a:name ==# "ASA_cmd_terminator"      |return (exists("g:dbext_default_ASA_cmd_terminator")?g:dbext_default_ASA_cmd_terminator.'':';') | else
-    if a:name ==# "ASA_cmd_options"         |return (exists("g:dbext_default_ASA_cmd_options")?g:dbext_default_ASA_cmd_options.'':'-nogui') |else
-    if a:name ==# "ASE_bin"                 |return (exists("g:dbext_default_ASE_bin")?g:dbext_default_ASE_bin.'':'isql') |else
-    if a:name ==# "ASE_cmd_terminator"      |return (exists("g:dbext_default_ASE_cmd_terminator")?g:dbext_default_ASE_cmd_terminator.'':"\ngo\n") |else
-    if a:name ==# "ASE_cmd_options"         |return (exists("g:dbext_default_ASE_cmd_options")?g:dbext_default_ASE_cmd_options.'':'-w 10000') |else
-    if a:name ==# "DB2_bin"                 |return (exists("g:dbext_default_DB2_bin")?g:dbext_default_DB2_bin.'':'db2batch') |else
-    if a:name ==# "DB2_cmd_options"         |return (exists("g:dbext_default_DB2_cmd_options")?g:dbext_default_DB2_cmd_options.'':'-q off -s off') |else
-    if a:name ==# "DB2_cmd_terminator"      |return (exists("g:dbext_default_DB2_cmd_terminator")?g:dbext_default_DB2_cmd_terminator.'':';') | else
-    if a:name ==# "INGRES_bin"              |return (exists("g:dbext_default_INGRES_bin")?g:dbext_default_INGRES_bin.'':'sql') | else
-    if a:name ==# "INGRES_cmd_terminator"   |return (exists("g:dbext_default_INGRES_cmd_terminator")?g:dbext_default_INGRES_cmd_terminator.'':'\p\g') |else
-    if a:name ==# "INTERBASE_bin"           |return (exists("g:dbext_default_INTERBASE_bin")?g:dbext_default_INTERBASE_bin.'':'isql') |else
-    if a:name ==# "INTERBASE_cmd_terminator"|return (exists("g:dbext_default_INTERBASE_cmd_terminator")?g:dbext_default_INTERBASE_cmd_terminator.'':';') |else
-    if a:name ==# "MYSQL_bin"               |return (exists("g:dbext_default_MYSQL_bin")?g:dbext_default_MYSQL_bin.'':'mysql') |else
-    if a:name ==# "MYSQL_cmd_terminator"    |return (exists("g:dbext_default_MYSQL_cmd_terminator")?g:dbext_default_MYSQL_cmd_terminator.'':';') |else
-    if a:name ==# "ORA_bin"                 |return (exists("g:dbext_default_ORA_bin")?g:dbext_default_ORA_bin.'':'sqlplus') |else
-    if a:name ==# "ORA_cmd_header"          |return (exists("g:dbext_default_ORA_cmd_header")?g:dbext_default_ORA_cmd_header.'':"" .
+    elseif a:name ==# "variable_def"            |return (exists("g:dbext_default_variable_def")?g:dbext_default_variable_def.'':'?WQ,@wq,:wq,$wq')
+    elseif a:name ==# "buffer_lines"            |return (exists("g:dbext_default_buffer_lines")?g:dbext_default_buffer_lines.'':5)
+    elseif a:name ==# "use_result_buffer"       |return (exists("g:dbext_default_use_result_buffer")?g:dbext_default_use_result_buffer.'':1)
+    elseif a:name ==# "use_sep_result_buffer"   |return (exists("g:dbext_default_use_sep_result_buffer")?g:dbext_default_use_sep_result_buffer.'':0)
+    elseif a:name ==# "display_cmd_line"        |return (exists("g:dbext_default_display_cmd_line")?g:dbext_default_display_cmd_line.'':0)
+    elseif a:name ==# "prompt_for_parameters"   |return (exists("g:dbext_default_prompt_for_parameters")?g:dbext_default_prompt_for_parameters.'':1)
+    elseif a:name ==# "query_statements"        |return (exists("g:dbext_default_query_statements")?g:dbext_default_query_statements.'':'select,update,delete,insert,create,grant,alter,call,exec,merge,with')
+    elseif a:name ==# "parse_statements"        |return (exists("g:dbext_default_parse_statements")?g:dbext_default_parse_statements.'':'select,update,delete,insert,call,exec,with')
+    elseif a:name ==# "always_prompt_for_variables" |return (exists("g:dbext_default_always_prompt_for_variables")?g:dbext_default_always_prompt_for_variables.'':0)
+    elseif a:name ==# "replace_title"           |return (exists("g:dbext_default_replace_title")?g:dbext_default_replace_title.'':0)
+    elseif a:name ==# "ASA_bin"                 |return (exists("g:dbext_default_ASA_bin")?g:dbext_default_ASA_bin.'':'dbisql')
+    elseif a:name ==# "ASA_cmd_terminator"      |return (exists("g:dbext_default_ASA_cmd_terminator")?g:dbext_default_ASA_cmd_terminator.'':';')
+    elseif a:name ==# "ASA_cmd_options"         |return (exists("g:dbext_default_ASA_cmd_options")?g:dbext_default_ASA_cmd_options.'':'-nogui')
+    elseif a:name ==# "ASA_on_error"            |return (exists("g:dbext_default_ASA_on_error")?g:dbext_default_ASA_on_error.'':'exit')
+    elseif a:name ==# "ASE_bin"                 |return (exists("g:dbext_default_ASE_bin")?g:dbext_default_ASE_bin.'':'isql')
+    elseif a:name ==# "ASE_cmd_terminator"      |return (exists("g:dbext_default_ASE_cmd_terminator")?g:dbext_default_ASE_cmd_terminator.'':"\ngo\n")
+    elseif a:name ==# "ASE_cmd_options"         |return (exists("g:dbext_default_ASE_cmd_options")?g:dbext_default_ASE_cmd_options.'':'-w 10000')
+    elseif a:name ==# "DB2_use_db2batch"        |return (exists("g:dbext_default_DB2_use_db2batch")?g:dbext_default_DB2_use_db2batch.'':'0')
+    elseif a:name ==# "DB2_bin"                 |return (exists("g:dbext_default_DB2_bin")?g:dbext_default_DB2_bin.'':'db2batch')
+    elseif a:name ==# "DB2_cmd_options"         |return (exists("g:dbext_default_DB2_cmd_options")?g:dbext_default_DB2_cmd_options.'':'-q off -s off')
+    elseif a:name ==# "DB2_db2cmd_bin"          |return (exists("g:dbext_default_DB2_db2cmd_bin")?g:dbext_default_DB2_db2cmd_bin.'':'db2cmd')
+    elseif a:name ==# "DB2_db2cmd_cmd_options"  |return (exists("g:dbext_default_DB2_db2cmd_cmd_options")?g:dbext_default_DB2_db2cmd_cmd_options.'':'-c -w -i -t db2')
+    elseif a:name ==# "DB2_cmd_terminator"      |return (exists("g:dbext_default_DB2_cmd_terminator")?g:dbext_default_DB2_cmd_terminator.'':';')
+    elseif a:name ==# "INGRES_bin"              |return (exists("g:dbext_default_INGRES_bin")?g:dbext_default_INGRES_bin.'':'sql')
+    elseif a:name ==# "INGRES_cmd_terminator"   |return (exists("g:dbext_default_INGRES_cmd_terminator")?g:dbext_default_INGRES_cmd_terminator.'':'\p\g')
+    elseif a:name ==# "INTERBASE_bin"           |return (exists("g:dbext_default_INTERBASE_bin")?g:dbext_default_INTERBASE_bin.'':'isql')
+    elseif a:name ==# "INTERBASE_cmd_terminator"|return (exists("g:dbext_default_INTERBASE_cmd_terminator")?g:dbext_default_INTERBASE_cmd_terminator.'':';')
+    elseif a:name ==# "MYSQL_bin"               |return (exists("g:dbext_default_MYSQL_bin")?g:dbext_default_MYSQL_bin.'':'mysql')
+    elseif a:name ==# "MYSQL_cmd_terminator"    |return (exists("g:dbext_default_MYSQL_cmd_terminator")?g:dbext_default_MYSQL_cmd_terminator.'':';')
+    elseif a:name ==# "ORA_bin"                 |return (exists("g:dbext_default_ORA_bin")?g:dbext_default_ORA_bin.'':'sqlplus')
+    elseif a:name ==# "ORA_cmd_header"          |return (exists("g:dbext_default_ORA_cmd_header")?g:dbext_default_ORA_cmd_header.'':"" .
                         \ "set pagesize 10000\n" .
                         \ "set wrap off\n" .
                         \ "set sqlprompt \"\"\n" .
                         \ "set flush off\n" .
                         \ "set colsep \"\t\"\n" .
-                        \ "set tab off\n\n") |else
-    if a:name ==# "ORA_cmd_options"         |return (exists("g:dbext_default_ORA_cmd_options")?g:dbext_default_ORA_cmd_options.'':"-S") |else
-    if a:name ==# "ORA_cmd_terminator"      |return (exists("g:dbext_default_ORA_cmd_terminator")?g:dbext_default_ORA_cmd_terminator.'':";\nquit;") |else
-    if a:name ==# "PGSQL_bin"               |return (exists("g:dbext_default_PGSQL_bin")?g:dbext_default_PGSQL_bin.'':'psql') |else
-    if a:name ==# "PGSQL_cmd_terminator"    |return (exists("g:dbext_default_PGSQL_cmd_terminator")?g:dbext_default_PGSQL_cmd_terminator.'':';') |else
-    if a:name ==# "SQLSRV_bin"              |return (exists("g:dbext_default_SQLSRV_bin")?g:dbext_default_SQLSRV_bin.'':'isql') |else
-    if a:name ==# "SQLSRV_cmd_options"      |return (exists("g:dbext_default_SQLSRV_cmd_options")?g:dbext_default_SQLSRV_cmd_options.'':'-w 10000 -r -b') |else
-    if a:name ==# "prompt_profile"          |return (exists("g:dbext_default_prompt_profile")?g:dbext_default_prompt_profile.'':"" .
-                \ "[Optional] Enter profile name: ".s:prompt_profile_list) |else
-    if a:name ==# "prompt_type"             |return (exists("g:dbext_default_prompt_type")?g:dbext_default_prompt_type.'':"" .
-                \ "\nPlease choose # of database type: ".s:prompt_type_list) |else
-    if a:name ==# "prompt_user"             |return (exists("g:dbext_default_prompt_user")?g:dbext_default_prompt_user.'':'[Optional] Database user: ') |else
-    if a:name ==# "prompt_passwd"           |return (exists("g:dbext_default_prompt_passwd")?g:dbext_default_prompt_passwd.'':'[O] User password: ') |else
-    if a:name ==# "prompt_dsnname"          |return (exists("g:dbext_default_prompt_dsnname")?g:dbext_default_prompt_dsnname.'':'[O] ODBC DSN: ') |else
-    if a:name ==# "prompt_srvname"          |return (exists("g:dbext_default_prompt_srvname")?g:dbext_default_prompt_srvname.'':'[O] Server name: ') |else
-    if a:name ==# "prompt_dbname"           |return (exists("g:dbext_default_prompt_dbname")?g:dbext_default_prompt_dbname.'':'[O] Database name: ') |else
-    if a:name ==# "prompt_host"             |return (exists("g:dbext_default_prompt_host")?g:dbext_default_prompt_host.'':'[O] Host name: ') |else
-    if a:name ==# "prompt_port"             |return (exists("g:dbext_default_prompt_port")?g:dbext_default_prompt_port.'':'[O] Port name: ') |else
-    if a:name ==# "prompt_bin_path"         |return (exists("g:dbext_default_prompt_bin_path")?g:dbext_default_prompt_bin_path.'':'[O] Directory for database tools: ') |else
+                        \ "set tab off\n\n")
+    elseif a:name ==# "ORA_cmd_options"         |return (exists("g:dbext_default_ORA_cmd_options")?g:dbext_default_ORA_cmd_options.'':"-S")
+    elseif a:name ==# "ORA_cmd_terminator"      |return (exists("g:dbext_default_ORA_cmd_terminator")?g:dbext_default_ORA_cmd_terminator.'':";\nquit;")
+    elseif a:name ==# "PGSQL_bin"               |return (exists("g:dbext_default_PGSQL_bin")?g:dbext_default_PGSQL_bin.'':'psql')
+    elseif a:name ==# "PGSQL_cmd_terminator"    |return (exists("g:dbext_default_PGSQL_cmd_terminator")?g:dbext_default_PGSQL_cmd_terminator.'':';')
+    elseif a:name ==# "SQLSRV_bin"              |return (exists("g:dbext_default_SQLSRV_bin")?g:dbext_default_SQLSRV_bin.'':'osql')
+    elseif a:name ==# "SQLSRV_cmd_options"      |return (exists("g:dbext_default_SQLSRV_cmd_options")?g:dbext_default_SQLSRV_cmd_options.'':'-w 10000 -r -b -n')
+    elseif a:name ==# "prompt_profile"          |return (exists("g:dbext_default_prompt_profile")?g:dbext_default_prompt_profile.'':"" .
+                \ "[Optional] Enter profile name: ".s:prompt_profile_list)
+    elseif a:name ==# "prompt_type"             |return (exists("g:dbext_default_prompt_type")?g:dbext_default_prompt_type.'':"" .
+                \ "\nPlease choose # of database type: ".s:prompt_type_list)
+    elseif a:name ==# "prompt_integratedlogin"  |return (exists("g:dbext_default_prompt_integratedlogin")?g:dbext_default_prompt_integratedlogin.'':'[Optional] Use Integrated Login: ')
+    elseif a:name ==# "prompt_user"             |return (exists("g:dbext_default_prompt_user")?g:dbext_default_prompt_user.'':'[Optional] Database user: ')
+    elseif a:name ==# "prompt_passwd"           |return (exists("g:dbext_default_prompt_passwd")?g:dbext_default_prompt_passwd.'':'[O] User password: ')
+    elseif a:name ==# "prompt_dsnname"          |return (exists("g:dbext_default_prompt_dsnname")?g:dbext_default_prompt_dsnname.'':'[O] ODBC DSN: ')
+    elseif a:name ==# "prompt_srvname"          |return (exists("g:dbext_default_prompt_srvname")?g:dbext_default_prompt_srvname.'':'[O] Server name: ')
+    elseif a:name ==# "prompt_dbname"           |return (exists("g:dbext_default_prompt_dbname")?g:dbext_default_prompt_dbname.'':'[O] Database name: ')
+    elseif a:name ==# "prompt_host"             |return (exists("g:dbext_default_prompt_host")?g:dbext_default_prompt_host.'':'[O] Host name: ')
+    elseif a:name ==# "prompt_port"             |return (exists("g:dbext_default_prompt_port")?g:dbext_default_prompt_port.'':'[O] Port name: ')
+    elseif a:name ==# "prompt_bin_path"         |return (exists("g:dbext_default_prompt_bin_path")?g:dbext_default_prompt_bin_path.'':'[O] Directory for database tools: ')
     " These are for name completion using Vim's dictionary feature
-    if a:name ==# "dict_table_file"         |return '' |else
-    if a:name ==# "dict_procedure_file"     |return '' |else
-    if a:name ==# "dict_view_file"          |return '' |else
-
-    return ""
-                " \nPlease choose database type (from above ie ASA): ") |else
+    elseif a:name ==# "dict_table_file"         |return '' 
+    elseif a:name ==# "dict_procedure_file"     |return '' 
+    elseif a:name ==# "dict_view_file"          |return ''
+    else                                        |return ''
+    endif
+                " \nPlease choose database type (from above ie ASA): ")
 endfunction
 
 "" Sets global parameters to default values.
@@ -460,8 +560,8 @@ function! s:DB_resetBufferParameters(use_defaults)
     " connection parameters.
     " Calling this function can be nested, so we must generate
     " a unique IterCreate name.
-    let l:iter_unique_name = "MvConnParamsRBP".s:unique_cnt
-    let s:unique_cnt = s:unique_cnt + 1
+    let l:iter_unique_name = "MvConnParamsRBP".s:dbext_unique_cnt
+    let s:dbext_unique_cnt = s:dbext_unique_cnt + 1
     call MvIterCreate(s:conn_params_mv, s:mv_sep, l:iter_unique_name)
     while MvIterHasNext(l:iter_unique_name)
         let param = MvIterNext(l:iter_unique_name)
@@ -591,7 +691,38 @@ function! s:DB_promptForParameters(...)
                         \ l:old_value,
                         \ "-1"
                         \ )
+        elseif param ==# 'integratedlogin'
+            " Integrated login is only supported on Windows platforms
+            if !has("win32")
+                continue
+            elseif MvContainsElement(s:intlogin_types_mv, s:mv_sep, s:DB_get("type") ) == 0
+                " If the chosen datatype type does not support 
+                " integrated logins, do not prompt for it
+                continue
+            endif
+            let diag_prompt = s:DB_getDefault("prompt_" . param)
+            " Default the choice to 1 - the "No" button
+            " Otherwise add 1, if already selected to choose 
+            " the 2nd button - "Yes"
+            let l:old_value = (s:DB_get(param, no_default) == '' ? 0 : (s:DB_get(param, no_default)) )
+            let l:new_value = confirm( 
+                        \ diag_prompt,
+                        \ "&No\n&Yes\n&Cancel",
+                        \ (l:old_value+1)
+                        \ )
+            if l:new_value == 3
+                let l:new_value = "-1"
+            else
+                let l:new_value = l:new_value - 1
+            endif
         else
+            if ( s:DB_get("integratedlogin") == '1' &&
+                        \ ( (param ==# 'user') || 
+                        \   (param ==# 'passwd')  )      )
+                " Ignore user and password if using integrated logins
+                continue
+            endif
+
             let diag_prompt = s:DB_getDefault("prompt_" . param)
             let l:old_value = s:DB_get(param, no_default)
             let l:new_value = s:DB_getInput( 
@@ -637,7 +768,8 @@ function! s:DB_promptForParameters(...)
                     call s:DB_set(param, "") 
                 endif
             else
-                if l:old_value ==? '@ask'
+                " Force string comparison
+                if l:old_value.'' ==? '@ask'
                     " If the default value is @ask, then do not set the 
                     " buffer parameter, just return the value.
                     " The next time we execute something, we will be
@@ -757,29 +889,34 @@ function! s:DB_setMultipleOptions(multi_options)
     " Strip leading or following quotes, single or double
     let options_mv = s:DB_stripLeadFollowQuotesSpace(a:multi_options)
 
+    " Choose a bad separator (:), and it is too late to choose another one
+    " with the plugin available.
+    " On win32 platforms, must do something special for the bin_path
+    " parameter, since it can have C:\
+    if has("win32")
+        let options_mv = substitute(options_mv, 'bin_path\s*=\s*.\zs:\ze\\', 
+                    \ '!', '' )
+    endif
+
     " Loop through and prompt the user for all buffer
     " connection parameters.
     " Calling this function can be nested, so we must generate
     " a unique IterCreate name.
-    let l:iter_unique_name = "MvOptions".s:unique_cnt
-    let s:unique_cnt = s:unique_cnt + 1
+    let l:iter_unique_name = "MvOptions".s:dbext_unique_cnt
+    let s:dbext_unique_cnt = s:dbext_unique_cnt + 1
     " echomsg 'DB_setMultipleOptions: unique name:' . l:iter_unique_name
     call MvIterCreate(options_mv, ":", l:iter_unique_name)
     while MvIterHasNext(l:iter_unique_name)
         let option = MvIterNext(l:iter_unique_name)
         if strlen(option) > 0
             " Retrieve the option name 
-            " let option    = substitute(option_pad, '\s*\(.*\)\s*', '\1', '')
             let opt_name  = matchstr(option, '.\{-}\ze=')
             let opt_value = matchstr(option, '=\zs.*')
-            " let opt_value = substitute(opt_value, '\s*$', '', 'g')
             let opt_value = s:DB_stripLeadFollowQuotesSpace(opt_value)
-            " if opt_value  =~ ';'
-            "     let rc = -1
-            "     call s:DB_warningMsg('dbext: Option: ' . opt_name .
-            "                 \ " Value: " . opt_value . " - cannot have ;'s")
-            "     break
-            " endif
+
+            if has("win32") && opt_name ==? 'bin_path'
+                let opt_value = substitute(opt_value, '!', ':', '')
+            endif
             call s:DB_set(opt_name, opt_value)
         endif
     endwhile
@@ -816,7 +953,23 @@ function! s:DB_fullPath2Bin(executable_name)
     return full_bin
 endfunction 
 "}}}
+
 " Commands {{{
+command! -nargs=+ DBExecSQL      :call s:DB_execSql(<q-args>)
+command! -range -nargs=0 DBExecRangeSQL <line1>,<line2>call s:DB_execRangeSql()
+command! -nargs=+ Call           :call s:DB_execSql("call " . <q-args>)
+command! -nargs=+ Select         :call s:DB_execSql("select " . <q-args>)
+command! -nargs=+ Update         :call s:DB_execSql("update " . <q-args>)
+command! -nargs=+ Insert         :call s:DB_execSql("insert " . <q-args>)
+command! -nargs=+ Delete         :call s:DB_execSql("delete " . <q-args>)
+command! -nargs=+ Drop           :call s:DB_execSql("drop " . <q-args>)
+command! -nargs=+ Alter          :call s:DB_execSql("alter " . <q-args>)
+command! -nargs=+ Create         :call s:DB_execSql("create " . <q-args>)
+command! -nargs=1 DBSetOption    :call s:DB_setMultipleOptions(<q-args>)
+command! -nargs=? DBGetOption    :echo DB_listOption(<q-args>)
+command! -nargs=* -complete=custom,<SID>DB_settingsComplete DBSetOption :call s:DB_setMultipleOptions(<q-args>)
+command! -nargs=* -complete=custom,<SID>DB_settingsComplete DBGetOption :echo DB_listOption(<q-args>)
+
 if !exists(':DBExecVisualSQL')
     command! -nargs=0 -range DBExecVisualSQL :call s:DB_execSql(DB_getVisualBlock())
     vmap <unique> <script> <Plug>DBExecVisualSQL :DBExecVisualSQL<CR>
@@ -875,7 +1028,6 @@ endif
 if !exists(':DBPromptForBufferParameters')
     command! -nargs=0 DBPromptForBufferParameters
                 \ :call s:DB_execFuncWCheck('promptForParameters')
-                "\ :call s:DB_promptForParameters()
     nmap <unique> <script> <Plug>DBPromptForBufferParameters
                 \ :DBPromptForBufferParameters<CR>
 endif
@@ -928,6 +1080,10 @@ if !hasmapto('<Plug>DBExecSQLUnderCursor')
 endif
 if !hasmapto('<Plug>DBExecSQL')
     nmap <unique> <Leader>sq <Plug>DBExecSQL
+endif
+if !hasmapto('DBExecRangeSQL')
+    nmap <unique> <silent> <Leader>sea :1,$DBExecRangeSQL<CR>
+    nmap <unique> <silent> <Leader>sel :.,.DBExecRangeSQL<CR>
 endif
 if !hasmapto('<Plug>DBSelectFromTable')
     nmap <unique> <Leader>st <Plug>DBSelectFromTable
@@ -1053,7 +1209,7 @@ function! s:DB_ASA_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '[^\n\s]*$'
+    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1072,20 +1228,20 @@ function! s:DB_ASA_execSql(str)
     else
         let links = ""
     endif
-    let cmd = dbext_bin .  ' ' . s:DB_getWType("cmd_options")
-    if (s:DB_get("on_error") == "")
-        let cmd = s:DB_option(cmd, ' -onerror exit', '')
-    else
-        let cmd = s:DB_option(cmd, ' -onerror ' . s:DB_get("on_error"), '')
-    endif
-    let cmd = cmd . ' -c "' .
+    let cmd = dbext_bin .  ' ' . s:DB_getWType("cmd_options") . ' ' .
+                \ s:DB_option('-onerror ', s:DB_getWType("on_error"), ' ') .
+                \ ' -c "' .
                 \ s:DB_option('uid=', s:DB_get("user"), ';') .
                 \ s:DB_option('pwd=', s:DB_get("passwd"), ';') .
                 \ s:DB_option('dsn=', s:DB_get("dsnname"), ';') .
                 \ s:DB_option('eng=', s:DB_get("srvname"), ';') .
                 \ s:DB_option('dbn=', s:DB_get("dbname"), ';') .
-                \ s:DB_option('links=', links, ';') .
-                \ '" ' . 
+                \ s:DB_option('links=', links, ';') 
+    if has("win32") && s:DB_get("integratedlogin") == 1
+        let cmd = cmd . 
+                \ s:DB_option('int=', 'yes', ';') 
+    endif
+    let cmd = cmd .  '" ' . 
                 \ ' read ' . tempfile
     let result = s:DB_runCmd(cmd, output)
     let rc = delete(tempfile)
@@ -1182,7 +1338,7 @@ function! s:DB_ASE_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '[^\n\s]*$'
+    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1328,32 +1484,91 @@ endfunction "}}}
 "}}}
 " DB2 exec {{{
 function! s:DB_DB2_execSql(str)
-    " All defaults are specified in the DB_getDefault function.
-    " This contains the defaults settings for all database types
-    let output = s:DB_getWType("cmd_header") . a:str
-    " Only include a command terminator if one has not already
-    " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '[^\n\s]*$'
-        let output = output . s:DB_getWType("cmd_terminator")
+    " To create a connection to a DB2 server running on a different machine
+    " you must start db2cmd.exe and issue the following:
+    "         In the case below host_name is the name of remote machine
+    "         server 60000, means the server is listening on port 6000
+    "     catalog tcpip node devcons remote host_name server 60000 
+    "         Setup an alias for the paritcular database running on
+    "         that server.
+    "     catalog db db2cn01d as what_ever_you_want at node devcons
+    "         If you have a DSN that you want to connect through setup
+    "         a mapping.
+    "     catalog user odbc data source devcons
+    "     catalog system odbc data source devcons (for system DSN)
+    " Other commands:
+    "     list node directory
+    "     list database directory
+    "     list odbc data sources
+    "     uncatalogue ...
+    " When you start db2cmd.exe you can type (for help):
+    "     ?
+    "     ? catalogue
+    " To see what options are available for db2:
+    "     Start db2cmd
+    "     list command options
+
+
+    if s:DB_getWType("use_db2batch") == '1'
+        " All defaults are specified in the DB_getDefault function.
+        " This contains the defaults settings for all database types
+        let output = s:DB_getWType("cmd_header") . a:str
+        " Only include a command terminator if one has not already
+        " been added
+        if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
+            let output = output . s:DB_getWType("cmd_terminator")
+        endif
+
+        let tempfile = tempname()
+        exe 'redir! > ' . tempfile
+        silent echo output
+        redir END
+
+        let dbext_bin = s:DB_fullPath2Bin(s:DB_getWType("bin"))
+
+        let cmd = dbext_bin .  ' ' . s:DB_getWType("cmd_options")
+        if s:DB_get("user") != ""
+            let cmd = cmd . ' -a ' . s:DB_get("user") . '/' .
+                        \ s:DB_get("passwd") . ' '
+        endif
+        let cmd = cmd . 
+                    \ s:DB_option('-d ', s:DB_get("dbname"), ' ') .
+                    \ s:DB_option('-l ', s:DB_getWType("cmd_terminator"), ' ').
+                    \ ' -f ' . tempfile
+
+    else
+        " Use db2cmd instead
+
+        let connect_str = 'CONNECT ' .
+                    \ s:DB_option('TO ', s:DB_get("dbname"), ' ') .
+                    \ s:DB_option('USER ', s:DB_get("user"), ' ') .
+                    \ s:DB_option('USING ', s:DB_get("passwd"), '') .
+                    \ s:DB_option('', s:DB_getWType("cmd_terminator"), '') .
+                    \ "\n"
+
+        " All defaults are specified in the DB_getDefault function.
+        " This contains the defaults settings for all database types
+        let output = s:DB_getWType("db2cmd_cmd_header") . connect_str . a:str
+        " Only include a command terminator if one has not already
+        " been added
+        if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
+            let output = output . s:DB_getWType("cmd_terminator")
+        endif
+
+        let tempfile = tempname()
+        exe 'redir! > ' . tempfile
+        silent echo output
+        redir END
+
+        let dbext_bin = s:DB_fullPath2Bin(s:DB_getWType("db2cmd_bin"))
+
+        let cmd = dbext_bin .  ' ' . s:DB_getWType("db2cmd_cmd_options")
+        let cmd = cmd . ' ' .
+                    \ s:DB_option('-td', s:DB_getWType("cmd_terminator"), ' ') .
+                    \ '-f ' . tempfile
     endif
 
-    let tempfile = tempname()
-    exe 'redir! > ' . tempfile
-    silent echo output
-    redir END
 
-    let dbext_bin = s:DB_fullPath2Bin(s:DB_getWType("bin"))
-
-    let cmd = dbext_bin .  ' ' . s:DB_getWType("cmd_options")
-    if s:DB_get("user") != ""
-        let cmd = cmd . ' -a ' . s:DB_get("user") . '/' .
-                    \ s:DB_get("passwd") . ' '
-    endif
-    let cmd = cmd . 
-                \ s:DB_option('-H ', s:DB_get("host"), ' ') .
-                \ s:DB_option('-d ', s:DB_get("dbname"), ' ') .
-                \ s:DB_option('-l ', s:DB_getWType("cmd_terminator"), ' ') .
-                \ ' -f ' . tempfile
     let result = s:DB_runCmd(cmd, output)
     let rc = delete(tempfile)
     if rc != 0
@@ -1363,30 +1578,12 @@ function! s:DB_DB2_execSql(str)
 endfunction
 
 function! s:DB_DB2_describeTable(table_name)
-    let owner      = s:DB_getObjectOwner(a:table_name)
-    let table_name = s:DB_getObjectName(a:table_name)
-    " Another option is:
-    " db2 describe table db2inst1.org
-    let cmd = 'db2look'
-    let cmd = cmd . ' '
-    if b:dbext_user != ""
-        let cmd = cmd . '-i ' . b:dbext_user . ' '
-    endif
-    if b:dbext_passwd != ""
-        let cmd = cmd . '-w ' . b:dbext_passwd . ' '
-    endif
-    if owner != ""
-        let cmd = cmd . '-u ' . owner . ' '
-    elseif b:dbext_user != ""
-        let cmd = cmd . '-u ' . b:dbext_user . ' '
-    endif
-    if b:dbext_dbname != ""
-        let cmd = cmd . '-d ' . b:dbext_dbname . ' '
-    endif
-    let cmd = cmd . '-e -t ' . table_name
-    " call Decho("Command: '". cmd . "'")
-    " echom cmd
-    return s:DB_runCmd(cmd, cmd)
+    let save_use_db2batch = s:DB_getWType("use_db2batch")
+    call s:DB_setWType("use_db2batch", 0)
+
+    call s:DB_DB2_execSql("DESCRIBE TABLE ".a:table_name)
+
+    call s:DB_setWType("use_db2batch", save_use_db2batch)
 endfunction
 
 function! s:DB_DB2_describeProcedure(procedure_name)
@@ -1504,7 +1701,7 @@ function! s:DB_INGRES_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '[^\n\s]*$'
+    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1579,7 +1776,7 @@ function! s:DB_INTERBASE_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '[^\n\s]*$'
+    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1656,7 +1853,7 @@ function! s:DB_MYSQL_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '[^\n\s]*$'
+    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1752,7 +1949,7 @@ function! s:DB_ORA_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '[^\n\s]*$'
+    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1893,7 +2090,7 @@ function! s:DB_PGSQL_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '[^\n\s]*$'
+    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1903,6 +2100,7 @@ function! s:DB_PGSQL_execSql(str)
     redir END
 
     let dbext_bin = s:DB_fullPath2Bin(s:DB_getWType("bin"))
+
     let cmd = dbext_bin .  ' ' . 
                 \ s:DB_option('', s:DB_getWType("cmd_options"), ' ') .
                 \ s:DB_option('-d ', s:DB_get("dbname"), ' ') .
@@ -2034,7 +2232,7 @@ function! s:DB_SQLSRV_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '[^\n\s]*$'
+    if output !~ s:DB_getWType("cmd_terminator") . "[^\n\s]*$"
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -2043,10 +2241,18 @@ function! s:DB_SQLSRV_execSql(str)
     silent echo output
     redir END
 
-    let dbext_bin = s:DB_getWType("bin")
+    let dbext_bin = s:DB_fullPath2Bin(s:DB_getWType("bin"))
+
     let cmd = dbext_bin . ' ' . s:DB_getWType("cmd_options")
-    let cmd = cmd . ' -U ' .  s:DB_get("user") .
-                \ ' -P' . s:DB_get("passwd") .
+
+    if has("win32") && s:DB_get("integratedlogin") == 1
+        let cmd = cmd .  ' -E'
+    else
+        let cmd = cmd . ' -U ' .  s:DB_get("user") .
+                \ ' -P' . s:DB_get("passwd") 
+    endif
+
+    let cmd = cmd . 
                 \ s:DB_option(' -H ', s:DB_get("host"), ' ') .
                 \ s:DB_option(' -S ', s:DB_get("srvname"), ' ') .
                 \ s:DB_option(' -d ', s:DB_get("dbname"), ' ') .
@@ -2154,6 +2360,7 @@ endfunction "}}}
 " Selector functions {{{
 function! s:DB_execSql(query)
     let query = a:query
+
     if strlen(query) == 0
         call s:DB_warningMsg("No statement to execute!")
         return
@@ -2185,9 +2392,19 @@ function! s:DB_execSqlWithDefault(...)
     return s:DB_execFuncTypeWCheck('execSql', sql)
 endfunction
 
-"FIXME: az 'isk' (iskeyword) beállításával nem tudnám rámaccsoltatni a .ot
-" tartalmazó (schema alkalmazó) táblanevekre a cwordot?
-" I dont know what this says ...
+function! s:DB_execRangeSql() range
+    if a:firstline != a:lastline
+        let saveR = @"
+        silent! exec a:firstline.','.a:lastline.'y'
+        let query = @"
+        let @" = saveR
+    else
+        let query = getline(a:firstline)
+    endif
+
+    return s:DB_execSql(query)
+endfunction
+
 function! s:DB_describeTable(...)
     if(a:0 > 0)
         let table_name = substitute(a:1,'\s*\(\w*\)\s*','\1','')
@@ -2375,9 +2592,24 @@ function! s:DB_getQueryUnderCursor()
     let curline     = line(".")
     let curcol      = virtcol(".")
 
-    let sql_commands = '\c\<\(select\|update\|create\|grant' .
-                \ '\|delete\|alter\|call\|exec\|insert' .
-                \ '\|merge\)\>'
+    " Must default the statements to query
+    let dbext_query_statements = s:DB_get("query_statements")
+    " Verify the string is in the correct format
+    " Strip off any trailing commas
+    let dbext_query_statements =
+                \ substitute(dbext_query_statements, ',$','','')
+    " Convert commas to regex ors
+    let dbext_query_statements =
+                \ substitute(dbext_query_statements, '\s*,\s*', '\\|', 'g')
+
+    let sql_commands = '\c\<\('.dbext_query_statements.'\)\>'
+
+    " Advance the cursor by 1 character incase the cursor is at the
+    " beginning of one of the query statements
+    if col('.') < (col('$')-1)
+        exec 'normal! l'
+    endif
+
     " Search backwards and do NOT wrap
     if search(sql_commands, 'bW' ) > 0
         " Note: escape the command terminator with \ in case the
@@ -2395,7 +2627,8 @@ function! s:DB_getQueryUnderCursor()
     endif
 
     " Return to previous location
-    exe 'norm! '.curline.'G'.curcol."\<bar>"
+    " Accounting for beginning of the line
+    silent! exe 'norm! '.curline."G\<bar>".(curcol-1).(((curcol-1)> 0)?'l':'')
 
     noh
     let query = @z
@@ -2429,6 +2662,18 @@ function! s:DB_option(param, value, separator)
     endif
 endfunction
 
+function! s:DB_pad(side, length, value)
+    let ret_val = a:value
+    while strlen(ret_val) < a:length
+        if a:side == "left"
+            let ret_val = " " . ret_val
+        else
+            let ret_val = ret_val . " "
+        endif
+    endwhile
+    return ret_val
+endfunction
+
 function! s:DB_getInput(prompt, default_value, cancel_value)
     if v:version >= 602
         return inputdialog( a:prompt, a:default_value, a:cancel_value )
@@ -2438,13 +2683,21 @@ function! s:DB_getInput(prompt, default_value, cancel_value)
 endfunction
 
 function! DB_getVisualBlock() range
-    "FIXME: kitugyamég mithoz az élet: Made this a public function to be used in the vmapping
     let save = @"
     silent normal gvy
     let vis_cmd = @"
     let @" = save
     return vis_cmd
 endfunction 
+
+function! s:DB_settingsComplete(ArgLead, CmdLine, CursorPos)
+    if s:dbext_settings_comp_str == ''
+        let s:dbext_settings_comp_str = 
+                    \ substitute(s:all_params_mv, ',', "\n", 'g') 
+    endif
+
+    return s:dbext_settings_comp_str
+endfunction
 function! s:DB_getObjectOwner(object) "{{{
     " The owner regex matches a word at the start of the string which is
     " followed by a dot, but doesn't include the dot in the result.
@@ -2662,11 +2915,64 @@ endfunction
 " }}}
 " runCmd {{{
 function! s:DB_runCmd(cmd, sql)
+    let l:display_cmd_line = s:DB_get('display_cmd_line') 
+
+    if l:display_cmd_line == 1
+        let cmd_line = "Last command:\n" .
+                    \ a:cmd . "\n" .
+                    \ "Last SQL:\n" .
+                    \ a:sql
+        call s:DB_addToResultBuffer(cmd_line, "clear")
+    endif
+
+    if s:DB_get('use_result_buffer') == 1
+        call s:DB_addToResultBuffer('', "clear")
+        if l:display_cmd_line == 1
+            call s:DB_addToResultBuffer(cmd_line, "add")
+        endif
+
+        let result = system(a:cmd)
+
+        call s:DB_addToResultBuffer(result, "add")
+
+        " If there was an error, show the command just executed
+        " for debugging purposes
+        if v:shell_error
+            let output = "To change connection parameters:\n" .
+                        \ ":DBPromptForParameters\n" .
+                        \ "Or\n" .
+                        \ ":DBSetOption user\|passwd\|dsnname\|srvname\|dbname\|host\|port\|...=<value>\n" .
+                        \ ":DBSetOption user=tiger:passwd=scott\n" .
+                        \ "Last command:\n" .
+                        \ a:cmd . "\n" .
+                        \ "Last SQL:\n" .
+                        \ a:sql . "\n" 
+            call s:DB_addToResultBuffer(output, "add")
+        endif
+    else " Don't use result buffer
+        if l:display_cmd_line == 1
+            echo cmd_line
+        endif
+
+        let result = system(a:cmd)
+
+        " If there was an error, return -1
+        " in this mode do not show the actual message
+        if v:shell_error
+            let result = '-1'
+        endif
+
+        return result
+    endif
+
+    return
+endfunction "}}}
+" addToResultBuffer {{{
+function! s:DB_addToResultBuffer(output, do_clear)
     " Store current window number so we can return to it
     let cur_winnr = winnr()
     let res_buf_name = s:DB_resBufName()
     " Retieve this value before we switch buffers
-    let l:display_cmd_line = s:DB_get('display_cmd_line') 
     let l:buffer_lines = s:DB_get('buffer_lines')
 
     " Do not use bufexists(res_buf_name), since it uses a fully qualified
@@ -2676,83 +2982,47 @@ function! s:DB_runCmd(cmd, sql)
     let buf_exists = bufexists(bufnr(res_buf_name))
     let res_buf_nbr = bufnr(res_buf_name)
 
-    if s:DB_get('use_result_buffer') == 1
-        if buf_exists == 0
-            " Create the new buffer
-            silent exec 'belowright ' . l:buffer_lines . 'new ' . res_buf_name
+    if buf_exists == 0
+        " Create the new buffer
+        silent exec 'belowright ' . l:buffer_lines . 'new ' . res_buf_name
+    else
+        if bufwinnr(res_buf_nbr) == -1
+            " if the buffer is not visible, wipe it out and recreate it,
+            " this will position us in the new buffer
+            exec 'bwipeout! ' . res_buf_nbr
+            silent exec 'bot ' . l:buffer_lines . 'new ' . res_buf_name
         else
-            if bufwinnr(res_buf_nbr) == -1
-                " if the buffer is not visible, wipe it out and recreate it,
-                " this will position us in the new buffer
-                exec 'bwipeout! ' . res_buf_nbr
-                silent exec 'bot ' . l:buffer_lines . 'new ' . res_buf_name
-            else
-                " If the buffer is visible, switch to it
-                exec bufwinnr(res_buf_nbr) . "wincmd w"
-            endif
+            " If the buffer is visible, switch to it
+            exec bufwinnr(res_buf_nbr) . "wincmd w"
         endif
-        setlocal modified
-        " Create a buffer mapping to clo this window
-        nnoremap <buffer> q :clo<cr>
-        " Delete all the lines prior to this run
-        %d
-        " If the user wants to see the command line, echo it
-        " as the first line in the output
-        if l:display_cmd_line == 1
-            put = 'Last command:'
-            put = a:cmd
-            put = 'Last SQL:'
-            put = a:sql
-        endif
-        " Run the command and read it into the Result buffer
-        " silent exec "read !" . a:cmd . " 2>&1"
-        " Decho a:cmd
-        " echom a:cmd
-        exec 'silent! normal! G'
-        silent exec "read !" . a:cmd
-
-        " If there was an error, show the command just executed
-        " for debugging purposes
-        if v:shell_error
-            exec 'silent! normal! G'
-            put = 'To change connection parameters:'
-            put = ':DBPromptForParameters'
-            put = 'Or'
-            put = ':DBSetOption user\|passwd\|dsnname\|srvname\|dbname\|host\|port\|... <value>'
-            put = ':DBSetOption passwd new_password'
-            put = 'Last command:'
-            put = a:cmd
-            put = 'Last SQL:'
-            put = a:sql
-        endif
-        " Since this is a small window, remove any blanks lines
-        silent %g/^\s*$/d
-        " Fix the ^M characters, if any
-        silent execute "%s/\<C-M>\\+$//e"
-        " Dont allow modifications, and do not wrap the text, since
-        " the data may be lined up for columns
-        setlocal nomodified
-        setlocal nowrap
-        " Go to top of output
-        norm gg
-        " Return to original window
-        " exe "norm \<c-w>p\<c-w>l"
-        exec cur_winnr."wincmd w"
-    else " Don't use result buffer
-        if l:display_cmd_line == 1
-            echo 'Last command:'
-            echo a:cmd
-            echo 'Last SQL:'
-            echo a:sql
-        endif
-        let result = system(a:cmd)
-        " If there was an error, return -1
-        " in this mode do not show the actual message
-        if v:shell_error
-            let result = '-1'
-        endif
-        return result
     endif
+    setlocal modified
+    " Create a buffer mapping to clo this window
+    nnoremap <buffer> q :clo<cr>
+    " Delete all the lines prior to this run
+    if a:do_clear == "clear" 
+        %d
+    endif
+
+    if strlen(a:output) > 0
+        " Add to end of buffer
+        silent! exec "normal! G"
+        silent! exec "put = a:output"
+    endif
+
+    " Since this is a small window, remove any blanks lines
+    silent %g/^\s*$/d
+    " Fix the ^M characters, if any
+    silent execute "%s/\<C-M>\\+$//e"
+    " Dont allow modifications, and do not wrap the text, since
+    " the data may be lined up for columns
+    setlocal nomodified
+    setlocal nowrap
+    " Go to top of output
+    norm gg
+    " Return to original window
+    exec cur_winnr."wincmd w"
+
     return
 endfunction "}}}
 " Parsers {{{
@@ -2766,6 +3036,9 @@ function! s:DB_parseQuery(query)
                 \ &filetype == "jsp"  || 
                 \ &filetype == "javascript" 
         let query = s:DB_parseJava(a:query)
+        return s:DB_parseHostVariables(query)
+    elseif &filetype == "jproperties" 
+        let query = s:DB_parseJProperties(a:query)
         return s:DB_parseHostVariables(query)
     elseif &filetype == "perl"
         " The Perl parser will deal with string concatenation
@@ -2854,7 +3127,7 @@ function! s:DB_parseHostVariables(query)
                 \ substitute(dbext_parse_statements, ',$','','')
     " Convert commas to regex ors
     let dbext_parse_statements =
-                \ substitute(dbext_parse_statements, ',', '\\|', 'g')
+                \ substitute(dbext_parse_statements, '\s*,\s*', '\\|', 'g')
 
     " Only perform replacements if the first statement is one of the
     " following. We do not want to parse the query if for example
@@ -3113,6 +3386,23 @@ function! s:DB_parseJava(query)
 endfunction
 "}}}
 
+" Java Properties (jproperties) Parser {{{
+function! s:DB_parseJProperties(query)
+    let query = a:query
+
+    " Property files have the format:
+    " NAME = VALUE
+    "
+    " If a line can be continue on the next line
+    " using a continuation character "\"
+    "
+    " Remove any line continuation and newline characters
+    let query = substitute(a:query, '\%(\s*\\\s*\)\?'."\n", ' ', 'g')
+
+    return query
+endfunction
+"}}}
+
 " Vim Parser {{{
 function! s:DB_parseVim(query)
     let query = a:query
@@ -3252,20 +3542,6 @@ function! s:DB_parseProfile(value)
     return rc
 endfunction
 "}}}
-"}}}
-" Commands "{{{
-command! -nargs=+ DBExecSQL    :call s:DB_execSql(<q-args>)
-command! -nargs=+ Call         :call s:DB_execSql("call " . <q-args>)
-command! -nargs=+ Select       :call s:DB_execSql("select " . <q-args>)
-command! -nargs=+ Update       :echo s:DB_execSql("update " . <q-args>)
-command! -nargs=+ Insert       :echo s:DB_execSql("insert " . <q-args>)
-command! -nargs=+ Delete       :echo s:DB_execSql("delete " . <q-args>)
-command! -nargs=+ Drop         :echo s:DB_execSql("drop " . <q-args>)
-command! -nargs=+ Alter        :echo s:DB_execSql("alter " . <q-args>)
-command! -nargs=+ Create       :echo s:DB_execSql("create " . <q-args>)
-command! -nargs=1 DBSetOption  :call s:DB_setMultipleOptions(<q-args>)
-command! -nargs=1 DBGetOption  :echo s:DB_get(<q-args>)
-command! -nargs=0 DBLeave      :echo s:DB_auVimLeavePre()
 "}}}
 call s:DB_buildLists()
 call s:DB_resetGlobalParameters()
