@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 6.0.  Last change: Wed Sep 22 2004 10:40:23 AM
+*dbext.txt*	For Vim version 6.0.  Last change: Sat Feb 19 2005 5:43:26 PM
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,14 +7,14 @@
                      David Fishburn <fishburn@ianywhere.com>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 2.11
+	  	dbext.vim version 2.20
 
 For instructions on installing this file, type
 	:help add-local-help
 |add-local-help| inside Vim.
 
 Homepage: http://vim.sourceforge.net/script.php?script_id=356
-SourceForge: $Revision: 1.18 $
+SourceForge: $Revision: 1.20 $
 
 *dbext* *dbext.vim* *db_ext* *db_ext.vim* *database-extension* *pgsql* *mysql*
 *asa* *ase* *ingres* *interbase* *sqlite* *sqlsrv* *ora* *db2*
@@ -48,6 +48,58 @@ SourceForge: $Revision: 1.18 $
 
 ------------------------------------------------------------------------------
 What's New						*dbext-new*
+
+Version 2.20
+
+ New Features
+ ------------
+ - Added new connection parameter called "extra", you can place any 
+   additional command line parameters in this option.
+ - DBGetOption displays all options including the dbext version.
+ - Better support for command terminators that have newline or special
+   characters in them.  For example ASE/SQLSRV use "\ngo\n", now the
+   command DBExecSQLUnderCursor will correctly find the statement.
+ - Use_tbl_alias defaults to "ask", instead of "default on".
+ - For most supported databases, when displaying the Table / Procedure / View
+   List, you can now enter a partial string "DBA.", and if a . is included
+   it will only display objects created / owned by that userid.
+ - DBExecSQLUnderCursor would sometimes stop in the middle of a query 
+   if the command terminator was included (inside a quoted string), now
+   it ensures there is no text following the terminator.
+ - The result window also includes the error code returned by the binary
+   used to execute the command.  This can be useful for debugging.
+ - The first line of the result window includes a line showing the connection
+   information, if you have many buffers open, it can be difficult to 
+   determine which database you are executing commands against.  A glance at
+   this line will tell you immediately.
+ - g:dbext_default_always_prompt_for_variables = 0 will prevent you from
+   being prompted for substitution parameters.  Setting this value to 1
+   will always prompt the user.
+ - You can now abort the execution of a statement if you are prompted
+   for substitution parameters.
+ - If you are prompted for parameters, if you choose "Stop Prompting" the
+   command will be executed immediate.  If "Never Prompt" is chosen, no
+   further prompting will occur for this buffer.
+
+ Bug Fixes
+ ---------
+ - SQLSRV did not have a default command terminator, now it is "\ngo\n".
+ - Changed the Oracle command terminator to ";", and the routine that
+   executes the statements automatically adds the "\nquit;\n" so that
+   sqlplus will complete.
+ - Spaces were not correctly removed from column lists in all cases, this
+   showed up as an issue with the SQL Intellisense plugin.
+ - When executing SELECT statements the INTO clause (if present) is 
+   removed so the results are displayed in the result window.  Refined the
+   removal of the INTO clause to ensure it does not interfer with an
+   INSERT or MERGE statement.
+
+Version 2.11
+
+ Bug Fixes
+ ---------
+ - On some platforms the temporary file created to execute SQL statements must
+   end in ".sql".  Corrected this for all databases
 
 Version 2.10
 
@@ -198,6 +250,8 @@ Version 2.00
 <       - Default host the server is running on >
     dbext_default_port
 <       - Default port to connect to >
+    dbext_default_extra
+<       - Customization string if the above options are not enough >
     dbext_default_use_result_buffer
 <       - Whether to use the result buffer, or echo the results of the command >
     dbext_default_use_sep_result_buffer
@@ -211,7 +265,11 @@ Version 2.00
     dbext_default_always_prompt_for_variables 
 <       - If host variables are found, you are asked if you want to be
           prompted, setting this variable assumes you always want to be
-          prompted, so it saves you a dialog. >
+          prompted, so it saves you a dialog.
+        - This option can have 3 values:
+             1 - Always prompt for variables
+             0 - Ask if you want to (if variables are found)
+            -1 - Never prompt for variables >
     dbext_default_display_cmd_line 
 <       - When the command is run, the results are displayed in the Result
           buffer, setting display_cmd_line = 1, will also display the command
@@ -308,6 +366,14 @@ Version 2.00
 <       - Machine name or IP address of server >
     port
 <       - Port server is running on >
+    extra
+<       - Based on the database you are connecting to, you can add 
+          additional items to the tools command line.  For example, 
+          using ASA, I could run: >
+              DBSetOption extra=CON=myconn
+<
+          This has the net result of creating the following command line: >
+              dbisql -c "UID=dba;PWD=sql;CON=myconn"
     bin_path
 <       - If tools provided by the database are not in the path, you can 
           optionally supply full path to the binaries.  This is also useful
@@ -330,7 +396,8 @@ Version 2.00
 <       - Name of the binary which dbext uses to execute commands >
     cmd_header
 <       - SQL statements sent before the command you are executing.  This
-          setting is usually used to set temporary options, or output options.  >
+          setting is usually used to set temporary options, or output 
+          options. >
     cmd_terminator
 <       - Command terminator (varies per database, see following section) >
     cmd_options
@@ -1030,7 +1097,7 @@ To specify the type of database you connect to most often, you can place the
     VALUES( 5, 'Joe', '555-1214' );
     COMMIT;
 
-    CREATE TABLE contact
+    CREATE TABLE contact(
         id              INTEGER NOT NULL,
         cont_name       VARCHAR(30) NOT NULL,
         phone_nbr       VARCHAR(30) NULL,

@@ -1,9 +1,9 @@
 " dbext.vim - Commn Database Utility
 " ---------------------------------------------------------------
-" Version:  2.11
+" Version:  2.20
 " Authors:  Peter Bagyinszki <petike1@dpg.hu>
 "           David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Wed Sep 22 2004 10:35:18 AM
+" Last Modified: Sat Feb 19 2005 5:44:20 PM
 " Based On: sqlplus.vim (author: Jamis Buck <jgb3@email.byu.edu>)
 " Created:  2002-05-24
 " Homepage: http://vim.sourceforge.net/script.php?script_id=356
@@ -14,7 +14,7 @@
 "   - Requires multvals.vim to be installed. Download from:
 "       http://www.vim.org/script.php?script_id=171
 "
-" SourceForge: $Revision: 1.31 $
+" SourceForge: $Revision: 1.36 $
 "
 " Help:     :h dbext.txt 
 
@@ -28,7 +28,7 @@ if !exists("loaded_multvals") || loaded_multvals < 304
     echomsg "dbext: You need to have multvals version 3.4 or higher"
     finish
 endif
-let g:loaded_dbext = 211
+let g:loaded_dbext = 220
 
 " Script variable defaults {{{
 let s:mv_sep = ","
@@ -81,6 +81,7 @@ function! s:DB_buildLists()
     let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'dbname')
     let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'host')
     let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'port')
+    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'extra')
     let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'bin_path')
 
     " Configuration parameters
@@ -310,12 +311,12 @@ function! s:DB_getTblAlias(table_name)
     return tbl_alias
 endfunction 
 
-function! s:DB_setTitle() 
-    let no_defaults = 0
+function! s:DB_getTitle() 
+    let no_defaults  = 0
+    let buffer_title = 0
 
-    if s:DB_get("replace_title") == 1 && s:DB_get("type", no_defaults) != ''
-        if s:DB_get("custom_title") == ''
-            let &titlestring = '' .
+    if s:DB_get("custom_title") == ''
+        let buffer_title = '' .
                     \ s:DB_option('T(', s:DB_get("type"),    ')  ') .
                     \ s:DB_option('H(', s:DB_get("host"),    ')  ') .
                     \ s:DB_option('P(', s:DB_get("port"),    ')  ') .
@@ -323,57 +324,33 @@ function! s:DB_setTitle()
                     \ s:DB_option('O(', s:DB_get("dsnname"), ')  ') .
                     \ s:DB_option('D(', s:DB_get("dbname"),  ')  ')
 
-            if s:DB_get("integratedlogin") == '1'
-                if has("win32")
-                    let &titlestring = &titlestring . 
-                        \ s:DB_option('U(', expand("$USERNAME"), ')  ') 
-                else
-                    let &titlestring = &titlestring . 
-                        \ s:DB_option('U(', expand("$USER"), ')  ') 
-                endif
+        if s:DB_get("integratedlogin") == '1'
+            if has("win32")
+                let &titlestring = &titlestring . 
+                            \ s:DB_option('U(', expand("$USERNAME"), ')  ') 
             else
                 let &titlestring = &titlestring . 
-                        \ s:DB_option('U(', s:DB_get("user"), ')  ')
+                            \ s:DB_option('U(', expand("$USER"), ')  ') 
             endif
-
-            " exec 'setlocal title titlestring='.&titlestring
-            " setlocal title
-            " augroup dbext
-            "     au!
-            "     autocmd BufReadPost * if &modeline == 1 | call s:DB_checkModeline() | endif
-            "     autocmd BufDelete   * call s:DB_auBufDelete( bufnr(expand("<afile>")) )
-            "     autocmd VimLeavePre * call s:DB_auVimLeavePre()
-            " augroup END
-
-            " Check to see if the checkforupdates autocommand exists
-            " redir @"
-            " silent! exec 'au dbext_title'.bufnr('%')
-            " redir END
-
-            " if @" =~ 'E216'
-            "     let filename = expand("%:p")
-            "     if has('win32')
-            "         let filename = substitute(filename, '\\', '/', 'g')
-            "     endif
-
-            "     silent! exec 'augroup dbext_title'.bufnr('%')
-            "     exec "au BufEnter " . filename . " :let &titlestring='".&titlestring."'"
-            "     augroup END
-            "     let msg = msg . 'Now checking buffer:'.bufnr('%').' for updates ...'
-            " else
-            "     " Using a autogroup allows us to remove it easily with the following
-            "     " command.  If we do not use an autogroup, we cannot remove this 
-            "     " single :checktime command
-            "     " augroup! checkforupdates
-            "     silent! exec 'au! dbext_title'.bufnr('%')
-            "     silent! exec 'augroup! dbext_title'.bufnr('%')
-            "     let msg = msg . 'No longer setting dbext_title:'.bufnr('%')
-            " endif
         else
-            let &titlestring = s:DB_get("custom_title")
+            let &titlestring = &titlestring . 
+                        \ s:DB_option('U(', s:DB_get("user"), ')  ')
         endif
 
+    else
+        let buffer_title = s:DB_get("custom_title")
     endif
+
+    return buffer_title
+endfunction 
+
+function! s:DB_setTitle() 
+    let no_defaults = 0
+
+    if s:DB_get("replace_title") == 1 && s:DB_get("type", no_defaults) != ''
+        let &titlestring = s:DB_getTitle()
+    endif
+
 endfunction 
 
 "" Set buffer parameter value
@@ -421,6 +398,22 @@ endfunction
 function! s:DB_setWType(name, value)
     let var_name = b:dbext_type."_".a:name
     call s:DB_set(var_name, a:value )
+endfunction
+
+"" Escape any special characters
+function! s:DB_escapeStr(value)
+    " Any special characters must be escaped before they can be used in a
+    " search string or on the command line
+    let escaped_str = 
+                \ substitute(
+                \     substitute(
+                \         escape(a:value, '\\/.*$^~[]'),
+                \         "\n$", 
+                \         "", ""
+                \     ),
+                \     "\n", '\\_[[:return:]]', "g"
+                \ )
+    return escaped_str
 endfunction
 
 "" Get buffer parameter value
@@ -510,6 +503,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "dbname"                  |return (exists("g:dbext_default_dbname")?g:dbext_default_dbname.'':'') 
     elseif a:name ==# "host"                    |return (exists("g:dbext_default_host")?g:dbext_default_host.'':'') 
     elseif a:name ==# "port"                    |return (exists("g:dbext_default_port")?g:dbext_default_port.'':'') 
+    elseif a:name ==# "extra"                   |return (exists("g:dbext_default_port")?g:dbext_default_port.'':'') 
     elseif a:name ==# "bin_path"                |return (exists("g:dbext_default_bin_path")?g:dbext_default_bin_path.'':'') 
     " ? - look for a question mark
     " w - MUST have word characters after it
@@ -527,7 +521,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "parse_statements"        |return (exists("g:dbext_default_parse_statements")?g:dbext_default_parse_statements.'':'select,update,delete,insert,call,exec,with')
     elseif a:name ==# "always_prompt_for_variables" |return (exists("g:dbext_default_always_prompt_for_variables")?g:dbext_default_always_prompt_for_variables.'':0)
     elseif a:name ==# "replace_title"           |return (exists("g:dbext_default_replace_title")?g:dbext_default_replace_title.'':0)
-    elseif a:name ==# "use_tbl_alias"           |return (exists("g:dbext_default_use_tbl_alias")?g:dbext_default_use_tbl_alias.'':'d')
+    elseif a:name ==# "use_tbl_alias"           |return (exists("g:dbext_default_use_tbl_alias")?g:dbext_default_use_tbl_alias.'':'a')
     elseif a:name ==# "delete_temp_file"        |return (exists("g:dbext_default_delete_temp_file")?g:dbext_default_delete_temp_file.'':'1')
     elseif a:name ==# "dbext_version"           |return (g:loaded_dbext)
     elseif a:name ==# "ASA_bin"                 |return (exists("g:dbext_default_ASA_bin")?g:dbext_default_ASA_bin.'':'dbisql')
@@ -558,7 +552,7 @@ function! s:DB_getDefault(name)
                         \ "set colsep \"\t\"\n" .
                         \ "set tab off\n\n")
     elseif a:name ==# "ORA_cmd_options"         |return (exists("g:dbext_default_ORA_cmd_options")?g:dbext_default_ORA_cmd_options.'':"-S")
-    elseif a:name ==# "ORA_cmd_terminator"      |return (exists("g:dbext_default_ORA_cmd_terminator")?g:dbext_default_ORA_cmd_terminator.'':";\nquit;")
+    elseif a:name ==# "ORA_cmd_terminator"      |return (exists("g:dbext_default_ORA_cmd_terminator")?g:dbext_default_ORA_cmd_terminator.'':";")
     elseif a:name ==# "PGSQL_bin"               |return (exists("g:dbext_default_PGSQL_bin")?g:dbext_default_PGSQL_bin.'':'psql')
     elseif a:name ==# "PGSQL_cmd_terminator"    |return (exists("g:dbext_default_PGSQL_cmd_terminator")?g:dbext_default_PGSQL_cmd_terminator.'':';')
     elseif a:name ==# "SQLITE_bin"              |return (exists("g:dbext_default_SQLITE_bin")?g:dbext_default_SQLITE_bin.'':'sqlite')
@@ -566,6 +560,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "SQLITE_cmd_terminator"   |return (exists("g:dbext_default_SQLITE_cmd_terminator")?g:dbext_default_SQLITE_cmd_terminator.'':';')
     elseif a:name ==# "SQLSRV_bin"              |return (exists("g:dbext_default_SQLSRV_bin")?g:dbext_default_SQLSRV_bin.'':'osql')
     elseif a:name ==# "SQLSRV_cmd_options"      |return (exists("g:dbext_default_SQLSRV_cmd_options")?g:dbext_default_SQLSRV_cmd_options.'':'-w 10000 -r -b -n')
+    elseif a:name ==# "SQLSRV_cmd_terminator"   |return (exists("g:dbext_default_SQLSRV_cmd_terminator")?g:dbext_default_SQLSRV_cmd_terminator.'':"\ngo\n")
     elseif a:name ==# "prompt_profile"          |return (exists("g:dbext_default_prompt_profile")?g:dbext_default_prompt_profile.'':"" .
                 \ "[Optional] Enter profile name: ".s:prompt_profile_list)
     elseif a:name ==# "prompt_type"             |return (exists("g:dbext_default_prompt_type")?g:dbext_default_prompt_type.'':"" .
@@ -578,6 +573,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "prompt_dbname"           |return (exists("g:dbext_default_prompt_dbname")?g:dbext_default_prompt_dbname.'':'[O] Database name: ')
     elseif a:name ==# "prompt_host"             |return (exists("g:dbext_default_prompt_host")?g:dbext_default_prompt_host.'':'[O] Host name: ')
     elseif a:name ==# "prompt_port"             |return (exists("g:dbext_default_prompt_port")?g:dbext_default_prompt_port.'':'[O] Port name: ')
+    elseif a:name ==# "prompt_extra"            |return (exists("g:dbext_default_prompt_extra")?g:dbext_default_prompt_extra.'':'[O] Extra parameters: ')
     elseif a:name ==# "prompt_bin_path"         |return (exists("g:dbext_default_prompt_bin_path")?g:dbext_default_prompt_bin_path.'':'[O] Directory for database tools: ')
     " These are for name completion using Vim's dictionary feature
     elseif a:name ==# "dict_table_file"         |return '' 
@@ -980,8 +976,13 @@ function! s:DB_stripLeadFollowSpaceLines(str)
     "            \ '', 'g')
     "
     " Hmm, the sent the CPU to 100%, unless I broke it into 2
-    let stripped = substitute(a:str, '^[ \t\r\n]\+', '', '')
-    let stripped = substitute(stripped, '[ \t\r\n]\+$', '\n', '')
+    " First, from each line, removing any beginning spaces by removing
+    " all newlines and spaces with just a newline
+    let stripped = substitute(a:str, '[ \t\r\n]\+', '\n', 'g')
+    " This has the side effect of adding a blank line at the top
+    let stripped = substitute(stripped, '^[\r\n]\+', '', '')
+    " Now take care of the other end of the string
+    let stripped = substitute(stripped, '\([ \t]\+\)\([\r\n]\+\)', '\2', 'g')
 
     return stripped
 endfunction
@@ -1345,7 +1346,8 @@ function! s:DB_ASA_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
+    if output !~ s:DB_escapeStr(s:DB_getWType("cmd_terminator")) . 
+                \ '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1374,7 +1376,8 @@ function! s:DB_ASA_execSql(str)
                 \ s:DB_option('dsn=', s:DB_get("dsnname"), ';') .
                 \ s:DB_option('eng=', s:DB_get("srvname"), ';') .
                 \ s:DB_option('dbn=', s:DB_get("dbname"), ';') .
-                \ s:DB_option('links=', links, ';') 
+                \ s:DB_option('links=', links, ';') .
+                \ s:DB_option('', s:DB_get("extra"), '') 
     if has("win32") && s:DB_get("integratedlogin") == 1
         let cmd = cmd . 
                 \ s:DB_option('int=', 'yes', ';') 
@@ -1394,15 +1397,27 @@ function! s:DB_ASA_execSql(str)
 endfunction
 
 function! s:DB_ASA_describeTable(table_name)
-    return s:DB_ASA_execSql("call sp_jdbc_columns('".a:table_name."');")
+    let owner  = s:DB_getObjectOwner(a:table_name)
+    let object = s:DB_getObjectName(a:table_name)
+    let owner  = ( strlen(owner) > 0 ? owner : '%' ) 
+    return s:DB_ASA_execSql("call sp_jdbc_columns('".object."', '".owner."');")
 endfunction
 
 function! s:DB_ASA_describeProcedure(proc_name)
-    return s:DB_ASA_execSql("call sp_sproc_columns('".a:proc_name."');")
+    let owner  = s:DB_getObjectOwner(a:proc_name)
+    let object = s:DB_getObjectName(a:proc_name)
+    let owner  = ( strlen(owner) > 0 ? owner : '' ) 
+    return s:DB_ASA_execSql("call sp_sproc_columns('".object."', '".owner."');")
 endfunction
 
 function! s:DB_ASA_getListTable(table_prefix)
-    return s:DB_ASA_execSql("call sp_jdbc_tables('".a:table_prefix."%');")
+    let owner      = s:DB_getObjectOwner(a:table_prefix)
+    let table_name = s:DB_getObjectName(a:table_prefix)
+    return s:DB_ASA_execSql("call sp_jdbc_tables('" .
+                \ table_name .
+                \ "%', '" .
+                \ owner .
+                \ "%');")
 endfunction
 
 function! s:DB_ASA_getListProcedure(proc_prefix)
@@ -1481,7 +1496,8 @@ function! s:DB_ASE_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
+    if output !~ s:DB_escapeStr(s:DB_getWType("cmd_terminator")) . 
+                \ '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1501,6 +1517,7 @@ function! s:DB_ASE_execSql(str)
                 \ s:DB_option('-H ', s:DB_get("host"), ' ') .
                 \ s:DB_option('-S ', s:DB_get("srvname"), ' ') .
                 \ s:DB_option('-D ', s:DB_get("dbname"), ' ') .
+                \ s:DB_option('', s:DB_get("extra"), '') .
                 \ ' -i ' . tempfile
 
     let result = s:DB_runCmd(cmd, output)
@@ -1666,7 +1683,8 @@ function! s:DB_DB2_execSql(str)
         let output = s:DB_getWType("cmd_header") . a:str
         " Only include a command terminator if one has not already
         " been added
-        if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
+        if output !~ s:DB_escapeStr(s:DB_getWType("cmd_terminator")) . 
+                    \ '['."\n".' \t]*$'
             let output = output . s:DB_getWType("cmd_terminator")
         endif
 
@@ -1685,6 +1703,7 @@ function! s:DB_DB2_execSql(str)
                         \ s:DB_get("passwd") . ' '
         endif
         let cmd = cmd . 
+                    \ s:DB_option('', s:DB_get("extra"), '') .
                     \ s:DB_option('-d ', s:DB_get("dbname"), ' ') .
                     \ s:DB_option('-l ', s:DB_getWType("cmd_terminator"), ' ').
                     \ ' -f ' . tempfile
@@ -1704,7 +1723,8 @@ function! s:DB_DB2_execSql(str)
         let output = s:DB_getWType("db2cmd_cmd_header") . connect_str . a:str
         " Only include a command terminator if one has not already
         " been added
-        if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
+        if output !~ s:DB_escapeStr(s:DB_getWType("cmd_terminator")) . 
+                    \ '['."\n".' \t]*$'
             let output = output . s:DB_getWType("cmd_terminator")
         endif
 
@@ -1718,7 +1738,8 @@ function! s:DB_DB2_execSql(str)
         let dbext_bin = s:DB_fullPath2Bin(s:DB_getWType("db2cmd_bin"))
 
         let cmd = dbext_bin .  ' ' . s:DB_getWType("db2cmd_cmd_options")
-        let cmd = cmd . ' ' .
+        let cmd = cmd . ' ' .  s:DB_option('', s:DB_get("extra"), '') .
+                    \ ' ' .
                     \ s:DB_option('-td', s:DB_getWType("cmd_terminator"), ' ') .
                     \ '-f ' . tempfile
     endif
@@ -1879,7 +1900,8 @@ function! s:DB_INGRES_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
+    if output !~ s:DB_escapeStr(s:DB_getWType("cmd_terminator")) . 
+                \ '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1893,6 +1915,7 @@ function! s:DB_INGRES_execSql(str)
     let dbext_bin = s:DB_fullPath2Bin(s:DB_getWType("bin"))
 
     let cmd = dbext_bin .  ' ' . 
+                \ s:DB_option('', s:DB_get("extra"), '') .
                 \ s:DB_option('-S ', s:DB_get("dbname"), ' ') .
                 \ s:DB_option('', s:DB_getWType("cmd_options"), ' ') .
                 \ ' < ' . tempfile
@@ -1964,7 +1987,8 @@ function! s:DB_INTERBASE_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
+    if output !~ s:DB_escapeStr(s:DB_getWType("cmd_terminator")) . 
+                \ '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -1981,6 +2005,7 @@ function! s:DB_INTERBASE_execSql(str)
                 \ s:DB_option('-username ', s:DB_get("user"), ' ') .
                 \ s:DB_option('-password ', s:DB_get("passwd"), ' ') .
                 \ s:DB_option('', s:DB_getWType("cmd_options"), ' ') .
+                \ s:DB_option('', s:DB_getWType("extra"), ' ') .
                 \ '-input ' . tempfile .
                 \ s:DB_option(' ', s:DB_get("dbname"), '')
     let result = s:DB_runCmd(cmd, output)
@@ -2051,7 +2076,8 @@ function! s:DB_MYSQL_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
+    if output !~ s:DB_escapeStr(s:DB_getWType("cmd_terminator")) . 
+                \ '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -2071,6 +2097,7 @@ function! s:DB_MYSQL_execSql(str)
                 \ s:DB_option(' -h ', s:DB_get("host"), '') .
                 \ s:DB_option(' -P ', s:DB_get("port"), '') .
                 \ s:DB_option(' -D ', s:DB_get("dbname"), '') .
+                \ s:DB_option('', s:DB_get("extra"), '') .
                 \ ' < ' . tempfile
     let result = s:DB_runCmd(cmd, output)
 
@@ -2191,6 +2218,7 @@ function! s:DB_SQLITE_execSql(str)
 
     let cmd = dbext_bin .  ' ' . s:DB_getWType("cmd_options")
     let cmd = cmd .
+                \ s:DB_option('', s:DB_get("extra"), '') .
                 \ s:DB_option(' ', s:DB_get("dbname"), '') .
                 \ ' < ' . tempfile
     let result = s:DB_runCmd(cmd, output)
@@ -2303,8 +2331,14 @@ function! s:DB_ORA_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
+    if output !~ s:DB_escapeStr(s:DB_getWType("cmd_terminator")) . 
+                \ '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
+    endif
+    " Added quit to the end of the command to exit SQLPLUS
+    if output !~ s:DB_escapeStr("\nquit".s:DB_getWType("cmd_terminator")) . 
+                \ '['."\n".' \t]*$'
+        let output = output . "\nquit".s:DB_getWType("cmd_terminator")
     endif
 
     " Ensure the tempfile has a .sql extension, windows automatically
@@ -2321,6 +2355,7 @@ function! s:DB_ORA_execSql(str)
                 \ s:DB_option(' ', s:DB_get("user"), '') .
                 \ s:DB_option('/', s:DB_get("passwd"), '') .
                 \ s:DB_option('@', s:DB_get("srvname"), '') .
+                \ s:DB_option('', s:DB_get("extra"), '') .
                 \ ' @' . tempfile
     let result = s:DB_runCmd(cmd, output)
 
@@ -2452,7 +2487,8 @@ function! s:DB_PGSQL_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
+    if output !~ s:DB_escapeStr(s:DB_getWType("cmd_terminator")) . 
+                \ '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -2471,6 +2507,7 @@ function! s:DB_PGSQL_execSql(str)
                 \ s:DB_option('-U ', s:DB_get("user"), ' ') .
                 \ s:DB_option('-h ', s:DB_get("host"), ' ') .
                 \ s:DB_option('-p ', s:DB_get("port"), ' ') .
+                \ s:DB_option('', s:DB_get("extra"), '') .
                 \ '-q -f ' . tempfile
     let result = s:DB_runCmd(cmd, output)
 
@@ -2602,7 +2639,8 @@ function! s:DB_SQLSRV_execSql(str)
     let output = s:DB_getWType("cmd_header") . a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
+    if output !~ s:DB_escapeStr(s:DB_getWType("cmd_terminator")) . 
+                \ '['."\n".' \t]*$'
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
@@ -2628,6 +2666,7 @@ function! s:DB_SQLSRV_execSql(str)
                 \ s:DB_option(' -H ', s:DB_get("host"), ' ') .
                 \ s:DB_option(' -S ', s:DB_get("srvname"), ' ') .
                 \ s:DB_option(' -d ', s:DB_get("dbname"), ' ') .
+                \ s:DB_option('', s:DB_get("extra"), '') .
                 \ ' -i ' . tempfile
     let result = s:DB_runCmd(cmd, output)
 
@@ -2748,7 +2787,9 @@ function! s:DB_execSql(query)
         let query = s:DB_parseQuery(query)
     endif
     
-    return s:DB_execFuncTypeWCheck('execSql', query)
+    if query != ""
+        return s:DB_execFuncTypeWCheck('execSql', query)
+    endif
 endfunction
 
 function! s:DB_execSqlWithDefault(...)
@@ -2767,7 +2808,9 @@ function! s:DB_execSqlWithDefault(...)
         let sql = s:DB_parseQuery(sql)
     endif
     
-    return s:DB_execFuncTypeWCheck('execSql', sql)
+    if sql != ""
+        return s:DB_execFuncTypeWCheck('execSql', sql)
+    endif
 endfunction
 
 function! s:DB_execRangeSql() range
@@ -2980,6 +3023,10 @@ function! s:DB_getQueryUnderCursor()
     " will connect to.  The command terminator is different for
     " many databases.
     let dbext_cmd_terminator = s:DB_getWType('cmd_terminator')
+    " If the cmd_terminator has any special characters, these must
+    " be escaped before they can be used in a search string or
+    " on the command line
+    let dbext_cmd_terminator = s:DB_escapeStr(dbext_cmd_terminator)
 
     " Mark the current line to return to
     let curline     = line(".")
@@ -2995,7 +3042,14 @@ function! s:DB_getQueryUnderCursor()
     let dbext_query_statements =
                 \ substitute(dbext_query_statements, '\s*,\s*', '\\|', 'g')
 
-    let sql_commands = '\c\<\('.dbext_query_statements.'\)\>'
+    " Make this a bit smarter, make sure there is whitespace from the 
+    " beginning of the line here so that we do not pickup embedded
+    " statements like:
+    "      select 'insert into ...'
+    "        from T1
+    " This would have stopped at the INSERT word.  It is not perfect
+    " but it is better with the check.
+    let sql_commands = '\c^\s*\<\('.dbext_query_statements.'\)\>'
 
     " Advance the cursor by 1 character incase the cursor is at the
     " beginning of one of the query statements
@@ -3016,12 +3070,20 @@ function! s:DB_getQueryUnderCursor()
         " terminator is multiple characters (ie go - ASE and SQL Server)
         " then you get an invalid command since it was stripping
         " the "o" from "go"
-        exe 'silent! norm! v/\'.dbext_cmd_terminator."/e\n".'"zy``'
+        "
+        " Make sure the cmd_terminator is the last item on the line,
+        " in otherwords do not stop if the ; is part of a string:
+        "    select 'insert into ...;'
+        "      from T1
+        " In the above case, we would stop even though the ; was
+        " not the command terminator.
+        exe 'silent! norm! v/'.dbext_cmd_terminator."\\s*$/e\n".'"zy``'
     endif
 
     " Return to previous location
     " Accounting for beginning of the line
-    silent! exe 'norm! '.curline."G\<bar>".(curcol-1).(((curcol-1)> 0)?'l':'')
+    " silent! exe 'norm! '.curline."G\<bar>".(curcol-1).(((curcol-1)> 0)?'l':'')
+    call cursor(curline, curcol)
 
     noh
     let query = @z
@@ -3343,7 +3405,7 @@ function! s:DB_runCmd(cmd, sql)
                         \ "Or\n" .
                         \ ":DBSetOption user\|passwd\|dsnname\|srvname\|dbname\|host\|port\|...=<value>\n" .
                         \ ":DBSetOption user=tiger:passwd=scott\n" .
-                        \ "Last command:\n" .
+                        \ "Last command(rc=".v:shell_error."):\n" .
                         \ a:cmd . "\n" .
                         \ "Last SQL:\n" .
                         \ a:sql . "\n" 
@@ -3372,6 +3434,7 @@ function! s:DB_addToResultBuffer(output, do_clear)
     " Store current window number so we can return to it
     let cur_winnr = winnr()
     let res_buf_name = s:DB_resBufName()
+    let conn_props   = s:DB_getTitle()
     " Retieve this value before we switch buffers
     let l:buffer_lines = s:DB_get('buffer_lines')
 
@@ -3402,6 +3465,7 @@ function! s:DB_addToResultBuffer(output, do_clear)
     " Delete all the lines prior to this run
     if a:do_clear == "clear" 
         %d
+        silent! exec "normal! iConnection: " . conn_props . "\<Esc>"
     endif
 
     if strlen(a:output) > 0
@@ -3485,12 +3549,17 @@ function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
         let response = 2
         " Ok or Cancel result in an empty string
         if var_val == "dbext_cancel" 
-            let response = 3
+            let response = 5
         elseif var_val == "" 
             " If empty, check if they want to leave it empty
             " of skip this variable
             let response = confirm("Your value is empty!",
-                                    \ "&Skip\n&Use blank\n&Stop Prompting")
+                                    \ "&Skip" .
+                                    \ "\n&Use blank" .
+                                    \ "\nS&top Prompting" .
+                                    \ "\n&Never Prompt" .
+                                    \ "\n&Abort"
+                                    \ )
         endif
         if response == 1
             " Skip this match and move on to the next
@@ -3500,6 +3569,13 @@ function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
             let replace_sub = '\%'.index.'c'.'.\{'.strlen(var).'}'
             let str = substitute(str, replace_sub, var_val, '')
             let index = match(str, a:exp_find_str, index+strlen(var_val))
+        elseif response == 4
+            call s:DB_set("always_prompt_for_variables", "-1")
+            break
+        elseif response == 5
+            " If we are aborting, do not execute the SQL statement
+            let str = ""
+            break
         else
             " Skip all remaining matches
             break
@@ -3512,11 +3588,20 @@ endfunction
 " Host Variable Parser {{{
 function! s:DB_parseHostVariables(query)
     let query = a:query
-    " If query is a SELECT statement, remove any INTO clauses
+
+    if s:DB_get("always_prompt_for_variables") == -1
+        " Never try to parse the query
+        return query
+    endif
+
+    " If query is a SELECT statement, remove any INTO clauses as long
+    " as it is not preceeded by INSERT or MERGE
     " Use an case insensitive comparison
     " For some reason [\n\s]* does not work
     if query =~? '^[\n \t]*select'
-        let query = substitute(query, '\cINTO.*FROM', 'FROM', 'g')
+        let query = substitute(query, 
+                    \ '\c\%(\<\%(insert\|merge\)\s\+\)\@<!INTO.\{-}FROM', 
+                    \ 'FROM', 'g')
     endif
 
     " Must default the statements to parse
@@ -3561,14 +3646,22 @@ function! s:DB_parseHostVariables(query)
             " ask if the user wants to be prompted for replacements
             " if query =~? '[?@:$]'
             if query =~? '['.identifier_list.']'
-                let response = confirm("Do you want to prompt for input variables?"
-                            \, "&Yes\n&No", 1 )
-                " echom "\nresponse: ".response."\n"
+                let response = confirm("Do you want to prompt " .
+                            \ "for input variables?"
+                            \, "&Yes\n&No\n&Always\nNe&ver\nAbor&t", 1 )
             endif
         endif
-        " If the user does not want to parse the query
-        " return the query as is
-        if response == 2
+        if response == 5
+            return ""
+        elseif response == 4
+            call s:DB_set("always_prompt_for_variables", "-1")
+            return query
+        elseif response == 3
+            call s:DB_set("always_prompt_for_variables", "1")
+            return query
+        elseif response == 2
+            " If the user does not want to parse the query
+            " return the query as is
             return query
         endif
         " Process each variable definition, format is as follows:
@@ -3641,6 +3734,11 @@ function! s:DB_parseHostVariables(query)
                         \ identifier . following_word . quotes
             let query = s:DB_searchReplace(query, srch_cond,
                         \ retrieve_ident, count_matches)
+            if query == ""
+                " User has aborted the parsing and does not want
+                " the statement executed
+                break
+            endif
         endwhile
         call MvIterDestroy("MvIdentifiers")
     endif
