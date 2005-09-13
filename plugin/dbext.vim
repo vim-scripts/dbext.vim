@@ -1,9 +1,9 @@
 " dbext.vim - Commn Database Utility
 " ---------------------------------------------------------------
-" Version:  2.20
+" Version:  2.30
 " Authors:  Peter Bagyinszki <petike1@dpg.hu>
 "           David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Sat Feb 19 2005 5:44:20 PM
+" Last Modified: Fri Sep 09 2005 2:11:03 PM
 " Based On: sqlplus.vim (author: Jamis Buck <jgb3@email.byu.edu>)
 " Created:  2002-05-24
 " Homepage: http://vim.sourceforge.net/script.php?script_id=356
@@ -14,7 +14,7 @@
 "   - Requires multvals.vim to be installed. Download from:
 "       http://www.vim.org/script.php?script_id=171
 "
-" SourceForge: $Revision: 1.36 $
+" SourceForge: $Revision: 1.37 $
 "
 " Help:     :h dbext.txt 
 
@@ -28,13 +28,16 @@ if !exists("loaded_multvals") || loaded_multvals < 304
     echomsg "dbext: You need to have multvals version 3.4 or higher"
     finish
 endif
-let g:loaded_dbext = 220
+let g:loaded_dbext = 230
 
 " Script variable defaults {{{
 let s:mv_sep = ","
 let s:dbext_buffers_with_dict_files = ''
 let s:dbext_unique_cnt = 0
 let s:dbext_settings_comp_str = ''
+let s:dbext_tempfile = fnamemodify(tempname(), ":h").
+            \ (has('win32')?'\':'/').
+            \ 'dbext.sql'
 " }}}
 
 " Build internal lists {{{
@@ -326,14 +329,14 @@ function! s:DB_getTitle()
 
         if s:DB_get("integratedlogin") == '1'
             if has("win32")
-                let &titlestring = &titlestring . 
+                let buffer_title = buffer_title . 
                             \ s:DB_option('U(', expand("$USERNAME"), ')  ') 
             else
-                let &titlestring = &titlestring . 
+                let buffer_title = buffer_title . 
                             \ s:DB_option('U(', expand("$USER"), ')  ') 
             endif
         else
-            let &titlestring = &titlestring . 
+            let buffer_title = buffer_title . 
                         \ s:DB_option('U(', s:DB_get("user"), ')  ')
         endif
 
@@ -535,7 +538,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "DB2_bin"                 |return (exists("g:dbext_default_DB2_bin")?g:dbext_default_DB2_bin.'':'db2batch')
     elseif a:name ==# "DB2_cmd_options"         |return (exists("g:dbext_default_DB2_cmd_options")?g:dbext_default_DB2_cmd_options.'':'-q off -s off')
     elseif a:name ==# "DB2_db2cmd_bin"          |return (exists("g:dbext_default_DB2_db2cmd_bin")?g:dbext_default_DB2_db2cmd_bin.'':'db2cmd')
-    elseif a:name ==# "DB2_db2cmd_cmd_options"  |return (exists("g:dbext_default_DB2_db2cmd_cmd_options")?g:dbext_default_DB2_db2cmd_cmd_options.'':'-c -w -i -t db2')
+    elseif a:name ==# "DB2_db2cmd_cmd_options"  |return (exists("g:dbext_default_DB2_db2cmd_cmd_options")?g:dbext_default_DB2_db2cmd_cmd_options.'':'-c -w -i -t db2 -s')
     elseif a:name ==# "DB2_cmd_terminator"      |return (exists("g:dbext_default_DB2_cmd_terminator")?g:dbext_default_DB2_cmd_terminator.'':';')
     elseif a:name ==# "INGRES_bin"              |return (exists("g:dbext_default_INGRES_bin")?g:dbext_default_INGRES_bin.'':'sql')
     elseif a:name ==# "INGRES_cmd_terminator"   |return (exists("g:dbext_default_INGRES_cmd_terminator")?g:dbext_default_INGRES_cmd_terminator.'':'\p\g')
@@ -830,7 +833,12 @@ function! s:DB_promptForParameters(...)
         " this is a new 602 feature
         if l:new_value == "-1"
             break
-        elseif l:new_value != l:old_value
+        elseif l:new_value !=# l:old_value
+            " Make the comparison between the new_value and old_value
+            " case sensitive, since passwords and userids are often
+            " case sensitive.
+            " This comparison would have short circuited the change, 
+            " and ignored it considering it a non change.
             let retval = l:new_value
 
             if l:old_value =~ '@askg'
@@ -1207,6 +1215,10 @@ if !exists(':DBCheckModeline')
     command! -nargs=0 DBCheckModeline
                 \ :call s:DB_checkModeline()
 end
+if !exists(':DBRefreshResult')
+    command! -nargs=0 DBRefreshResult
+                \ :call s:DB_runPrevCmd()
+end
 "}}}
 " Mappings {{{
 if !hasmapto('<Plug>DBExecVisualSQL')
@@ -1351,10 +1363,7 @@ function! s:DB_ASA_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    " Ensure the tempfile has a .sql extension, windows automatically
-    " adds an extension, Linux does not.
-    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
-    exe 'redir! > ' . tempfile
+    exe 'redir! > ' . s:dbext_tempfile
     silent echo output
     redir END
 
@@ -1383,15 +1392,8 @@ function! s:DB_ASA_execSql(str)
                 \ s:DB_option('int=', 'yes', ';') 
     endif
     let cmd = cmd .  '" ' . 
-                \ ' read ' . tempfile
+                \ ' read ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output)
-
-    if s:DB_get("delete_temp_file") == 1
-        let rc = delete(tempfile)
-        if rc != 0
-            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
-        endif
-    endif
 
     return result
 endfunction
@@ -1399,55 +1401,150 @@ endfunction
 function! s:DB_ASA_describeTable(table_name)
     let owner  = s:DB_getObjectOwner(a:table_name)
     let object = s:DB_getObjectName(a:table_name)
-    let owner  = ( strlen(owner) > 0 ? owner : '%' ) 
-    return s:DB_ASA_execSql("call sp_jdbc_columns('".object."', '".owner."');")
+    let owner  = ( strlen(owner) > 0 ? owner : '' ) 
+    " return s:DB_ASA_execSql("call sp_jdbc_columns('".object."', '".owner."');")
+    let sql =  ''.
+                \ "select * ".
+                \ "  from SYS.SYSCOLUMNS as sc ".
+                \ " where sc.tname = '".object."' "
+                " \ "select sc.creator ".
+                " \ "     , sc.tname ".
+                " \ "     , sc.cname ".
+                " \ "     , sc.coltype ".
+                " \ "     , sc.in_primary_key ".
+                " \ "     , sc.nulls ".
+                " \ "     , sc.length ".
+                " \ "     , sc.default_value ".
+                " \ "     , sc.colno ".
+                " \ "  from SYS.SYSCOLUMNS as sc ".
+                " \ " where sc.tname = '".object."' "
+
+    if owner != ''
+        let sql = sql .
+                    \" and sc.creator = '".owner."' "
+    endif
+    let sql = sql .
+                \ " order by sc.colno asc "
+    return s:DB_ASA_execSql(sql)
 endfunction
 
 function! s:DB_ASA_describeProcedure(proc_name)
     let owner  = s:DB_getObjectOwner(a:proc_name)
     let object = s:DB_getObjectName(a:proc_name)
     let owner  = ( strlen(owner) > 0 ? owner : '' ) 
-    return s:DB_ASA_execSql("call sp_sproc_columns('".object."', '".owner."');")
+    " return s:DB_ASA_execSql("call sp_sproc_columns('".object."', '".owner."');")
+    let sql =  ''.
+                \ "select * ".
+                \ "  from SYS.SYSPROCPARMS as pp ".
+                \ " where pp.parmtype = 0 ".
+                \ "   and pp.procname = '".object."' "
+
+    if owner != ''
+        let sql = sql .
+                    \" and pp.creator = '".owner."' "
+    endif
+    " let sql = sql .
+    "             \ " order by pp.parm_id asc "
+    return s:DB_ASA_execSql(sql)
+    " let sql =  ''.
+    "             \ "select u.user_name ".
+    "             \ "     , p.proc_name ".
+    "             \ "     , pp.parm_name ".
+    "             \ "     , d.domain_name ".
+    "             \ "     , d.".'"precision" '.
+    "             \ "     , pp.width ".
+    "             \ "     , pp.scale ".
+    "             \ "     , IFNULL(pp.".'"default",'." 'Y', 'N') as allows_nulls ".
+    "             \ "     , CASE  ".
+    "             \ "       WHEN (pp.parm_mode_in = 'Y' AND pp.parm_mode_out = 'Y') THEN 'IO' ".
+    "             \ "       WHEN (pp.parm_mode_in = 'Y') THEN 'I' ".
+    "             \ "       ELSE 'N' ".
+    "             \ "       END as in_out ".
+    "             \ "     , pp.parm_id ".
+    "             \ "  from SYS.SYSPROCEDURE as p ".
+    "             \ "     , SYS.SYSPROCPARM as pp ".
+    "             \ "     , SYS.SYSDOMAIN as d ".
+    "             \ "     , SYS.SYSUSERPERM as u ".
+    "             \ " where p.proc_id = pp.proc_id ".
+    "             \ "   and pp.domain_id = d.domain_id ".
+    "             \ "   and pp.parm_type = 0 ".
+    "             \ "   and p.creator = u.user_id ".
+    "             \ "   and p.proc_name = '".object."' "
+
+    " if owner != ''
+    "     let sql = sql .
+    "                 \" and u.user_name = '".owner."' "
+    " endif
+    " let sql = sql .
+    "             \ " order by pp.parm_id asc "
+    " return s:DB_ASA_execSql(sql)
 endfunction
 
 function! s:DB_ASA_getListTable(table_prefix)
     let owner      = s:DB_getObjectOwner(a:table_prefix)
     let table_name = s:DB_getObjectName(a:table_prefix)
-    return s:DB_ASA_execSql("call sp_jdbc_tables('" .
-                \ table_name .
-                \ "%', '" .
-                \ owner .
-                \ "%');")
+    let sql = ''.
+                \ "select tname, creator " .
+                \ "  from SYS.SYSCATALOG " .
+                \ " where tname   like '" . table_name . "%' ".
+                \ "   and creator like '" . owner . "%' ".
+                \ " order by tname"
+    return s:DB_ASA_execSql(sql)
+    " return s:DB_ASA_execSql("call sp_jdbc_tables('" .
+    "             \ table_name .
+    "             \ "%', '" .
+    "             \ owner .
+    "             \ "%');")
 endfunction
 
 function! s:DB_ASA_getListProcedure(proc_prefix)
-    return s:DB_ASA_execSql(
-                \ "call sp_jdbc_stored_procedures(null, null, ".
-                \ "'".a:proc_prefix."%');")
+    let owner   = s:DB_getObjectOwner(a:proc_prefix)
+    let object  = s:DB_getObjectName(a:proc_prefix)
+    let sql = ''.
+                \ "select p.proc_name, u.user_name " .
+                \ "  from SYS.SYSPROCEDURE as p ".
+                \ "     , SYS.SYSUSERPERM as u ".
+                \ " where p.creator = u.user_id ".
+                \ "   and p.proc_name like '".object."%' ".
+                \ "   and u.user_name like '".owner."%' ".
+                \ " order by proc_name"
+    return s:DB_ASA_execSql(sql)
+    " return s:DB_ASA_execSql(
+    "             \ "call sp_jdbc_stored_procedures(null, null, ".
+    "             \ "'".a:proc_prefix."%');")
 endfunction
 
 function! s:DB_ASA_getListView(view_prefix)
-    return s:DB_ASA_execSql(
+    let owner      = s:DB_getObjectOwner(a:view_prefix)
+    let view_name  = s:DB_getObjectName(a:view_prefix)
+    let query      = 
                 \ "SELECT viewname, vcreator ".
-                \ " FROM SYSVIEWS ".
-                \ " WHERE viewname LIKE '".a:view_prefix."%'"
-                \ )
+                \ " FROM SYS.SYSVIEWS ".
+                \ " WHERE viewname LIKE '".view_name."%'"
+    if strlen(owner) > 0
+        let query = query .
+                    \ "   AND vcreator = '".owner."' ".
+                    \ " ORDER BY vcreator, viewname;"
+    else
+        let query = query .
+                    \ " ORDER BY vcreator, viewname;"
+    endif
+    return s:DB_ASA_execSql(query)
 endfunction 
 
 function! s:DB_ASA_getListColumn(table_name) 
     let owner      = s:DB_getObjectOwner(a:table_name)
     let table_name = s:DB_getObjectName(a:table_name)
-    let query =   "SELECT column_name              " .
-                \ "  FROM SYS.SYSTABLE st          " .
-                \ "   KEY JOIN SYS.SYSCOLUMN sc    " .
-                \ "   KEY JOIN sys.sysuserperm sup " .
-                \ " WHERE st.table_name = '" . table_name . "'" 
+    let query = ''.
+                \ "select cname ".
+                \ "  from SYS.SYSCOLUMNS as sc ".
+                \ " where sc.tname = '".table_name."' "
     if strlen(owner) > 0
         let query = query .
-                    \ "   AND sup.user_name = '".owner."' "
+                    \ "   AND sc.creator = '".owner."' "
     endif
     let query = query .
-                \ " ORDER BY column_id;            "
+                \ " ORDER BY colno"
     let result = s:DB_ASA_execSql( query )
     return s:DB_ASA_stripHeaderFooter(result)
 endfunction 
@@ -1464,9 +1561,9 @@ endfunction
 
 function! s:DB_ASA_getDictionaryTable() 
     let result = s:DB_ASA_execSql(
-                \ "SELECT table_name    " .
-                \ "  FROM SYS.SYSTABLE  " .
-                \ " ORDER BY table_name;"
+                \ "select tname " .
+                \ "  from SYS.SYSCATALOG " .
+                \ " order by tname"
                 \ )
     return s:DB_ASA_stripHeaderFooter(result)
 endfunction 
@@ -1501,10 +1598,7 @@ function! s:DB_ASE_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    " Ensure the tempfile has a .sql extension, windows automatically
-    " adds an extension, Linux does not.
-    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
-    exe 'redir! > ' . tempfile
+    exe 'redir! > ' . s:dbext_tempfile
     silent echo output
     redir END
 
@@ -1518,16 +1612,9 @@ function! s:DB_ASE_execSql(str)
                 \ s:DB_option('-S ', s:DB_get("srvname"), ' ') .
                 \ s:DB_option('-D ', s:DB_get("dbname"), ' ') .
                 \ s:DB_option('', s:DB_get("extra"), '') .
-                \ ' -i ' . tempfile
+                \ ' -i ' . s:dbext_tempfile
 
     let result = s:DB_runCmd(cmd, output)
-
-    if s:DB_get("delete_temp_file") == 1
-        let rc = delete(tempfile)
-        if rc != 0
-            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
-        endif
-    endif
 
     return result
 endfunction
@@ -1655,7 +1742,7 @@ function! s:DB_DB2_execSql(str)
     " To create a connection to a DB2 server running on a different machine
     " you must start db2cmd.exe and issue the following:
     "         In the case below host_name is the name of remote machine
-    "         server 60000, means the server is listening on port 6000
+    "         server 60000, means the server is listening on port 60000
     "     catalog tcpip node devcons remote host_name server 60000 
     "         Setup an alias for the paritcular database running on
     "         that server.
@@ -1675,6 +1762,18 @@ function! s:DB_DB2_execSql(str)
     " To see what options are available for db2:
     "     Start db2cmd
     "     list command options
+    "
+    " In batch files I used the following
+    "     -c close when done
+    "     -w wait until command finishes
+    "     -i don’t spawn a new cmd window
+    "     -t don’t change the window title
+    "     db2cmd -c -w -i –t “db2 -s -t ; -v -f dave.sql”
+    " To see command line options
+    "     cd IBM\SQLLIB\BIN
+    "     db2cmd -w -i
+    "     db2 ?      (db2 ? options)
+    "     
 
 
     if s:DB_getWType("use_db2batch") == '1'
@@ -1688,10 +1787,7 @@ function! s:DB_DB2_execSql(str)
             let output = output . s:DB_getWType("cmd_terminator")
         endif
 
-        " Ensure the tempfile has a .sql extension, windows automatically
-        " adds an extension, Linux does not.
-        let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
-        exe 'redir! > ' . tempfile
+        exe 'redir! > ' . s:dbext_tempfile
         silent echo output
         redir END
 
@@ -1706,7 +1802,7 @@ function! s:DB_DB2_execSql(str)
                     \ s:DB_option('', s:DB_get("extra"), '') .
                     \ s:DB_option('-d ', s:DB_get("dbname"), ' ') .
                     \ s:DB_option('-l ', s:DB_getWType("cmd_terminator"), ' ').
-                    \ ' -f ' . tempfile
+                    \ ' -f ' . s:dbext_tempfile
 
     else
         " Use db2cmd instead
@@ -1728,31 +1824,29 @@ function! s:DB_DB2_execSql(str)
             let output = output . s:DB_getWType("cmd_terminator")
         endif
 
-        " Ensure the tempfile has a .sql extension, windows automatically
-        " adds an extension, Linux does not.
-        let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
-        exe 'redir! > ' . tempfile
+        exe 'redir! > ' . s:dbext_tempfile
         silent echo output
         redir END
+
+        let bin_path = s:DB_get("bin_path")
+        if strlen(bin_path) > 0 && has('win32')
+            if $PATH !~ escape(expand(bin_path), '\\/.*$^~[]' ) 
+                " If the bin_path specified is not in the $PATH
+                " add it, this is only necessary when using db2cmd
+                let $PATH = $PATH . ';' . expand(bin_path)
+            endif
+        endif
 
         let dbext_bin = s:DB_fullPath2Bin(s:DB_getWType("db2cmd_bin"))
 
         let cmd = dbext_bin .  ' ' . s:DB_getWType("db2cmd_cmd_options")
         let cmd = cmd . ' ' .  s:DB_option('', s:DB_get("extra"), '') .
-                    \ ' ' .
-                    \ s:DB_option('-td', s:DB_getWType("cmd_terminator"), ' ') .
-                    \ '-f ' . tempfile
+                    \ s:DB_option('-t', s:DB_getWType("cmd_terminator"), ' ') .
+                    \ '-f ' . s:dbext_tempfile
     endif
 
 
     let result = s:DB_runCmd(cmd, output)
-
-    if s:DB_get("delete_temp_file") == 1
-        let rc = delete(tempfile)
-        if rc != 0
-            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
-        endif
-    endif
 
     return result
 endfunction
@@ -1905,10 +1999,7 @@ function! s:DB_INGRES_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    " Ensure the tempfile has a .sql extension, windows automatically
-    " adds an extension, Linux does not.
-    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
-    exe 'redir! > ' . tempfile
+    exe 'redir! > ' . s:dbext_tempfile
     silent echo output
     redir END
 
@@ -1918,15 +2009,8 @@ function! s:DB_INGRES_execSql(str)
                 \ s:DB_option('', s:DB_get("extra"), '') .
                 \ s:DB_option('-S ', s:DB_get("dbname"), ' ') .
                 \ s:DB_option('', s:DB_getWType("cmd_options"), ' ') .
-                \ ' < ' . tempfile
+                \ ' < ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output)
-
-    if s:DB_get("delete_temp_file") == 1
-        let rc = delete(tempfile)
-        if rc != 0
-            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
-        endif
-    endif
 
     return result
 endfunction
@@ -1992,10 +2076,7 @@ function! s:DB_INTERBASE_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    " Ensure the tempfile has a .sql extension, windows automatically
-    " adds an extension, Linux does not.
-    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
-    exe 'redir! > ' . tempfile
+    exe 'redir! > ' . s:dbext_tempfile
     silent echo output
     redir END
 
@@ -2006,16 +2087,9 @@ function! s:DB_INTERBASE_execSql(str)
                 \ s:DB_option('-password ', s:DB_get("passwd"), ' ') .
                 \ s:DB_option('', s:DB_getWType("cmd_options"), ' ') .
                 \ s:DB_option('', s:DB_getWType("extra"), ' ') .
-                \ '-input ' . tempfile .
+                \ '-input ' . s:dbext_tempfile .
                 \ s:DB_option(' ', s:DB_get("dbname"), '')
     let result = s:DB_runCmd(cmd, output)
-
-    if s:DB_get("delete_temp_file") == 1
-        let rc = delete(tempfile)
-        if rc != 0
-            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
-        endif
-    endif
 
     return result
 endfunction
@@ -2081,10 +2155,7 @@ function! s:DB_MYSQL_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    " Ensure the tempfile has a .sql extension, windows automatically
-    " adds an extension, Linux does not.
-    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
-    exe 'redir! > ' . tempfile
+    exe 'redir! > ' . s:dbext_tempfile
     silent echo output
     redir END
 
@@ -2098,15 +2169,8 @@ function! s:DB_MYSQL_execSql(str)
                 \ s:DB_option(' -P ', s:DB_get("port"), '') .
                 \ s:DB_option(' -D ', s:DB_get("dbname"), '') .
                 \ s:DB_option('', s:DB_get("extra"), '') .
-                \ ' < ' . tempfile
+                \ ' < ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output)
-
-    if s:DB_get("delete_temp_file") == 1
-        let rc = delete(tempfile)
-        if rc != 0
-            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
-        endif
-    endif
 
     return result
 endfunction
@@ -2116,9 +2180,8 @@ function! s:DB_MYSQL_describeTable(table_name)
 endfunction
 
 function! s:DB_MYSQL_describeProcedure(procedure_name)
-    echo 'Feature not yet available'
-    return -1
-    " return s:DB_MYSQL_execSql("describe ".a:procedure_name)
+    return s:DB_MYSQL_execSql("describe ".a:procedure_name)
+    return result
 endfunction
 
 function! s:DB_MYSQL_getListTable(table_prefix)
@@ -2129,13 +2192,23 @@ function! s:DB_MYSQL_getListTable(table_prefix)
 endfunction
 
 function! s:DB_MYSQL_getListProcedure(proc_prefix)
-    echo 'Feature not yet available'
-    return -1
+    let owner   = s:DB_getObjectOwner(a:proc_prefix)
+    let object  = s:DB_getObjectName(a:proc_prefix)
+    let query = "SELECT specific_name, routine_schema  ".
+                \ "  FROM INFORMATION_SCHEMA.ROUTINES " .
+                \ " WHERE specific_name  like '".object."%' ".
+                \ "   AND routine_schema like '".owner."%' "
+    return s:DB_MYSQL_execSql(query)
 endfunction
 
 function! s:DB_MYSQL_getListView(view_prefix)
-    echo 'Feature not yet available'
-    return -1
+    let owner   = s:DB_getObjectOwner(a:view_prefix)
+    let object  = s:DB_getObjectName(a:view_prefix)
+    let query = "SELECT table_name AS view_name, table_schema  ".
+                \ "  FROM INFORMATION_SCHEMA.VIEWS " .
+                \ " WHERE table_name   like '".object."%' ".
+                \ "   AND table_schema like '".owner."%' "
+    return s:DB_MYSQL_execSql(query)
 endfunction 
 
 function! s:DB_MYSQL_getListColumn(table_name) "{{{
@@ -2207,10 +2280,7 @@ function! s:DB_SQLITE_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    " Ensure the tempfile has a .sql extension, windows automatically
-    " adds an extension, Linux does not.
-    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
-    exe 'redir! > ' . tempfile
+    exe 'redir! > ' . s:dbext_tempfile
     silent echo output
     redir END
 
@@ -2220,15 +2290,8 @@ function! s:DB_SQLITE_execSql(str)
     let cmd = cmd .
                 \ s:DB_option('', s:DB_get("extra"), '') .
                 \ s:DB_option(' ', s:DB_get("dbname"), '') .
-                \ ' < ' . tempfile
+                \ ' < ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output)
-
-    if s:DB_get("delete_temp_file") == 1
-        let rc = delete(tempfile)
-        if rc != 0
-            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
-        endif
-    endif
 
     return result
 endfunction
@@ -2341,10 +2404,7 @@ function! s:DB_ORA_execSql(str)
         let output = output . "\nquit".s:DB_getWType("cmd_terminator")
     endif
 
-    " Ensure the tempfile has a .sql extension, windows automatically
-    " adds an extension, Linux does not.
-    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
-    exe 'redir! > ' . tempfile
+    exe 'redir! > ' . s:dbext_tempfile
     silent echo output
     redir END
 
@@ -2356,15 +2416,8 @@ function! s:DB_ORA_execSql(str)
                 \ s:DB_option('/', s:DB_get("passwd"), '') .
                 \ s:DB_option('@', s:DB_get("srvname"), '') .
                 \ s:DB_option('', s:DB_get("extra"), '') .
-                \ ' @' . tempfile
+                \ ' @' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output)
-
-    if s:DB_get("delete_temp_file") == 1
-        let rc = delete(tempfile)
-        if rc != 0
-            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
-        endif
-    endif
 
     return result
 endfunction
@@ -2492,10 +2545,7 @@ function! s:DB_PGSQL_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    " Ensure the tempfile has a .sql extension, windows automatically
-    " adds an extension, Linux does not.
-    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
-    exe 'redir! > ' . tempfile
+    exe 'redir! > ' . s:dbext_tempfile
     silent echo output
     redir END
 
@@ -2508,15 +2558,8 @@ function! s:DB_PGSQL_execSql(str)
                 \ s:DB_option('-h ', s:DB_get("host"), ' ') .
                 \ s:DB_option('-p ', s:DB_get("port"), ' ') .
                 \ s:DB_option('', s:DB_get("extra"), '') .
-                \ '-q -f ' . tempfile
+                \ ' -q -f ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output)
-
-    if s:DB_get("delete_temp_file") == 1
-        let rc = delete(tempfile)
-        if rc != 0
-            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
-        endif
-    endif
 
     return result
 endfunction
@@ -2550,28 +2593,37 @@ function! s:DB_PGSQL_describeProcedure(procedure_name)
 endfunction
 
 function! s:DB_PGSQL_getListTable(table_prefix)
+    let owner      = s:DB_getObjectOwner(a:table_prefix)
+    let table_name = s:DB_getObjectName(a:table_prefix)
     let query = "select tablename, tableowner " .
                 \ " from pg_tables " .
                 \ "where tableowner != 'pg_catalog' " .
-                \ "  and tablename like '" . a:table_prefix . "%' " .
+                \ "  and tableowner like '" . owner . "%' " .
+                \ "  and tablename  like '" . table_name . "%' " .
                 \ "order by tablename"
     return s:DB_PGSQL_execSql(query)
 endfunction
 
 function! s:DB_PGSQL_getListProcedure(proc_prefix)
+    let owner   = s:DB_getObjectOwner(a:proc_prefix)
+    let object  = s:DB_getObjectName(a:proc_prefix)
     let query = "  SELECT p.proname, pg_get_userbyid(u.usesysid) " .
                 \ "  FROM pg_proc p, pg_user u " .
                 \ " WHERE p.proowner = u.usesysid " .
-                \ "   AND p.proname like '" . a:proc_prefix . "%' " .
+                \ "   AND u.usename  like '" . owner . "%' " .
+                \ "   AND p.proname  like '" . object . "%' " .
                 \ " ORDER BY p.proname"
     return s:DB_PGSQL_execSql(query)
 endfunction
 
 function! s:DB_PGSQL_getListView(view_prefix)
+    let owner      = s:DB_getObjectOwner(a:view_prefix)
+    let view_name  = s:DB_getObjectName(a:view_prefix)
     let query = "select viewname, viewowner " .
                 \ " from pg_views " .
                 \ "where viewowner != 'pg_catalog' " .
-                \ "  and viewname like '" . a:view_prefix . "%' " .
+                \ "  and viewowner like '" . owner ."%' " .
+                \ "  and viewname  like '" . view_name . "%' " .
                 \ "order by viewname"
     return s:DB_PGSQL_execSql(query)
 endfunction 
@@ -2644,10 +2696,7 @@ function! s:DB_SQLSRV_execSql(str)
         let output = output . s:DB_getWType("cmd_terminator")
     endif
 
-    " Ensure the tempfile has a .sql extension, windows automatically
-    " adds an extension, Linux does not.
-    let tempfile = substitute(tempname(), '\(\..*\)\?$', '.sql', '')
-    exe 'redir! > ' . tempfile
+    exe 'redir! > ' . s:dbext_tempfile
     silent echo output
     redir END
 
@@ -2667,15 +2716,8 @@ function! s:DB_SQLSRV_execSql(str)
                 \ s:DB_option(' -S ', s:DB_get("srvname"), ' ') .
                 \ s:DB_option(' -d ', s:DB_get("dbname"), ' ') .
                 \ s:DB_option('', s:DB_get("extra"), '') .
-                \ ' -i ' . tempfile
+                \ ' -i ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output)
-
-    if s:DB_get("delete_temp_file") == 1
-        let rc = delete(tempfile)
-        if rc != 0
-            echo 'Failed to delete: ' . tempfile . ' rc: ' . rc
-        endif
-    endif
 
     return result
 endfunction
@@ -3309,6 +3351,10 @@ endfunction "}}}
 "}}}
 " Autocommand Functions {{{
 function! s:DB_auVimLeavePre() "{{{
+    if s:DB_get("delete_temp_file") == 1
+        let rc = delete(s:dbext_tempfile)
+    endif
+
     " This function will loop through all open buffers that use dbext
     " and have created temporary dictionary files.
 
@@ -3375,8 +3421,42 @@ function! s:DB_resBufName()
     return res_buf_name
 endfunction
 " }}}
+" runPrevCmd {{{
+function! s:DB_runPrevCmd()
+    let refresh = 0
+
+    " Check to ensure the buffer still exists
+    if bufnr(s:dbext_prev_bufnr) > 0
+        " If the buffer in that window is still the same buffer
+        if winbufnr(s:dbext_prev_winnr) == s:dbext_prev_bufnr
+            let refresh = 1
+        else
+            if bufwinnr(s:dbext_prev_bufnr) > -1
+                let s:dbext_prev_winnr = bufwinnr(s:dbext_prev_bufnr)
+                let refresh = 1
+            else
+                call s:DB_warningMsg('Buffer:'.s:dbext_prev_bufnr.' is no longer visible')
+            endif
+        endif
+    else
+        call s:DB_warningMsg('Buffer:'.s:dbext_prev_bufnr.' no longer exists')
+    endif
+
+    if refresh == 1
+        " Return to original window
+        exec s:dbext_prev_winnr."wincmd w"
+
+        " Rerun the previous SQL command
+        call s:DB_runCmd(s:dbext_prev_cmd, s:dbext_prev_sql)
+    endif
+endfunction "}}}
 " runCmd {{{
 function! s:DB_runCmd(cmd, sql)
+    let s:dbext_prev_cmd   = a:cmd
+    let s:dbext_prev_sql   = a:sql
+    let s:dbext_prev_winnr = winnr()
+    let s:dbext_prev_bufnr = bufnr('%')
+
     let l:display_cmd_line = s:DB_get('display_cmd_line') 
 
     if l:display_cmd_line == 1
@@ -3432,9 +3512,9 @@ endfunction "}}}
 " addToResultBuffer {{{
 function! s:DB_addToResultBuffer(output, do_clear)
     " Store current window number so we can return to it
-    let cur_winnr = winnr()
-    let res_buf_name = s:DB_resBufName()
-    let conn_props   = s:DB_getTitle()
+    let cur_winnr      = winnr()
+    let res_buf_name   = s:DB_resBufName()
+    let conn_props     = s:DB_getTitle()
     " Retieve this value before we switch buffers
     let l:buffer_lines = s:DB_get('buffer_lines')
 
@@ -3445,20 +3525,20 @@ function! s:DB_addToResultBuffer(output, do_clear)
     let buf_exists = bufexists(bufnr(res_buf_name))
     let res_buf_nbr = bufnr(res_buf_name)
 
-    if buf_exists == 0
-        " Create the new buffer
-        silent exec 'belowright ' . l:buffer_lines . 'new ' . res_buf_name
+    if bufwinnr(res_buf_nbr) == -1
+        " if the buffer is not visible, wipe it out and recreate it,
+        " this will position us in the new buffer
+        " exec 'bwipeout! ' . res_buf_nbr
+        " silent exec 'bot ' . l:buffer_lines . 'new ' . res_buf_name
+        silent exec 'bot ' . l:buffer_lines . 'split '
+        exec ":e " . escape(res_buf_name, ' ')
+
+        nnoremap <buffer> <silent> R :DBRefreshResult<CR>
     else
-        if bufwinnr(res_buf_nbr) == -1
-            " if the buffer is not visible, wipe it out and recreate it,
-            " this will position us in the new buffer
-            exec 'bwipeout! ' . res_buf_nbr
-            silent exec 'bot ' . l:buffer_lines . 'new ' . res_buf_name
-        else
-            " If the buffer is visible, switch to it
-            exec bufwinnr(res_buf_nbr) . "wincmd w"
-        endif
+        " If the buffer is visible, switch to it
+        exec bufwinnr(res_buf_nbr) . "wincmd w"
     endif
+
     setlocal modified
     " Create a buffer mapping to clo this window
     nnoremap <buffer> q :clo<cr>
@@ -3482,6 +3562,8 @@ function! s:DB_addToResultBuffer(output, do_clear)
     " the data may be lined up for columns
     setlocal nomodified
     setlocal nowrap
+    setlocal noswapfile
+    setlocal nonumber
     " Go to top of output
     norm gg
     " Return to original window
@@ -3498,6 +3580,7 @@ function! s:DB_parseQuery(query)
         return s:DB_parseHostVariables(a:query)
     elseif &filetype == "java" || 
                 \ &filetype == "jsp"  || 
+                \ &filetype == "html"  || 
                 \ &filetype == "javascript" 
         let query = s:DB_parseJava(a:query)
         return s:DB_parseHostVariables(query)
@@ -3848,14 +3931,29 @@ function! s:DB_parseJava(query)
     let query = a:query
     " Remove any newline characters
     let query = substitute(query, "\n", ' ', 'g')
+    
+    " Since strings are enclosed in double quotes ("), they can be escaped
+    " with a backslash, we must replace these as well.
+    "     "select \"name\", col2  "
+    let query = substitute(query, 
+                \ '\\"', 
+                \ '"', 
+                \ 'g'
+                \ )
+
     " Strip off beginning and closing quotes
+    " The ending quote can be any of the following:
+    "      something "
+    "      something ",
+    "      something " +
+    "      something " ;
     let query = substitute(query, 
                 \ '\%(^[\t "]*\)\?', 
                 \ '', 
                 \ ''
                 \ )
     let query = substitute(query, 
-                \ '[ ";]\+$', 
+                \ '[ ";,+]\+$', 
                 \ '', 
                 \ ''
                 \ )
@@ -3864,6 +3962,14 @@ function! s:DB_parseJava(query)
     "    "select " + " * from " + " some_table ";
     let query = substitute(query, 
                 \ '\s*"\s*+\s*"\s*', 
+                \ ' ', 
+                \ 'g'
+                \ )
+
+    " Java uses \n to signify newlines.  We must replace these will
+    " spaces.
+    let query = substitute(query, 
+                \ '\\n', 
                 \ ' ', 
                 \ 'g'
                 \ )
@@ -3920,11 +4026,11 @@ function! s:DB_parseVim(query)
     " If strings are concatenated over multiple lines, since they are
     " joined now, remove the concatenation
     "    "select " . " * from " . " some_table ";
-    "    "select " .
+    "    \ "select " .
     "    \ " * from "
     "    \ . " some_table ";
     let query = substitute(query, 
-                \ '\s*"\s*\\\?\s*\.\s*\\\?\s*"\s*', 
+                \ '\\\?\s*"\s*\\\?\s*\.\s*\\\?\s*"\s*', 
                 \ ' ', 
                 \ 'g'
                 \ )

@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 6.0.  Last change: Sat Feb 19 2005 5:43:26 PM
+*dbext.txt*	For Vim version 6.0.  Last change: Fri Sep 09 2005 2:11:11 PM
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,14 +7,14 @@
                      David Fishburn <fishburn@ianywhere.com>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 2.20
+	  	dbext.vim version 2.30
 
 For instructions on installing this file, type
 	:help add-local-help
 |add-local-help| inside Vim.
 
 Homepage: http://vim.sourceforge.net/script.php?script_id=356
-SourceForge: $Revision: 1.20 $
+SourceForge: $Revision: 1.21 $
 
 *dbext* *dbext.vim* *db_ext* *db_ext.vim* *database-extension* *pgsql* *mysql*
 *asa* *ase* *ingres* *interbase* *sqlite* *sqlsrv* *ora* *db2*
@@ -48,6 +48,36 @@ SourceForge: $Revision: 1.20 $
 
 ------------------------------------------------------------------------------
 What's New						*dbext-new*
+
+Version 2.30
+
+ New Features
+ ------------
+ - The result window has a local buffer mapping 'R', which will 'refresh'
+   the window.  This means it will re-run the previous statement which is
+   useful if you are repeatedly checking something in the database.
+ - SQL Anywhere (ASA) no longer relies on the jcatalogue tables to be 
+   installed in the database.  System views are used instead.
+ - Support for MySQL 5.0 has been added, which includes stored procedures
+   and views (as much as the beta allowed).
+ - For Postgress SQL you can now optionally enter an owner name to filter by
+   when showing list of objects (tables, procedures, views).
+
+ Bug Fixes
+ ------------
+ - The |alternate-file| is no longer changed the first time the result buffer
+   is opened.
+ - Using DB2 with db2cmd incorrectly specified the command terminator with
+   td, instead of -t.  
+ - On win32 platforms, if the bin_path has been specified for DB2, then 
+   add this to the system path since db2cmd relies on other batch files to
+   operate correctly.
+ - The connection string is displayed by both the Result buffer (first line)
+   and the titlestring to the buffer (if enabled).  This was not correctly
+   appending the user used to connect to the database.
+ - When parsing Vim scripts we did not correctly remove a leading line 
+   continuation slash from the from of a query.
+
 
 Version 2.20
 
@@ -230,7 +260,10 @@ Version 2.00
         let g:dbext_default_buffer_lines = 5 (default)
 <If you want each buffer to have its OWN Result buffer, you can define: >
         let g:dbext_default_use_sep_result_buffer = 1 (default=0)
-<
+<There is a local buffer mapping created to re-run the statement which
+ populated the result window.  Pressing 'R' calls the DBRefreshResult 
+ command.
+
 3.2 Script Variables                            *dbext-configure-variables* 
 
  Global variables: >
@@ -534,7 +567,7 @@ Version 2.00
 
     " Execute the current line
     " sql - execute - line
-    nnoremap <unique> <Leader>sea :.,.DBExecRangeSQL
+    nnoremap <unique> <Leader>sel :.,.DBExecRangeSQL
 
     " select * from the table under the cursor
     " sql - table
@@ -636,6 +669,8 @@ Version 2.00
     DBListProcedure - Lists all procedures (optional wildcard)
     DBListView      - Lists all views (optional wildcard)
     DBListColumn    - Comma separated list of columns for the given table
+    DBRefreshResult - Re-runs the statement currently displayed in the 
+                      result window
 
 ------------------------------------------------------------------------------
 5. Adding new database types				*dbext-newdb*
@@ -1209,6 +1244,10 @@ To specify the type of database you connect to most often, you can place the
          
  Let assume the command did successfully execute against your database.
 
+ TIP
+ ---
+ While your cursor is in the result buffer, you can press 'R', and it will
+ re-run the command that created the current results.
 
 
  Executing commands
