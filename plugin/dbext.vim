@@ -1,9 +1,9 @@
 " dbext.vim - Commn Database Utility
 " ---------------------------------------------------------------
-" Version:  2.30
+" Version:  3.00
 " Authors:  Peter Bagyinszki <petike1@dpg.hu>
 "           David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Fri Sep 09 2005 2:11:03 PM
+" Last Modified: Mon Apr 24 2006 9:04:38 PM
 " Based On: sqlplus.vim (author: Jamis Buck <jgb3@email.byu.edu>)
 " Created:  2002-05-24
 " Homepage: http://vim.sourceforge.net/script.php?script_id=356
@@ -14,7 +14,7 @@
 "   - Requires multvals.vim to be installed. Download from:
 "       http://www.vim.org/script.php?script_id=171
 "
-" SourceForge: $Revision: 1.37 $
+" SourceForge: $Revision: 1.38 $
 "
 " Help:     :h dbext.txt 
 
@@ -28,9 +28,10 @@ if !exists("loaded_multvals") || loaded_multvals < 304
     echomsg "dbext: You need to have multvals version 3.4 or higher"
     finish
 endif
-let g:loaded_dbext = 230
+let g:loaded_dbext = 300
 
-" Script variable defaults {{{
+" Script variable defaults, these are used internal and are never displayed
+" to the end user via the DBGetOption command  {{{
 let s:mv_sep = ","
 let s:dbext_buffers_with_dict_files = ''
 let s:dbext_unique_cnt = 0
@@ -89,9 +90,7 @@ function! s:DB_buildLists()
 
     " Configuration parameters
     let s:config_params_mv = ''
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'use_result_buffer')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'use_sep_result_buffer')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'buffer_lines')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'query_statements')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'parse_statements')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'prompt_for_parameters')
@@ -107,7 +106,17 @@ function! s:DB_buildLists()
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'custom_title')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'use_tbl_alias')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'delete_temp_file')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dbext_version')
+
+    " Script parameters
+    let s:script_params_mv = ''
+    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'use_result_buffer')
+    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'buffer_lines')
+    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'result_bufnr')
+    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'history_bufnr')
+    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'history_file')
+    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'history_size')
+    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'history_max_entry')
+    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'dbext_version')
 
     " DB server specific params
     " See below for 3 additional DB2 items
@@ -132,6 +141,12 @@ function! s:DB_buildLists()
         let s:all_params_mv = MvAddElement(s:all_params_mv, s:mv_sep, MvIterNext('MvConfigParams'))
     endwhile
     call MvIterDestroy("MvConfigParams")
+
+    call MvIterCreate(s:script_params_mv, s:mv_sep, "MvScriptParams", s:mv_sep)
+    while MvIterHasNext('MvScriptParams')
+        let s:all_params_mv = MvAddElement(s:all_params_mv, s:mv_sep, MvIterNext('MvScriptParams'))
+    endwhile
+    call MvIterDestroy("MvScriptParams")
 
     let loop_count         = 0
     let s:prompt_type_list = "\n0. None\n"
@@ -199,6 +214,10 @@ endfunction
 " Configuration {{{
 "" Execute function, but prompt for parameters if necessary
 function! s:DB_execFuncWCheck(name,...)
+    " Record current buffer to return to the correct one
+    let s:dbext_prev_winnr = winnr()
+    let s:dbext_prev_bufnr = bufnr('%')
+ 
     let use_defaults = 1
     if s:DB_get("buffer_defaulted") != 1
         call s:DB_resetBufferParameters(use_defaults)
@@ -230,6 +249,11 @@ endfunction
 
 "" Execute function, but prompt for parameters if necessary
 function! s:DB_execFuncTypeWCheck(name,...)
+
+    " Record current buffer to return to the correct one
+    let s:dbext_prev_winnr = winnr()
+    let s:dbext_prev_bufnr = bufnr('%')
+ 
     let use_defaults = 1
     if s:DB_get("buffer_defaulted") != 1
         call s:DB_resetBufferParameters(use_defaults)
@@ -378,7 +402,11 @@ function! s:DB_set(name, value)
             endif
         endif
 
-        let b:dbext_{a:name} = value
+        if MvContainsElement(s:script_params_mv, s:mv_sep, a:name)
+            let s:dbext_{a:name} = value
+        else
+            let b:dbext_{a:name} = value
+        endif
 
         if s:DB_get("replace_title") == '1'
             call s:DB_setTitle()
@@ -428,20 +456,35 @@ function! DB_listOption(...)
         return s:DB_get(a:1, use_defaults)
     endif
 
-    let option_cnt = 1
+    " Record current buffer to return to the correct one
+    let s:dbext_prev_winnr = winnr()
+    let s:dbext_prev_bufnr = bufnr('%')
+
+    let conn_params_cnt   = MvNumberOfElements(s:conn_params_mv, s:mv_sep)
+    let config_params_cnt = MvNumberOfElements(s:config_params_mv, s:mv_sep)
+    let script_params_cnt = MvNumberOfElements(s:script_params_mv, s:mv_sep) 
+
+    let option_cnt  = 1
     let option_list = 
                 \ "------------------------\n" .
                 \ "** Connection Options **\n" .
                 \ "------------------------\n"
     call MvIterCreate(s:all_params_mv, s:mv_sep, "MvAllParams", s:mv_sep)
     while MvIterHasNext('MvAllParams')
-        if option_cnt == (MvNumberOfElements(s:conn_params_mv, s:mv_sep) + 1) 
+        if option_cnt == (conn_params_cnt + 1) 
             let option_list = option_list .
                         \ "---------------------------\n" .
                         \ "** Configuration Options **\n" .
                         \ "---------------------------\n"
-        elseif option_cnt == (MvNumberOfElements(s:conn_params_mv, s:mv_sep) +
-                    \ MvNumberOfElements(s:config_params_mv, s:mv_sep) + 1)  
+        elseif option_cnt == (conn_params_cnt +
+                    \ config_params_cnt + 1)  
+            let option_list = option_list .
+                        \ "----------------------\n" .
+                        \ "** Script Level Options **\n" .
+                        \ "----------------------\n"
+        elseif option_cnt == (conn_params_cnt +
+                    \ config_params_cnt +
+                    \ script_params_cnt + 1)  
             let option_list = option_list .
                         \ "----------------------\n" .
                         \ "** Database Options **\n" .
@@ -465,8 +508,13 @@ function! s:DB_get(name, ...)
     let use_defaults = ((a:0 > 0)?(a:1+0):1)
     let no_default   = 0
 
-    if exists("b:dbext_".a:name)
-        let retval = b:dbext_{a:name} . '' "force string
+    let prefix = "b:dbext_"
+    if MvContainsElement(s:script_params_mv, s:mv_sep, a:name)
+        let prefix = "s:dbext_"
+    endif
+
+    if exists(prefix.a:name)
+        let retval = {prefix}{a:name} . '' "force string
     elseif use_defaults == 1
         let retval = s:DB_getDefault(a:name)
     else
@@ -515,7 +563,7 @@ function! s:DB_getDefault(name)
     " Q - CANNOT be surrounded in quotes
     " , - delimiter between options
     elseif a:name ==# "variable_def"            |return (exists("g:dbext_default_variable_def")?g:dbext_default_variable_def.'':'?WQ,@wq,:wq,$wq')
-    elseif a:name ==# "buffer_lines"            |return (exists("g:dbext_default_buffer_lines")?g:dbext_default_buffer_lines.'':5)
+    elseif a:name ==# "buffer_lines"            |return (exists("g:dbext_default_buffer_lines")?g:dbext_default_buffer_lines.'':10)
     elseif a:name ==# "use_result_buffer"       |return (exists("g:dbext_default_use_result_buffer")?g:dbext_default_use_result_buffer.'':1)
     elseif a:name ==# "use_sep_result_buffer"   |return (exists("g:dbext_default_use_sep_result_buffer")?g:dbext_default_use_sep_result_buffer.'':0)
     elseif a:name ==# "display_cmd_line"        |return (exists("g:dbext_default_display_cmd_line")?g:dbext_default_display_cmd_line.'':0)
@@ -527,6 +575,10 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "use_tbl_alias"           |return (exists("g:dbext_default_use_tbl_alias")?g:dbext_default_use_tbl_alias.'':'a')
     elseif a:name ==# "delete_temp_file"        |return (exists("g:dbext_default_delete_temp_file")?g:dbext_default_delete_temp_file.'':'1')
     elseif a:name ==# "dbext_version"           |return (g:loaded_dbext)
+    elseif a:name ==# "history_file"            |return (exists("g:dbext_default_history_file")?g:dbext_default_history_file.'':(has('win32')?$VIM.'/dbext_sql_history.txt':$HOME.'/dbext_sql_history.txt'))
+    elseif a:name ==# "history_bufname"         |return (fnamemodify(s:DB_get('history_file'), ":t:r"))
+    elseif a:name ==# "history_size"            |return (exists("g:dbext_default_history_size")?g:dbext_default_history_size.'':'50')
+    elseif a:name ==# "history_max_entry"       |return (exists("g:dbext_default_history_max_entry")?g:dbext_default_history_max_entry.'':'4096')
     elseif a:name ==# "ASA_bin"                 |return (exists("g:dbext_default_ASA_bin")?g:dbext_default_ASA_bin.'':'dbisql')
     elseif a:name ==# "ASA_cmd_terminator"      |return (exists("g:dbext_default_ASA_cmd_terminator")?g:dbext_default_ASA_cmd_terminator.'':';')
     elseif a:name ==# "ASA_cmd_options"         |return (exists("g:dbext_default_ASA_cmd_options")?g:dbext_default_ASA_cmd_options.'':'-nogui')
@@ -579,6 +631,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "prompt_extra"            |return (exists("g:dbext_default_prompt_extra")?g:dbext_default_prompt_extra.'':'[O] Extra parameters: ')
     elseif a:name ==# "prompt_bin_path"         |return (exists("g:dbext_default_prompt_bin_path")?g:dbext_default_prompt_bin_path.'':'[O] Directory for database tools: ')
     " These are for name completion using Vim's dictionary feature
+    elseif a:name ==# "dict_show_owner"       |return (exists("g:dbext_default_dict_show_owner")?g:dbext_default_dict_show_owner.'':'1')
     elseif a:name ==# "dict_table_file"         |return '' 
     elseif a:name ==# "dict_procedure_file"     |return '' 
     elseif a:name ==# "dict_view_file"          |return ''
@@ -1217,7 +1270,16 @@ if !exists(':DBCheckModeline')
 end
 if !exists(':DBRefreshResult')
     command! -nargs=0 DBRefreshResult
-                \ :call s:DB_runPrevCmd()
+                \ :call s:DB_runPrevCmd(s:dbext_prev_sql)
+end
+if !exists(':DBHistory')
+    command! -nargs=0 DBHistory
+                \ :call s:DB_historyList()
+    nmap <unique> <script> <Plug>DBHistory :DBHistory<CR>
+end
+if !exists(':DBCloseResults')
+    command! -nargs=0 DBCloseResults
+                \ :call s:DB_closeWindow('%')
 end
 "}}}
 " Mappings {{{
@@ -1282,6 +1344,9 @@ if !hasmapto('<Plug>DBListColumn')
     nmap <unique> <Leader>stcl <Plug>DBListColumn
     vmap <unique> <silent> <Leader>stcl
                 \ :<C-U>exec 'DBListColumn '.DB_getVisualBlock()<CR>
+endif
+if !hasmapto('<Plug>DBHistory')
+    nmap <unique> <Leader>sh <Plug>DBHistory
 endif
 "}}}
 " Menus {{{
@@ -1561,27 +1626,28 @@ endfunction
 
 function! s:DB_ASA_getDictionaryTable() 
     let result = s:DB_ASA_execSql(
-                \ "select tname " .
+                \ "select ".(s:DB_get('dict_show_owner')==1?"creator||'.'||":'')."tname " .
                 \ "  from SYS.SYSCATALOG " .
-                \ " order by tname"
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"creator, ":'')."tname"
                 \ )
     return s:DB_ASA_stripHeaderFooter(result)
 endfunction 
 
 function! s:DB_ASA_getDictionaryProcedure() 
     let result = s:DB_ASA_execSql(
-                \ "SELECT proc_name       " .
-                \ " FROM SYS.SYSPROCEDURE " .
-                \ " ORDER BY proc_name;   "
+                \ "SELECT ".(s:DB_get('dict_show_owner')==1?"sup.user_name||'.'||":'')."sp.proc_name " .
+                \ "  FROM SYS.SYSPROCEDURE sp, SYS.SYSUSERPERM sup  " .
+                \ " WHERE sp.creator = sup.user_id  " .
+                \ " ORDER BY ".(s:DB_get('dict_show_owner')==1?"sup.user_name, ":'')."sp.proc_name "
                 \ )
     return s:DB_ASA_stripHeaderFooter(result)
 endfunction 
 
 function! s:DB_ASA_getDictionaryView() 
     let result = s:DB_ASA_execSql(
-                \ "SELECT viewname     " .
+                \ "SELECT ".(s:DB_get('dict_show_owner')==1?"vcreator||'.'||":'')."viewname" .
                 \ "  FROM SYS.SYSVIEWS " .
-                \ " ORDER BY viewname; "
+                \ " ORDER BY ".(s:DB_get('dict_show_owner')==1?"vcreator||'.'||":'')."viewname; "
                 \ )
     return s:DB_ASA_stripHeaderFooter(result)
 endfunction 
@@ -1709,30 +1775,33 @@ endfunction "}}}
 
 function! s:DB_ASE_getDictionaryTable() "{{{
     let result = s:DB_ASE_execSql(
-                \ "select convert(varchar,o.name) ".
-                \ "  from sysobjects o            ".
-                \ " where o.type='U'              ".
-                \ " order by o.name               "
+                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)||'.'||":'')."convert(varchar,o.name)  ".
+                \ "  from sysobjects o, sysusers u ".
+                \ " where o.uid=u.uid              ".
+                \ "   and o.type='U'               ".
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name), ":'')."o.name"
                 \ )
     return s:DB_ASE_stripHeaderFooter(result)
 endfunction "}}}
 
 function! s:DB_ASE_getDictionaryProcedure() "{{{
     let result = s:DB_ASE_execSql(
-                \ "select convert(varchar,o.name) ".
-                \ "  from sysobjects o ".
-                \ " where o.type='P' ".
-                \ " order by o.name"
+                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)||'.'||":'')."convert(varchar,o.name)  ".
+                \ "  from sysobjects o, sysusers u ".
+                \ " where o.uid=u.uid              ".
+                \ "   and o.type='P'               ".
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name), ":'')."o.name"
                 \ )
     return s:DB_ASE_stripHeaderFooter(result)
 endfunction "}}}
 
 function! s:DB_ASE_getDictionaryView() "{{{
     let result = s:DB_ASE_execSql(
-                \ "select convert(varchar,o.name) ".
-                \ "  from sysobjects o ".
-                \ " where o.type='V' ".
-                \ " order by o.name"
+                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)||'.'||":'')."convert(varchar,o.name)  ".
+                \ "  from sysobjects o, sysusers u ".
+                \ " where o.uid=u.uid              ".
+                \ "   and o.type='V'               ".
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name), ":'')."o.name"
                 \ )
     return s:DB_ASE_stripHeaderFooter(result)
 endfunction "}}}
@@ -1799,7 +1868,7 @@ function! s:DB_DB2_execSql(str)
                         \ s:DB_get("passwd") . ' '
         endif
         let cmd = cmd . 
-                    \ s:DB_option('', s:DB_get("extra"), '') .
+                    \ s:DB_option(' ', s:DB_get("extra"), ' ') .
                     \ s:DB_option('-d ', s:DB_get("dbname"), ' ') .
                     \ s:DB_option('-l ', s:DB_getWType("cmd_terminator"), ' ').
                     \ ' -f ' . s:dbext_tempfile
@@ -1840,7 +1909,7 @@ function! s:DB_DB2_execSql(str)
         let dbext_bin = s:DB_fullPath2Bin(s:DB_getWType("db2cmd_bin"))
 
         let cmd = dbext_bin .  ' ' . s:DB_getWType("db2cmd_cmd_options")
-        let cmd = cmd . ' ' .  s:DB_option('', s:DB_get("extra"), '') .
+        let cmd = cmd . ' ' .  s:DB_option('', s:DB_get("extra"), ' ') .
                     \ s:DB_option('-t', s:DB_getWType("cmd_terminator"), ' ') .
                     \ '-f ' . s:dbext_tempfile
     endif
@@ -1894,7 +1963,7 @@ function! s:DB_DB2_getListTable(table_prefix)
                 \ "     , CAST(tabschema AS VARCHAR(15)) AS tabschema " .
                 \ "     , CAST(definer AS VARCHAR(15)) AS definer " .
                 \ "     , card " .
-                \ " from syscat.tables ".
+                \ "  from syscat.tables ".
                 \ " where tabname like '".a:table_prefix."%' ".
                 \ " order by tabname")
 endfunction
@@ -1908,7 +1977,7 @@ function! s:DB_DB2_getListProcedure(proc_prefix)
                 \ "     , deterministic " .
                 \ "     , fenced " .
                 \ "     , result_sets " .
-                \ " from syscat.procedures ".
+                \ "  from syscat.procedures ".
                 \ " where procname like '".a:proc_prefix."%' ".
                 \ " order by procname")
 endfunction
@@ -1920,7 +1989,7 @@ function! s:DB_DB2_getListView(view_prefix)
                 \ "     , CAST(definer AS VARCHAR(15)) AS definer " .
                 \ "     , readonly " .
                 \ "     , valid " .
-                \ " from syscat.views ".
+                \ "  from syscat.views ".
                 \ " where viewname like '".a:view_prefix."%' ".
                 \ " order by viewname")
 endfunction 
@@ -1962,27 +2031,30 @@ endfunction
 
 function! s:DB_DB2_getDictionaryTable()
     let result = s:DB_DB2_execSql( 
-                \ "select CAST(tabname AS VARCHAR(40)) AS tabname " .
-                \ " from syscat.tables                            " .
-                \ " order by tabname                              " 
+                \ "select ".(s:DB_get('dict_show_owner')==1?"CAST(tabschema AS VARCHAR(15)) AS tabschema||'.'||":'').
+                \ "       CAST(tabname AS VARCHAR(40)) AS tabname " .
+                \ "  from syscat.tables                           " .
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"CAST(tabschema AS VARCHAR(15)), ":'')."tabname" 
                 \ )
     return s:DB_DB2_stripHeaderFooter(result)
 endfunction 
 
 function! s:DB_DB2_getDictionaryProcedure()
     let result = s:DB_DB2_execSql( 
-                \ "select CAST(procname AS VARCHAR(40)) AS procname " .
-                \ " from syscat.procedures                          " .
-                \ " order by procname                               " 
+                \ "select ".(s:DB_get('dict_show_owner')==1?"CAST(procschema AS VARCHAR(15)) AS procschema||'.'||":'').
+                \ "       CAST(procname AS VARCHAR(40)) AS procname " .
+                \ "  from syscat.procedures                         " .
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"CAST(procschema AS VARCHAR(15)), ":'')."procname" 
                 \ )
     return s:DB_DB2_stripHeaderFooter(result)
 endfunction
 
 function! s:DB_DB2_getDictionaryView() 
     let result = s:DB_DB2_execSql( 
-                \ "select CAST(viewname AS VARCHAR(40)) AS viewname " .
-                \ " from syscat.views                               " .
-                \ " order by viewname                               " 
+                \ "select ".(s:DB_get('dict_show_owner')==1?"CAST(viewschema AS VARCHAR(15)) AS viewschema||'.'||":'').
+                \ "       CAST(viewname AS VARCHAR(40)) AS viewname " .
+                \ "  from syscat.views                              " .
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"CAST(viewschema AS VARCHAR(15)), ":'')."viewname" 
                 \ )
     return s:DB_DB2_stripHeaderFooter(result)
 endfunction 
@@ -2006,7 +2078,7 @@ function! s:DB_INGRES_execSql(str)
     let dbext_bin = s:DB_fullPath2Bin(s:DB_getWType("bin"))
 
     let cmd = dbext_bin .  ' ' . 
-                \ s:DB_option('', s:DB_get("extra"), '') .
+                \ s:DB_option('', s:DB_get("extra"), ' ') .
                 \ s:DB_option('-S ', s:DB_get("dbname"), ' ') .
                 \ s:DB_option('', s:DB_getWType("cmd_options"), ' ') .
                 \ ' < ' . s:dbext_tempfile
@@ -2168,7 +2240,7 @@ function! s:DB_MYSQL_execSql(str)
                 \ s:DB_option(' -h ', s:DB_get("host"), '') .
                 \ s:DB_option(' -P ', s:DB_get("port"), '') .
                 \ s:DB_option(' -D ', s:DB_get("dbname"), '') .
-                \ s:DB_option('', s:DB_get("extra"), '') .
+                \ s:DB_option(' ', s:DB_get("extra"), '') .
                 \ ' < ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output)
 
@@ -2215,18 +2287,25 @@ function! s:DB_MYSQL_getListColumn(table_name) "{{{
     let result = s:DB_MYSQL_execSql("show columns from ".a:table_name)
     " Strip off header separators ending with a newline
     " let stripped = substitute( result, '+[-]\|+'."[\<C-J>]", '', '' )
+    " Strip off separators if using mysqls tabbed output
+    " +--------------------+----------------------+------+-----+
+    " | name               | char(64)             | NO   | UNI |
+    let stripped = substitute( result, '+[-+]\++\n', '', 'g' )
     " Strip off column headers ending with a newline
-    let stripped = substitute( result, '.\{-}'."[\<C-J>]", '', '' )
-    " Strip off preceeding and ending |s
-    let stripped = substitute( stripped, '\(\<\w\+\>\).\{-}'."[\<C-J>]", '\1, ', 'g' )
+    let stripped = substitute( stripped, '.\{-}'."[\<C-J>]", '', '' )
+    " Strip off all but the column name, if the tabbed output it on the
+    " column can begin with a |
+    let stripped = substitute( stripped, '\%(|\s*\)\?\(\<\w\+\>\).\{-}'."[\<C-J>]", '\1, ', 'g' )
     " Strip off ending comma
     let stripped = substitute( stripped, ',\s*$', '', '' )
     return stripped
 endfunction "}}}
 
 function! s:DB_MYSQL_stripHeaderFooter(result) "{{{
+    " Strip off separators if using mysqls tabbed output
+    let stripped = substitute( a:result, '+[-+]\++\n', '', 'g' )
     " Strip off header separators ending with a newline
-    let stripped = substitute( a:result, '+[-]\|+'."[\<C-V>\<C-J>]", '', '' )
+    let stripped = substitute( stripped, '+[-]\|.\{-}'."[\<C-V>\<C-J>]", '', '' )
     " Strip off column headers ending with a newline
     let stripped = substitute( stripped, '|.*Tables_in.*'."[\<C-V>\<C-J>]", '', '' )
     " Strip off preceeding and ending |s
@@ -2237,18 +2316,28 @@ function! s:DB_MYSQL_stripHeaderFooter(result) "{{{
 endfunction "}}}
 
 function! s:DB_MYSQL_getDictionaryTable() "{{{
-    let result = s:DB_MYSQL_getListTable('')
+    let query = "SELECT ".(s:DB_get('dict_show_owner')==1?"CONCAT_WS('.', TABLE_SCHEMA, TABLE_NAME)":"TABLE_NAME").
+                \ "  FROM INFORMATION_SCHEMA.TABLES " .
+                \ " WHERE TABLE_TYPE  = 'BASE TABLE' ".
+                \ " ORDER BY ".(s:DB_get('dict_show_owner')==1?"TABLE_SCHEMA, ":'')."TABLE_NAME"
+    let result = s:DB_MYSQL_execSql(query)
     return s:DB_MYSQL_stripHeaderFooter(result)
 endfunction "}}}
 
 function! s:DB_MYSQL_getDictionaryProcedure() "{{{
-    call s:DB_warningMsg( 'Feature not yet available' )
-    return '-1'
+    let query = "SELECT ".(s:DB_get('dict_show_owner')==1?"CONCAT_WS('.', ROUTINE_SCHEMA, SPECIFIC_NAME)":"SPECIFIC_NAME").
+                \ "  FROM INFORMATION_SCHEMA.ROUTINES " .
+                \ " ORDER BY ".(s:DB_get('dict_show_owner')==1?"ROUTINE_SCHEMA, ":'')."SPECIFIC_NAME"
+    let result = s:DB_MYSQL_execSql(query)
+    return s:DB_MYSQL_stripHeaderFooter(result)
 endfunction "}}}
 
 function! s:DB_MYSQL_getDictionaryView() "{{{
-    call s:DB_warningMsg( 'Feature not yet available' )
-    return '-1'
+    let query = "SELECT ".(s:DB_get('dict_show_owner')==1?"CONCAT_WS('.', TABLE_SCHEMA, TABLE_NAME)":"TABLE_NAME").
+                \ "  FROM INFORMATION_SCHEMA.VIEWS " .
+                \ " ORDER BY ".(s:DB_get('dict_show_owner')==1?"TABLE_SCHEMA, ":'')."TABLE_NAME"
+    let result = s:DB_MYSQL_execSql(query)
+    return s:DB_MYSQL_stripHeaderFooter(result)
 endfunction "}}}
 "}}}
 " SQLITE exec {{{
@@ -2288,7 +2377,7 @@ function! s:DB_SQLITE_execSql(str)
 
     let cmd = dbext_bin .  ' ' . s:DB_getWType("cmd_options")
     let cmd = cmd .
-                \ s:DB_option('', s:DB_get("extra"), '') .
+                \ s:DB_option(' ', s:DB_get("extra"), '') .
                 \ s:DB_option(' ', s:DB_get("dbname"), '') .
                 \ ' < ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output)
@@ -2415,7 +2504,7 @@ function! s:DB_ORA_execSql(str)
                 \ s:DB_option(' ', s:DB_get("user"), '') .
                 \ s:DB_option('/', s:DB_get("passwd"), '') .
                 \ s:DB_option('@', s:DB_get("srvname"), '') .
-                \ s:DB_option('', s:DB_get("extra"), '') .
+                \ s:DB_option(' ', s:DB_get("extra"), '') .
                 \ ' @' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output)
 
@@ -2506,29 +2595,29 @@ endfunction "}}}
 
 function! s:DB_ORA_getDictionaryTable() "{{{
     let result = s:DB_ORA_execSql(
-                \ "select table_name     " .
+                \ "select ".(s:DB_get('dict_show_owner')==1?"owner||'.'||":'')."table_name" .
                 \ "  from ALL_ALL_TABLES " .
-                \ " order by table_name  "
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"owner, ":'')."table_name  "
                 \ )
     return s:DB_ORA_stripHeaderFooter(result)
 endfunction "}}}
 
 function! s:DB_ORA_getDictionaryProcedure() "{{{
     let result = s:DB_ORA_execSql(
-                \ "select object_name                          " .
+                \ "select ".(s:DB_get('dict_show_owner')==1?"owner||'.'||":'')."object_name                          " .
                 \ "  from all_objects                          " .
                 \ " where object_type IN                       " .
                 \ "       ('PROCEDURE', 'PACKAGE', 'FUNCTION') " .
-                \ " order by object_name                       "
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"owner, ":'')."object_name                       "
                 \ )
     return s:DB_ORA_stripHeaderFooter(result)
 endfunction "}}}
 
 function! s:DB_ORA_getDictionaryView() "{{{
     let result = s:DB_ORA_execSql(
-                \ "select view_name    " .
+                \ "select ".(s:DB_get('dict_show_owner')==1?"owner||'.'||":'')."view_name    " .
                 \ "  from ALL_VIEWS    " .
-                \ " order by view_name "
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"owner, ":'')."view_name "
                 \ )
     return s:DB_ORA_stripHeaderFooter(result)
 endfunction "}}}
@@ -2557,7 +2646,7 @@ function! s:DB_PGSQL_execSql(str)
                 \ s:DB_option('-U ', s:DB_get("user"), ' ') .
                 \ s:DB_option('-h ', s:DB_get("host"), ' ') .
                 \ s:DB_option('-p ', s:DB_get("port"), ' ') .
-                \ s:DB_option('', s:DB_get("extra"), '') .
+                \ s:DB_option(' ', s:DB_get("extra"), '') .
                 \ ' -q -f ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output)
 
@@ -2659,10 +2748,10 @@ endfunction
 
 function! s:DB_PGSQL_getDictionaryTable() 
     let result = s:DB_PGSQL_execSql(
-                \ "select tablename " .
+                \ "select ".(s:DB_get('dict_show_owner')==1?"tableowner||'.'||":'')."tablename " .
                 \ " from pg_tables " .
                 \ "where tableowner != 'pg_catalog' " .
-                \ "order by tablename"
+                \ "order by ".(s:DB_get('dict_show_owner')==1?"tableowner, ":'')."tablename"
                 \ )
     return s:DB_PGSQL_stripHeaderFooter(result)
 endfunction 
@@ -2678,10 +2767,10 @@ endfunction
 
 function! s:DB_PGSQL_getDictionaryView() 
     let result = s:DB_PGSQL_execSql(
-                \ "select viewname " .
+                \ "select ".(s:DB_get('dict_show_owner')==1?"viewowner||'.'||":'')."viewname " .
                 \ "  from pg_views " .
                 \ " where viewowner != 'pg_catalog' " .
-                \ " order by viewname"
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"viewowner, ":'')."viewname"
                 \ )
     return s:DB_PGSQL_stripHeaderFooter(result)
 endfunction 
@@ -2715,7 +2804,7 @@ function! s:DB_SQLSRV_execSql(str)
                 \ s:DB_option(' -H ', s:DB_get("host"), ' ') .
                 \ s:DB_option(' -S ', s:DB_get("srvname"), ' ') .
                 \ s:DB_option(' -d ', s:DB_get("dbname"), ' ') .
-                \ s:DB_option('', s:DB_get("extra"), '') .
+                \ s:DB_option(' ', s:DB_get("extra"), '') .
                 \ ' -i ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output)
 
@@ -2762,56 +2851,65 @@ endfunction
 function! s:DB_SQLSRV_getListTable(table_prefix)
     return s:DB_SQLSRV_execSql(
                 \ "select convert(varchar,o.name), convert(varchar,u.name) ".
-                \ " from sysobjects o, sysusers u ".
+                \ "  from sysobjects o, sysusers u ".
                 \ " where o.uid=u.uid ".
-                \ "     and o.xtype='U' ".
-                \ "     and o.name like '".a:table_prefix."%' ".
-                \ " order by o.name")
+                \ "   and o.xtype='U' ".
+                \ "   and o.name like '".a:table_prefix."%' ".
+                \ " order by o.name"
+                \ )
 endfunction
 
 function! s:DB_SQLSRV_getListProcedure(proc_prefix)
     return s:DB_SQLSRV_execSql(
                 \ "select convert(varchar,o.name), convert(varchar,u.name) ".
-                \ " from sysobjects o, sysusers u ".
+                \ "  from sysobjects o, sysusers u ".
                 \ " where o.uid=u.uid ".
-                \ "     and o.xtype='P' ".
-                \ "     and o.name like '".a:proc_prefix."%' ".
-                \ " order by o.name")
+                \ "   and o.xtype='P' ".
+                \ "   and o.name like '".a:proc_prefix."%' ".
+                \ " order by o.name"
+                \ )
 endfunction
 
 function! s:DB_SQLSRV_getListView(view_prefix)
     return s:DB_SQLSRV_execSql(
                 \ "select convert(varchar,o.name), convert(varchar,u.name) ".
-                \ " from sysobjects o, sysusers u ".
+                \ "  from sysobjects o, sysusers u ".
                 \ " where o.uid=u.uid ".
-                \ "     and o.xtype='V' ".
-                \ "     and o.name like '".a:view_prefix."%' ".
-                \ " order by o.name")
+                \ "   and o.xtype='V' ".
+                \ "   and o.name like '".a:view_prefix."%' ".
+                \ " order by o.name"
+                \ )
 endfunction 
 function! s:DB_SQLSRV_getDictionaryTable() "{{{
     let result = s:DB_SQLSRV_execSql(
-                \ "select convert(varchar,o.name) ".
-                \ "  from sysobjects o ".
-                \ " where o.xtype='U' ".
-                \ " order by o.name"
+                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)||'.'||":'').
+                \ "       convert(varchar,o.name) ".
+                \ "  from sysobjects o, sysusers u ".
+                \ " where o.uid=u.uid ".
+                \ "   and o.xtype='U' ".
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name), ":'')."o.name"
                 \ )
     return s:DB_SQLSRV_stripHeaderFooter(result)
 endfunction "}}}
 function! s:DB_SQLSRV_getDictionaryProcedure() "{{{
     let result = s:DB_SQLSRV_execSql(
-                \ "select convert(varchar,o.name) ".
-                \ "  from sysobjects o ".
-                \ " where o.xtype='P' ".
-                \ " order by o.name"
+                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)||'.'||":'').
+                \ "       convert(varchar,o.name) ".
+                \ "  from sysobjects o, sysusers u ".
+                \ " where o.uid=u.uid ".
+                \ "   and o.xtype='P' ".
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name), ":'')."o.name"
                 \ )
     return s:DB_SQLSRV_stripHeaderFooter(result)
 endfunction "}}}
 function! s:DB_SQLSRV_getDictionaryView() "{{{
     let result = s:DB_SQLSRV_execSql(
-                \ "select convert(varchar,o.name) ".
-                \ "  from sysobjects o ".
-                \ " where o.xtype='V' ".
-                \ " order by o.name"
+                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)||'.'||":'').
+                \ "       convert(varchar,o.name) ".
+                \ "  from sysobjects o, sysusers u ".
+                \ " where o.uid=u.uid ".
+                \ "   and o.xtype='V' ".
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name), ":'')."o.name"
                 \ )
     return s:DB_SQLSRV_stripHeaderFooter(result)
 endfunction "}}}
@@ -2825,6 +2923,9 @@ function! s:DB_execSql(query)
         return
     endif
 
+   " Add query to internal history
+    call s:DB_historyAdd(query)
+    
     if s:DB_get("prompt_for_parameters") == "1"
         let query = s:DB_parseQuery(query)
     endif
@@ -2846,13 +2947,8 @@ function! s:DB_execSqlWithDefault(...)
     else
         let sql = sql . expand("<cword>")
     endif
-    if s:DB_get("prompt_for_parameters") == "1"
-        let sql = s:DB_parseQuery(sql)
-    endif
     
-    if sql != ""
-        return s:DB_execFuncTypeWCheck('execSql', sql)
-    endif
+    return s:DB_execSql(sql)
 endfunction
 
 function! s:DB_execRangeSql() range
@@ -3422,40 +3518,91 @@ function! s:DB_resBufName()
 endfunction
 " }}}
 " runPrevCmd {{{
-function! s:DB_runPrevCmd()
-    let refresh = 0
+function! s:DB_runPrevCmd(sql)
+    let refresh        = 0
+    let curr_bufnr     = s:dbext_prev_bufnr
+    let switched_bufnr = s:dbext_prev_bufnr
 
     " Check to ensure the buffer still exists
     if bufnr(s:dbext_prev_bufnr) > 0
         " If the buffer in that window is still the same buffer
         if winbufnr(s:dbext_prev_winnr) == s:dbext_prev_bufnr
             let refresh = 1
+            " Return to original window
+            exec s:dbext_prev_winnr."wincmd w"
         else
+            " Find another split window which contains this buffer
             if bufwinnr(s:dbext_prev_bufnr) > -1
                 let s:dbext_prev_winnr = bufwinnr(s:dbext_prev_bufnr)
                 let refresh = 1
+                " Return to original window
+                exec s:dbext_prev_winnr."wincmd w"
             else
-                call s:DB_warningMsg('Buffer:'.s:dbext_prev_bufnr.' is no longer visible')
+                if &hidden == 1
+                    " Return to the original window
+                    exec s:dbext_prev_winnr."wincmd w"
+                    " Record which buffer we are current editing
+                    let switched_bufnr = bufnr('%')
+                    " Change the buffer (assuming hidden is set) to the previous
+                    " buffer.
+                    exec s:dbext_prev_bufnr."buffer"
+                    " Refresh the SQL
+                    let refresh = 1
+                else
+                    " If empty, check if they want to leave it empty
+                    " of skip this variable
+                    let response = confirm("Buffer #:".s:dbext_prev_bufnr.
+                                \ " is no longer visible and hidden is not set.".
+                                \ " Do you want to execute".
+                                \ " this statement using the buffer's".
+                                \ " connection parameters from the same window".
+                                \ " (buffer #:".bufnr('%').")",
+                                \ "&Yes" .
+                                \ "\n&No"
+                                \ )
+                    if response == 1
+                        let refresh = 1
+                        " Return to original window
+                        exec s:dbext_prev_winnr."wincmd w"
+                    endif
+                endif
             endif
         endif
     else
         call s:DB_warningMsg('Buffer:'.s:dbext_prev_bufnr.' no longer exists')
+        " If empty, check if they want to leave it empty
+        " of skip this variable
+        let response = confirm("Buffer #:".s:dbext_prev_bufnr.
+                    \ " is no longer visible.  Do you want to execute".
+                    \ " this statement using the buffer's".
+                    \ " connection parameters from the same window".
+                    \ " (buffer #:".bufnr('%').")",
+                    \ "&Yes" .
+                    \ "\n&No"
+                    \ )
+        if response == 1
+            let refresh = 1
+            " Return to original window
+            exec s:dbext_prev_winnr."wincmd w"
+        endif
     endif
 
     if refresh == 1
-        " Return to original window
-        exec s:dbext_prev_winnr."wincmd w"
+        " Rerun the SQL command
+        call s:DB_execSql(a:sql)
+    endif
 
-        " Rerun the previous SQL command
-        call s:DB_runCmd(s:dbext_prev_cmd, s:dbext_prev_sql)
+    if curr_bufnr != switched_bufnr
+        " Return to the original window
+        exec s:dbext_prev_winnr."wincmd w"
+        " Change the buffer (assuming hidden is set) to the previous
+        " buffer.
+        exec switched_bufnr."buffer"
     endif
 endfunction "}}}
 " runCmd {{{
 function! s:DB_runCmd(cmd, sql)
-    let s:dbext_prev_cmd   = a:cmd
     let s:dbext_prev_sql   = a:sql
-    let s:dbext_prev_winnr = winnr()
-    let s:dbext_prev_bufnr = bufnr('%')
 
     let l:display_cmd_line = s:DB_get('display_cmd_line') 
 
@@ -3491,6 +3638,9 @@ function! s:DB_runCmd(cmd, sql)
                         \ a:sql . "\n" 
             call s:DB_addToResultBuffer(output, "add")
         endif
+
+        " Return to original window
+        exec s:dbext_prev_winnr."wincmd w"
     else " Don't use result buffer
         if l:display_cmd_line == 1
             echo cmd_line
@@ -3509,12 +3659,8 @@ function! s:DB_runCmd(cmd, sql)
 
     return
 endfunction "}}}
-" addToResultBuffer {{{
-function! s:DB_addToResultBuffer(output, do_clear)
-    " Store current window number so we can return to it
-    let cur_winnr      = winnr()
-    let res_buf_name   = s:DB_resBufName()
-    let conn_props     = s:DB_getTitle()
+" switchToBuffer {{{
+function! s:DB_switchToBuffer(buf_name, buf_file, get_buf_nr_name)
     " Retieve this value before we switch buffers
     let l:buffer_lines = s:DB_get('buffer_lines')
 
@@ -3522,30 +3668,119 @@ function! s:DB_addToResultBuffer(output, do_clear)
     " path name to search for the buffer, which in effect opens multiple
     " buffers called "Result" if the files that you are executing the
     " commands from are in different directories.
-    let buf_exists = bufexists(bufnr(res_buf_name))
-    let res_buf_nbr = bufnr(res_buf_name)
 
-    if bufwinnr(res_buf_nbr) == -1
+    " Get the previously stored buffer number
+    let buf_nr_str  = s:DB_get(a:get_buf_nr_name)
+    " The buffer number may not have been initialized, so we must
+    " handle this case.
+    " bufexists takes a numeric argument, so we must add 0 to it
+    " to convince Vim we are passing a numeric argument, if not
+    " bufexists returns an unexpected value
+    let buf_nr      = (buf_nr_str==''?-1:(buf_nr_str+0))
+    let buf_exists  = bufexists(buf_nr)
+
+    if buf_exists != 1
+        call s:DB_set(a:get_buf_nr_name, -1)
+    endif
+
+    if bufwinnr(buf_nr) == -1
         " if the buffer is not visible, wipe it out and recreate it,
         " this will position us in the new buffer
         " exec 'bwipeout! ' . res_buf_nbr
         " silent exec 'bot ' . l:buffer_lines . 'new ' . res_buf_name
         silent exec 'bot ' . l:buffer_lines . 'split '
-        exec ":e " . escape(res_buf_name, ' ')
-
-        nnoremap <buffer> <silent> R :DBRefreshResult<CR>
+        exec ":silent! e " . escape(a:buf_file, ' ')
+        call s:DB_set(a:get_buf_nr_name, bufnr('%'))
     else
         " If the buffer is visible, switch to it
-        exec bufwinnr(res_buf_nbr) . "wincmd w"
+        exec bufwinnr(buf_nr) . "wincmd w"
+    endif
+
+    return 1
+endfunction "}}}
+" closeWindow {{{
+function! s:DB_closeWindow(buf_name)
+    if a:buf_name == '%'
+        " The user hit 'q', which is a buffer specific mapping to close
+        " the result or history window.  Save the size of the buffer
+        " for future use.
+        
+        " Update the local buffer variables with the current size
+        " of the window, when we open it again we will use it's
+        " size instead of the default
+        call s:DB_set('buffer_lines', winheight(a:buf_name))
+        
+        " Hide it 
+        hide
+    else
+        " Do not use bufexists(res_buf_name), since it uses a fully qualified
+        " path name to search for the buffer, which in effect opens multiple
+        " buffers called "Result" if the files that you are executing the
+        " commands from are in different directories.
+        let buf_exists  = bufexists(bufnr(a:buf_name))
+        let res_buf_nbr = bufnr(a:buf_name)
+        let buf_win_nbr = bufwinnr(res_buf_nbr)
+
+        if buf_win_nbr != -1
+            " Update the local buffer variables with the current size
+            " of the window, when we open it again we will use it's
+            " size instead of the default
+            call s:DB_set('buffer_lines', winheight(buf_win_nbr))
+            " let s:dbext_buffer_lines = winheight(buf_win_nbr)
+
+            " If the buffer is visible, switch to it
+            exec bufwinnr(res_buf_nbr) . "wincmd w"
+
+            " Hide it 
+            hide
+        endif
+    endif
+endfunction "}}}
+" saveSize {{{
+function! s:DB_saveSize(buf_name)
+    " The result buffer and the history buffer compete for the same
+    " space.  We must record the current size of either buffer so
+    " the user does not constantly have to resize the window.
+
+    " Do not use bufexists(res_buf_name), since it uses a fully qualified
+    " path name to search for the buffer, which in effect opens multiple
+    " buffers called "Result" if the files that you are executing the
+    " commands from are in different directories.
+    let buf_exists  = bufexists(bufnr(a:buf_name))
+    let res_buf_nbr = bufnr(a:buf_name)
+    let buf_win_nbr = bufwinnr(res_buf_nbr)
+
+    if buf_win_nbr != -1
+        " Update the local buffer variables with the current size
+        " of the window, when we open it again we will use it's
+        " size instead of the default
+        call s:DB_set('buffer_lines', winheight(buf_win_nbr))
+        " let s:dbext_buffer_lines = winheight(buf_win_nbr)
+    endif
+endfunction "}}}
+" addToResultBuffer {{{
+function! s:DB_addToResultBuffer(output, do_clear)
+    " Store current window number so we can return to it
+    " let cur_winnr      = winnr()
+    let res_buf_name   = s:DB_resBufName()
+    let conn_props     = s:DB_getTitle()
+
+    " First close the history window if already open
+    call s:DB_closeWindow(s:DB_get('history_bufname'))
+    call s:DB_saveSize(res_buf_name)
+
+    " Open buffer in required location
+    if s:DB_switchToBuffer(res_buf_name, res_buf_name, 'result_bufnr') == 1
+        nnoremap <buffer> <silent> R :DBRefreshResult<CR>
     endif
 
     setlocal modified
     " Create a buffer mapping to clo this window
-    nnoremap <buffer> q :clo<cr>
+    nnoremap <buffer> q :DBCloseResults<cr>
     " Delete all the lines prior to this run
     if a:do_clear == "clear" 
         %d
-        silent! exec "normal! iConnection: " . conn_props . "\<Esc>"
+        silent! exec "normal! iConnection: " . conn_props . "\<Esc>0"
     endif
 
     if strlen(a:output) > 0
@@ -3566,8 +3801,10 @@ function! s:DB_addToResultBuffer(output, do_clear)
     setlocal nonumber
     " Go to top of output
     norm gg
+
     " Return to original window
-    exec cur_winnr."wincmd w"
+    " exec cur_winnr."wincmd w"
+    exec s:dbext_prev_winnr."wincmd w"
 
     return
 endfunction "}}}
@@ -3890,26 +4127,81 @@ function! s:DB_parsePHP(query)
     let query = a:query
     " Remove any newline characters
     let query = substitute(query, "\n", ' ', 'g')
+    " Since PHP can use either single or double quotes
+    " the queries below are more difficult concatenating 
+    " different strings together.
+
     " Strip off beginning and closing quotes
+    " These can be single or double quotes
     let query = substitute(query, 
-                \ '\%(^[\t "]*\)\?', 
+                \ '\%(^[\t "'."'".']*\)\?', 
                 \ '', 
                 \ ''
                 \ )
+    " For the ending quotes, remove at most 1
     let query = substitute(query, 
-                \ '[ ";]\+$', 
+                \ '["'."'".']\?\s*\(;\|\.\)\?\s*$', 
                 \ '', 
                 \ ''
                 \ )
+                " \ '[ "'."'".';]\+$', 
+
+    " Since strings are enclosed in double quotes ("), they can be escaped
+    " with a backslash, we must replace these as well.
+    "     "select \"name\", col2  "
+    let query = substitute(query, 
+                \ '\\"', 
+                \ '"', 
+                \ 'g'
+                \ )
+
+    " Strip off beginning and closing quotes
+    " The ending quote can be any of the following:
+    "      something "
+    "      something ",
+    "      something ',
+    "      something " +
+    "      something ' .
+    "      something " .
+    "      something " ;
+    " let query = substitute(query, 
+    "             \ '\%(^[\t "'."'".']*\)\?', 
+    "             \ '', 
+    "             \ ''
+    "             \ )
+    " let query = substitute(query, 
+    "             \ '[ "'."'".';.+]\+$', 
+    "             \ '', 
+    "             \ ''
+    "             \ )
+
+    " If strings are concatenated over multiple lines, since they are
+    " joined now, remove the concatenation
+    " Do not remove the ending semi-colon
+    "    "select " + " * from " + " some_table ";
+    "    "select " . " * from " . " some_table ";
+    "    'select ' . ' * from ' . ' some_table ';
+    let query = substitute(query, 
+                \ '\s*["'."'".']\s*\(+\|\.\)\(\s*["'."'".']\s*\)', 
+                \ ' ', 
+                \ 'g'
+                \ )
+                " \ '\s*["'."'".']\s*\(+\|\.\)\(\s*["'."'".']\s*\|;\)', 
 
     " Prompt for the variables which are part of
     " string concentations like this:
     "   "SELECT * FROM ".$prefix."product"
-    let var_expr = '"\s*\.\s*\(\$.\{-}\)\.\s*"'
-    "  "\s*         - Double quote followed any space 
-    "  \.\s*        - A period and any space
-    "  \(\$.\{-}\)  - The variable / obj / method
-    "  \.\s*"       - A period followed by any space followed by a double quote
+    "   'SELECT * FROM '.$prefix.'product'
+    let var_expr = '["'."'".']\s*\.\s*\(\$.\{-}\)\(\[.\{-}\]\)\?\(\.\s*["'."'".']\|\s*;\?\s*$\)'
+    "  ["']\s*          - Double quote followed any space 
+    "  \.\s*            - A period and any space
+    "  \(\$.\{-}\)      - The variable / obj / method
+    "  \(\[.\{-}\]\)\?  - Optional [...]
+    "  \(               - One of the following
+    "     \.\s*["']     - A period followed by any space followed by a double quote
+    "     \|            - or
+    "     \s*;\?\s*$    - An optional semicolon or end of line
+    "  \)               - End of choice
     let query = s:DB_searchReplace(query, var_expr, var_expr, 0)
 
     " This next one will handle both {$pkey_name} and $id
@@ -4146,6 +4438,158 @@ function! s:DB_parseProfile(value)
     return rc
 endfunction
 "}}}
+" History {{{
+function! s:DB_historyAdd(sql)
+
+    " Record current buffer to return to the correct one
+    let s:dbext_prev_winnr = winnr()
+    let s:dbext_prev_bufnr = bufnr('%')
+ 
+    let max_entry = s:DB_get('history_max_entry')
+    if max_entry != 0 && strlen(a:sql) > max_entry
+        return
+    endif
+
+    let sql = substitute(a:sql, "\n", '@@@', 'g')
+    call s:DB_historyOpen()
+
+    " Go to top of file and search the the same string
+    setlocal noreadonly
+    exec "normal! gg"
+    " Remove any duplicate entries
+    exec 'silent! %g/^\d\+\.\s\+'.escape(sql, '\\/.*$^~[]').'\s*$/d'
+    1put ='1. '.sql
+    " Renumber existing entries
+    exec 'silent! %s/^\d\+\ze\.\s\+/\=line(".")-1'
+
+    exec "normal! 2gg"
+    " Save the history file
+    call s:DB_historySave(1)
+
+    " Return to original window
+    " exec cur_winnr."wincmd w"
+    exec s:dbext_prev_winnr."wincmd w"
+
+endfunction 
+
+function! s:DB_historyUse(line)
+    let i = matchstr(getline(a:line), '^\d\+')
+
+    if i !~ '\d'
+        " call s:DB_warningMsg('Invalid choice:'.getline(a:line))
+        return
+    endif
+
+    let sql = matchstr(getline("."), '^\d\+\.\s*\zs.*')
+    let sql = substitute(sql, '@@@', "\n", 'g')
+
+    call s:DB_runPrevCmd(sql)
+endfunction 
+
+function! s:DB_historyDel(line)
+    let i = matchstr(getline(a:line), '^\d\+')
+
+    if i !~ '\d'
+        " call s:DB_warningMsg('Invalid choice:'.getline(a:line))
+        return
+    endif
+
+    set noreadonly
+    exec 'silent! g/^'.i.'\./d'
+    " Renumber existing entries
+    exec 'silent! %s/^\d\+\ze\.\s\+/\=line(".")-1'
+    exec "normal! 2gg"
+    call s:DB_historySave(0)
+endfunction 
+
+function! s:DB_historyList()
+    let s:dbext_prev_winnr = winnr()
+    let s:dbext_prev_bufnr = bufnr('%')
+
+    call s:DB_historyOpen()
+
+    " Create a mapping to act upon the history
+    nnoremap <buffer> <silent> <2-LeftMouse> :call <SID>DB_historyUse(line("."))<CR>
+    nnoremap <buffer> <silent> <CR>          :call <SID>DB_historyUse(line("."))<CR>
+    nnoremap <buffer> <silent> dd            :call <SID>DB_historyDel(line("."))<CR>
+    " Create a buffer mapping to clo this window
+    nnoremap <buffer> q :DBCloseResults<cr>
+    nnoremap <buffer> R :DBRefreshResult<cr>
+    
+    " Go to top of output
+    norm 2gg
+endfunction 
+
+function! s:DB_historyOpen()
+    let res_buf_name   = s:DB_resBufName()
+    " First close the result window if already open
+    call s:DB_closeWindow(res_buf_name)
+    call s:DB_saveSize(s:DB_get('history_bufname'))
+
+    " Prevent the alternate buffer (<C-^>) from being set to this
+    " temporary file
+    let l:old_cpoptions   = &cpoptions
+    let l:old_eventignore = &eventignore
+    setlocal cpo-=A
+    setlocal eventignore=all
+
+    " Now display the history window
+    if s:DB_switchToBuffer(s:DB_get('history_bufname'), s:DB_get('history_file'), 'history_bufnr') > 0
+        if line("$") == 1 && getline(1) == ''
+            " New buffer, check to ensure it has something in it
+            0put ='dbext history, <enter> or dbl-click ' .
+                        \ 'to execute, or [q] to quit (history size:' .  
+                        \ s:DB_get('history_size') .
+                        \ ')'
+            exec "g/^\s*$/d"
+            " This will save and hide the buffer
+            call s:DB_historySave(0)
+        endif
+    endif
+
+    " Restore previous cpoptions
+    let &cpoptions   = l:old_cpoptions
+    let &eventignore = l:old_eventignore
+
+    " Do setup always, just in case.
+    setlocal bufhidden=hide
+    setlocal nobuflisted
+    setlocal noswapfile
+    setlocal nowrap
+    setlocal nonumber
+    setlocal nomodified
+    setlocal readonly
+    " Reload buffer automatically if it has changed outside of
+    " this Vim session
+    setlocal autoread
+endfunction 
+
+function! s:DB_historySave(auto_hide)
+    " Do setup always, just in case.
+    " setlocal buftype=nofile
+    setlocal bufhidden=hide
+    setlocal nobuflisted
+    setlocal noswapfile
+    setlocal noreadonly
+
+    " Delete entries past the size limit
+    let size = s:DB_get('history_size') + 2
+    " Add 2 since there is the description line and
+    " we want to start deleting after that item
+    if line("$") > size
+        exec 'silent! '.size.',$d'
+    endif
+
+    silent! write
+
+    setlocal readonly
+
+    if a:auto_hide == 1
+        silent! hide
+    endif
+
+endfunction 
+
 "}}}
 call s:DB_buildLists()
 call s:DB_resetGlobalParameters()

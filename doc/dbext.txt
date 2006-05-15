@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 6.0.  Last change: Fri Sep 09 2005 2:11:11 PM
+*dbext.txt*	For Vim version 6.0.  Last change: Mon Apr 24 2006 9:53:37 PM
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,14 +7,14 @@
                      David Fishburn <fishburn@ianywhere.com>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 2.30
+	  	dbext.vim version 3.00
 
 For instructions on installing this file, type
 	:help add-local-help
 |add-local-help| inside Vim.
 
 Homepage: http://vim.sourceforge.net/script.php?script_id=356
-SourceForge: $Revision: 1.21 $
+SourceForge: $Revision: 1.23 $
 
 *dbext* *dbext.vim* *db_ext* *db_ext.vim* *database-extension* *pgsql* *mysql*
 *asa* *ase* *ingres* *interbase* *sqlite* *sqlsrv* *ora* *db2*
@@ -37,17 +37,55 @@ SourceForge: $Revision: 1.21 $
 8.  Creating mappings using dbext commands	|dbext-in-mappings|
 9.  Object Completion                          	|dbext-completion|
 10. Listing Objects in the Database            	|dbext-list-objects|
-11. Intellisense integration             	|dbext-intellisense|
+11. Plugin integration             	        |dbext-integration|
+    11.1 OMNI completion integration            |dbext-omni-completion|
+    11.2 Intellisense integration             	|dbext-intellisense|
 12. Filetype support                         	|dbext-filetypes|
     12.1 Using filetype support                 |dbext-filetypes-using|
     12.2 Adding new filetypes                   |dbext-filetypes-adding|
-13. Open Source                         	|dbext-sourceforge|
-14. Tutorial                             	|dbext-tutorial|
+13. Using SQL History                         	|dbext-history|
+14. Open Source                         	|dbext-sourceforge|
+15. Tutorial                             	|dbext-tutorial|
 
 {Vi does not have any of this}
 
 ------------------------------------------------------------------------------
 What's New						*dbext-new*
+
+Version 3.00
+
+ New Features
+ ------------
+ - dbext supports a history of previous commands.  The DBHistory 
+   command will display a numbered list of previous SQL statements.
+   Pressing <enter> or double clicking on one of the items will
+   execute the statement.  The number of items in the list is 
+   configurable via your vimrc.  The history items are stored in a
+   file, dbext_sql_history.txt.  The location of the file can also 
+   be controlled.
+ - The 'refresh' feature added in version 2.30 has been updated to take
+   advantage of the history feature.
+ - The PHP parser has improved and can handle single or double quoted
+   strings, string concatenation and host variables.  It will correctly
+   strip the quotes, join the concatenated strings and prompt the user
+   for host variables before executing the SQL statement.
+ - Updated documentation for Vim 7 SQL code completion.
+ - Table, procedure and view dictionaries include the owner name of the 
+   object.  This is on by default, but can be controlled via a new global
+   option, dbext_default_dict_show_owner.  This has not been enabled for all
+   databases it depends on whether the database supports this feature.  The
+   autoload\sqlcomplete.vim plugin takes advantage of this feature.
+ - Added support for stored procedures / functions in MySQL 5.
+
+ Bug Fixes
+ ------------
+ - Updated the PHP parser to work with a more varied string quotes and
+   string concatenation.
+ - The "extra" feature did not add a leading space for MySQL.  Using the
+   tabbed output required updates to the parsing of the output generated 
+   by MySQL.
+ - Miscellaneous documentation updates.
+
 
 Version 2.30
 
@@ -349,6 +387,40 @@ Version 2.00
           option to 0 (off) will leave the temporary file in the
           $TEMP directory for viewing. >
             :DBSetOption delete_temp_file=0
+    dbext_default_history_file
+<       - The SQL history is stored within a file.  This was done for 
+          a couple of reasons:
+              1.  No upper bound on the size of the history.
+              2.  If you have multiple instances of Vim running, each
+                  will see the current history without overwriting
+                  each other (thereby loosing history).
+              3.  The history can easily be removed if necessary.
+          Each SQL statement has it's newline characters replaced with 
+          @@@ so the statement fits on one line.  The default history
+          file varies by the OS:
+              Unix:     $HOME/dbext_sql_history.txt
+              Windows:  $VIM/dbext_sql_history.txt
+          If you wish to override the file location you can via your
+          |vimrc|.  To see the current setting run :DBGetOption. >
+            :let  g:dbext_default_history_file = '/your/loc/file.txt'
+            :let  g:dbext_default_history_file = 'c:\your\loc\file.txt'
+    dbext_default_history_size 
+<       - Controls how many SQL statements should be stored within the
+          history.  The default value is 50.  This option must be
+          set within your |vimrc|.  To see the current setting run
+          :DBGetOption. >
+            :let  g:dbext_default_history_size = 50
+    dbext_default_history_max_entry
+<       - You can limit the size of the entries dbext records in the
+          history file.  The current default is 4K.  Statements longer
+          than 4K are not stored within the history file.  Setting this
+          value to 0, removes any limits on the size of a single entry. >
+            :let  g:dbext_default_history_max_entry = 4096
+    dbext_default_dict_show_owner
+<       - When creating a dictionary of tables, procedures and views
+          the owner name can also be included.  The default is enabled, 
+          to disable add the following to your vimrc: >
+            :let  g:dbext_default_dict_show_owner = 0
 <
  Buffer variables
     You can check all options for the buffer without specifying an option name
@@ -404,6 +476,9 @@ Version 2.00
           additional items to the tools command line.  For example, 
           using ASA, I could run: >
               DBSetOption extra=CON=myconn
+<
+          From within a profile (set within your vimrc): >
+              let g:dbext_default_profile_mysql = 'type=MYSQL:user=root:passwd=:dbname=mysql:extra=-t'
 <
           This has the net result of creating the following command line: >
               dbisql -c "UID=dba;PWD=sql;CON=myconn"
@@ -623,6 +698,12 @@ Version 2.00
     " sql - list - column
     nnoremap <unique> <Leader>slc <Plug>DBListColumn
     :DBListColumn
+    
+    " Opens the result window and displays a numbered list of 
+    " previous SQL statements.  Pressing <enter> or double clicking 
+    " on a SQL statement will execute the SQL.
+    " sql - history
+    nnoremap <unique> <Leader>sh :DBHistory
     
     " Prompt for connection information
     " [Optional] Profile
@@ -962,8 +1043,8 @@ To specify the type of database you connect to most often, you can place the
         DBCompleteProcedures!
         DBCompleteViews!
 <
- The Intellisense plugin uses this feature of dbext to populate it's popup
- windows, see |dbext-intellisense|.
+ For complete code completion added via various plugins see
+ |dbext-integration|.
 
 ------------------------------------------------------------------------------
 10. Listing Ojects in the Database                     	*dbext-list-objects*
@@ -996,19 +1077,32 @@ To specify the type of database you connect to most often, you can place the
  If no table name is supplied, the current word is chosen as the table name.
 
 ------------------------------------------------------------------------------
-11. Intellisense integration                     	*dbext-intellisense*
+11. Plugin integration                     	        *dbext-integration*
+
+ SQL code completion has an interface component which provides a popup window
+ that allows the user to choose from a list of values.  The values include
+ various static elements (statements, functions, types, keywords, ...).  But
+ they can also provide dynamic lists for tables, procedures, views and even
+ column lists for tables.
+
+ If you want the code completion to work with dynamic lists, you must ensure
+ each buffer can connect to the required database.  You can do this easily by
+ creating a profile (|dbext-connect-profiles|), and making it the default
+ profile (dbext_default_profile).  If you start editing a new file, dbext will
+ automatically connect using the specified default profile.
+
+11.1 OMNI completion integration                     	*dbext-omni-completion*
+
+ Vim 7 has natively included features provide an interface which allows plugin
+ developers to provide code completion.  The SQL completion plugin is included
+ with Vim 7.  It will detect if dbext.vim is already installed and take
+ advantage of it.
+
+11.2 Intellisense integration                     	*dbext-intellisense*
 
  Intellisense.vim (http://www.vim.org/scripts/script.php?script_id=747) is a
- plugin that provides a popup window that allows the user to choose from a
- list of values.  The SQL intellisense plugin provides drop down windows for
- various static elements (statements, functions, types, keywords, ...).
- 
- Intellisense can also provide dynamic lists for tables, procedures and views.
- It does this by calling dbext's DBComplete[ Table | Procedure | View ]
- commands, see |dbext-completion|.
-
- dbext provides the database interface to the intellisense plugin.  To enable
- the dynamic lists via Intellisense, you must install the dbext plugin.
+ windows only solution.  It has support for a number of different languages
+ and provides a popup window which can be dynamically populated.
 
  The first version of Intellisense to have the SQL plugin is 1.24.
 
@@ -1094,13 +1188,46 @@ To specify the type of database you connect to most often, you can place the
  David Fishburn -and- Peter Bagyinszki for inclusion into future versions.
  
 ------------------------------------------------------------------------------
-13. Open Source                         	        *dbext-sourceforge*
+13. Using SQL History                         	        *dbext-history*
+
+ As of version 3.0, dbext maintains a history file which is shared between 
+ multiple instances of Vim.  A statement added in one instance of Vim
+ will be immediately available in a different instance of Vim on the 
+ same computer.
+
+ To access the history you can run the command, :DBHistory, or use the
+ mapping <Leader>sh (\sh using Vim defaults).  This opens a window similar 
+ to the result window.  This buffer is readonly, but has several buffer 
+ specific maps to allow you to interact with it.
+
+ To re-run a statement you can either press <enter> on the line, or if you 
+ prefer the mouse you can double click on the statement.  When a statement
+ is chosen you are switched back to the buffer which opened the history 
+ window.  The statement is executed using that buffers connection
+ parameters.
+ 
+ To remove statements from the history you can press "dd" as you would 
+ delete a line in a regular Vim buffer.
+
+ The history buffer is automatically saved each time it is changed.
+
+ The default file location for the history file is stored in your $HOME
+ directory for Unix and in the $VIM directory for Windows.  It can be
+ configured via the g:dbext_default_history_file variable.  The number
+ of statements stored within the history can be configured via the
+ g:dbext_default_history_size variable.   By default statements < 4K
+ are stored in the history this can be configured via the
+ g:dbext_default_history_max_entry variable.  See |dbext-configure-variables| 
+ for more details.
+ 
+------------------------------------------------------------------------------
+14. Open Source                         	        *dbext-sourceforge*
 
  dbext is now an open source project found at: >
      https://sourceforge.net/projects/dbext/
 < 
 ------------------------------------------------------------------------------
-14. Tutorial                            	        *dbext-tutorial*
+15. Tutorial                            	        *dbext-tutorial*
 
  This tutorial is designed to take you through the common features of dbext
  so that:
@@ -1618,6 +1745,15 @@ To specify the type of database you connect to most often, you can place the
  The time is saved since you do not need to copy the string to another scratch
  buffer, and manually join the strings, and replace the method() calls to a
  static value, just so you can test.
+
+
+
+ History
+ -------
+ History is a new feature of dbext 3.0.  Previous statements are 
+ automatically recorded into a history file.  To view these statements
+ run :DBHistory or <Leader>sh.  Pressing <enter> or double clicking will
+ re-run the statement.  See |dbext-history| for more details.
 
 
 
