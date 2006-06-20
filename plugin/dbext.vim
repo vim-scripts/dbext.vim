@@ -1,9 +1,10 @@
 " dbext.vim - Commn Database Utility
 " ---------------------------------------------------------------
-" Version:  3.00
+" Version:  3.50
+" Maintainer:  David Fishburn <fishburn@ianywhere.com>
 " Authors:  Peter Bagyinszki <petike1@dpg.hu>
 "           David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Mon Apr 24 2006 9:04:38 PM
+" Last Modified: Wed Jun 14 2006 8:30:44 AM
 " Based On: sqlplus.vim (author: Jamis Buck <jgb3@email.byu.edu>)
 " Created:  2002-05-24
 " Homepage: http://vim.sourceforge.net/script.php?script_id=356
@@ -28,7 +29,7 @@ if !exists("loaded_multvals") || loaded_multvals < 304
     echomsg "dbext: You need to have multvals version 3.4 or higher"
     finish
 endif
-let g:loaded_dbext = 300
+let g:loaded_dbext = 350
 
 " Script variable defaults, these are used internal and are never displayed
 " to the end user via the DBGetOption command  {{{
@@ -55,11 +56,11 @@ function! s:DB_buildLists()
     let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'INGRES')
     "interbase (bagyinszki)
     let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'INTERBASE')
-    "mysql (bagyinszki)
+    "mysql (fishburn)
     let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'MYSQL')
     "oracle (fishburn)
     let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'ORA')
-    "postgresql (bagyinszki)
+    "postgresql (fishburn)
     let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'PGSQL')
     "microsoft sql server (fishburn)
     let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'SQLSRV')
@@ -96,9 +97,11 @@ function! s:DB_buildLists()
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'prompt_for_parameters')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'prompting_user')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'always_prompt_for_variables')
+    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'stop_prompt_for_variables')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'display_cmd_line')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'variable_def')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'buffer_defaulted')
+    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dict_show_owner')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dict_table_file')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dict_procedure_file')
     let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dict_view_file')
@@ -117,6 +120,7 @@ function! s:DB_buildLists()
     let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'history_size')
     let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'history_max_entry')
     let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'dbext_version')
+    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'inputdialog_cancel_support')
 
     " DB server specific params
     " See below for 3 additional DB2 items
@@ -149,13 +153,13 @@ function! s:DB_buildLists()
     call MvIterDestroy("MvScriptParams")
 
     let loop_count         = 0
-    let s:prompt_type_list = "\n0. None\n"
+    let s:prompt_type_list = "\n0. None"
 
     call MvIterCreate(s:db_types_mv, s:mv_sep, "MvDBTypes", s:mv_sep)
     while MvIterHasNext('MvDBTypes')
         let type_mv = MvIterNext('MvDBTypes')
         let loop_count = loop_count + 1
-        let s:prompt_type_list = s:prompt_type_list . loop_count . '. ' . type_mv . "\n"
+        let s:prompt_type_list = s:prompt_type_list . "\n" . loop_count . '. ' . type_mv 
         call MvIterCreate(s:db_params_mv, s:mv_sep, "MvDBParams", s:mv_sep)
         while MvIterHasNext('MvDBParams')
             " For each element in the db parameters, add the database
@@ -205,7 +209,7 @@ function! s:DB_buildLists()
         let index = match(l:global_vars, prof_nm_re, index)
     endwhile
     if loop_count > 1
-        let s:prompt_profile_list = "\n0. None" . s:prompt_profile_list
+        let s:prompt_profile_list = "0. None" . s:prompt_profile_list
     endif
 
 endfunction 
@@ -586,7 +590,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "ASE_bin"                 |return (exists("g:dbext_default_ASE_bin")?g:dbext_default_ASE_bin.'':'isql')
     elseif a:name ==# "ASE_cmd_terminator"      |return (exists("g:dbext_default_ASE_cmd_terminator")?g:dbext_default_ASE_cmd_terminator.'':"\ngo\n")
     elseif a:name ==# "ASE_cmd_options"         |return (exists("g:dbext_default_ASE_cmd_options")?g:dbext_default_ASE_cmd_options.'':'-w 10000')
-    elseif a:name ==# "DB2_use_db2batch"        |return (exists("g:dbext_default_DB2_use_db2batch")?g:dbext_default_DB2_use_db2batch.'':'0')
+    elseif a:name ==# "DB2_use_db2batch"        |return (exists("g:dbext_default_DB2_use_db2batch")?g:dbext_default_DB2_use_db2batch.'':(has('win32')?'0':'1'))
     elseif a:name ==# "DB2_bin"                 |return (exists("g:dbext_default_DB2_bin")?g:dbext_default_DB2_bin.'':'db2batch')
     elseif a:name ==# "DB2_cmd_options"         |return (exists("g:dbext_default_DB2_cmd_options")?g:dbext_default_DB2_cmd_options.'':'-q off -s off')
     elseif a:name ==# "DB2_db2cmd_bin"          |return (exists("g:dbext_default_DB2_db2cmd_bin")?g:dbext_default_DB2_db2cmd_bin.'':'db2cmd')
@@ -617,9 +621,13 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "SQLSRV_cmd_options"      |return (exists("g:dbext_default_SQLSRV_cmd_options")?g:dbext_default_SQLSRV_cmd_options.'':'-w 10000 -r -b -n')
     elseif a:name ==# "SQLSRV_cmd_terminator"   |return (exists("g:dbext_default_SQLSRV_cmd_terminator")?g:dbext_default_SQLSRV_cmd_terminator.'':"\ngo\n")
     elseif a:name ==# "prompt_profile"          |return (exists("g:dbext_default_prompt_profile")?g:dbext_default_prompt_profile.'':"" .
-                \ "[Optional] Enter profile name: ".s:prompt_profile_list)
+                \ (has('gui_running')?("[Optional] Enter profile #:\n".s:prompt_profile_list):
+                \ (s:prompt_profile_list."\n[Optional] Enter profile #: "))
+                \ )
     elseif a:name ==# "prompt_type"             |return (exists("g:dbext_default_prompt_type")?g:dbext_default_prompt_type.'':"" .
-                \ "\nPlease choose # of database type: ".s:prompt_type_list)
+                \ (has('gui_running')?("\nPlease choose # of database type:".s:prompt_type_list):
+                \ (s:prompt_type_list."\nPlease choose # of database type: "))
+                \ )
     elseif a:name ==# "prompt_integratedlogin"  |return (exists("g:dbext_default_prompt_integratedlogin")?g:dbext_default_prompt_integratedlogin.'':'[Optional] Use Integrated Login: ')
     elseif a:name ==# "prompt_user"             |return (exists("g:dbext_default_prompt_user")?g:dbext_default_prompt_user.'':'[Optional] Database user: ')
     elseif a:name ==# "prompt_passwd"           |return (exists("g:dbext_default_prompt_passwd")?g:dbext_default_prompt_passwd.'':'[O] User password: ')
@@ -631,10 +639,11 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "prompt_extra"            |return (exists("g:dbext_default_prompt_extra")?g:dbext_default_prompt_extra.'':'[O] Extra parameters: ')
     elseif a:name ==# "prompt_bin_path"         |return (exists("g:dbext_default_prompt_bin_path")?g:dbext_default_prompt_bin_path.'':'[O] Directory for database tools: ')
     " These are for name completion using Vim's dictionary feature
-    elseif a:name ==# "dict_show_owner"       |return (exists("g:dbext_default_dict_show_owner")?g:dbext_default_dict_show_owner.'':'1')
+    elseif a:name ==# "dict_show_owner"         |return (exists("g:dbext_default_dict_show_owner")?g:dbext_default_dict_show_owner.'':'1')
     elseif a:name ==# "dict_table_file"         |return '' 
     elseif a:name ==# "dict_procedure_file"     |return '' 
     elseif a:name ==# "dict_view_file"          |return ''
+    elseif a:name ==# "inputdialog_cancel_support"       |return (exists("g:dbext_default_inputdialog_cancel_support")?g:dbext_default_inputdialog_cancel_support.'':((v:version>=602)?'1':'0'))
     else                                        |return ''
     endif
                 " \nPlease choose database type (from above ie ASA): ")
@@ -3268,11 +3277,20 @@ function! s:DB_pad(side, length, value)
 endfunction
 
 function! s:DB_getInput(prompt, default_value, cancel_value)
-    if v:version >= 602
-        return inputdialog( a:prompt, a:default_value, a:cancel_value )
+    if s:DB_get('inputdialog_cancel_support') == 1
+        let val = inputdialog( a:prompt, a:default_value, a:cancel_value )
     else
-        return inputdialog( a:prompt, a:default_value )
+        let val = inputdialog( a:prompt, a:default_value )
     endif
+
+    if v:errmsg =~ '^E180' && s:DB_get('inputdialog_cancel_support') == 1
+        " Workaround for the Vim7 bug in inputdialog
+        let g:dbext_default_inputdialog_cancel_support = 0
+        call s:DB_warningMsg("Vim7 bug found, setting g:dbext_default_inputdialog_cancel_support = 0")
+        let val = inputdialog( a:prompt, a:default_value )
+    endif
+
+    return val
 endfunction
 
 function! DB_getVisualBlock() range
@@ -3810,6 +3828,11 @@ function! s:DB_addToResultBuffer(output, do_clear)
 endfunction "}}}
 " Parsers {{{
 function! s:DB_parseQuery(query)
+    " Reset this per query, the user can choose to stop prompting
+    " at any time and this should stop for each of the different
+    " options in variable_def
+    call s:DB_set("stop_prompt_for_variables", 0)
+
     if &filetype == "sql"
         " Dont parse the SQL query, since DB_parseHostVariables
         " will pickup the standard host variables for prompting.
@@ -3843,6 +3866,12 @@ endfunction
 
 " Host Variable Prompter {{{
 function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
+
+    " Check if the user has chosen to "Stop Prompting" for this query
+    if s:DB_get("stop_prompt_for_variables") == 1
+        return a:str
+    endif
+
     let str = a:str
     let count_nbr = 0
     " Find the string index position of the first match
@@ -3885,19 +3914,24 @@ function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
             " Skip this match and move on to the next
             let index = match(str, a:exp_find_str, index+strlen(var))
         elseif response == 2
+            " Use blank
             " Replace the variable with what was entered
             let replace_sub = '\%'.index.'c'.'.\{'.strlen(var).'}'
             let str = substitute(str, replace_sub, var_val, '')
             let index = match(str, a:exp_find_str, index+strlen(var_val))
         elseif response == 4
+            " Never Prompt
             call s:DB_set("always_prompt_for_variables", "-1")
             break
         elseif response == 5
+            " Abort
             " If we are aborting, do not execute the SQL statement
             let str = ""
             break
         else
+            " Stop Prompting
             " Skip all remaining matches
+            call s:DB_set("stop_prompt_for_variables",1)
             break
         endif
     endwhile
@@ -3990,15 +4024,26 @@ function! s:DB_parseHostVariables(query)
         call MvIterCreate(s:DB_get("variable_def"), ',', "MvIdentifiers")
         while MvIterHasNext('MvIdentifiers')
             let variable_def = MvIterNext('MvIdentifiers')
-            " Extract the identifier, use the greed nature of regex.
+            " Extract the identifier, use the greedy nature of regex.
             " Allow them to specify more than a single character for the
             " search. We must assume they follow the correct format
             " though and the criteria ends with a WQ; (case insensitive)
-            let identifier = substitute(variable_def,'\(.*\)[wW][qQ]$','\1','')
+            let until_str = ''
+            let identifier = matchstr(variable_def,'\zs\(.*\)\ze[wW][qQ]$')
+            " let identifier = substitute(variable_def,'\(.*\)[wWu][qQ]$','\1','')
             let following_word_option = 
-                        \ substitute(variable_def, '.*\([wW]\)[qQ]$', '\1', '')
+                        \ matchstr(variable_def, '.*\zs[wW]\ze[qQ]$')
+                        " substitute(variable_def, '.*\([wW]\)[qQ]$', '\1', '')
             let quotes_option = 
-                        \ substitute(variable_def, '.*\([qQ]\)$', '\1', '')
+                        \ matchstr(variable_def, '.*\zs[qQ]\ze$')
+                        " substitute(variable_def, '.*\([qQ]\)$', '\1', '')
+            if identifier == ''
+                let until_str = 
+                        \ matchstr(variable_def, '.*[u]\zs.\+\ze$')
+                        " substitute(variable_def, '.*[u]\(.\+\)$', '\1', '')
+                let identifier = 
+                        \ matchstr(variable_def, '\zs.*\ze[u]\(.\+\)$')
+            endif
 
             " Validation checks
             if strlen(identifier) != 0
@@ -4007,34 +4052,41 @@ function! s:DB_parseHostVariables(query)
             else
                 let msg = "dbext: Variable Def: Invalid identifier[" .
                             \ variable_def . "]"
-                call s:DB_warning_msg(msg)
+                call s:DB_warningMsg(msg)
                 return query
             endif
-            " w - MUST have word characters after it
-            " W - CANNOT have any word characters after it
-            if following_word_option ==# 'w'
+            if until_str != ''
+                " Prompt up until the following 
+                let following_word = ''
+                let retrieve_ident = identifier . following_word
+            elseif following_word_option ==# 'w'
+                " w - MUST have word characters after it
                 let following_word = '\w\+'
                 let retrieve_ident = identifier . following_word
             elseif following_word_option ==# 'W'
+                " W - CANNOT have any word characters after it
                 let following_word = '\(\w\)\@<!'
                 let retrieve_ident = identifier
             else
                 let msg = "dbext: Variable Def: " .
                             \ "Invalid following word indicator[" .
                             \ variable_def . "]"
-                call s:DB_warning_msg(msg)
+                call s:DB_warningMsg(msg)
                 return query
             endif
-            " q - quotes do not matter
-            " Q - CANNOT be surrounded in quotes
-            if quotes_option ==# 'q'
+            if until_str != ''
+                " Prompt up until the following 
+                let quotes = ''
+            elseif quotes_option ==# 'q'
+                " q - quotes do not matter
                 let quotes = ''
             elseif quotes_option ==# 'Q'
+                " Q - CANNOT be surrounded in quotes
                 let quotes = "'".'\@<!'
             else
                 let msg = "dbext: Variable Def: Invalid quotes indicator[" .
                             \ variable_def . "]"
-                call s:DB_warning_msg(msg)
+                call s:DB_warningMsg(msg)
                 return query
             endif
 
@@ -4044,14 +4096,21 @@ function! s:DB_parseHostVariables(query)
             " there is no way to distinguish between which ? you are 
             " prompting for, therefore count the identifier and
             " display this information while prompting.
+            let count_matches = 0
             if variable_def =~# 'W[qQ]$'
                 let count_matches = 1
-            else
-                let count_matches = 0
             endif
 
-            let srch_cond = quotes . no_preceed_word .
+            if until_str != ''
+                let srch_cond      = escape(identifier, '\\/.*$^~[]') .
+                            \ '.\{-}' .
+                            \ escape(until_str, '\\/.*$^~[]')
+                let retrieve_ident = srch_cond
+            else
+                let srch_cond = quotes . no_preceed_word .
                         \ identifier . following_word . quotes
+            endif
+
             let query = s:DB_searchReplace(query, srch_cond,
                         \ retrieve_ident, count_matches)
             if query == ""

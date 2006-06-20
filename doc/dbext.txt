@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 6.0.  Last change: Mon Apr 24 2006 9:53:37 PM
+*dbext.txt*	For Vim version 6.0.  Last change: Wed Jun 14 2006 8:35:37 AM
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      David Fishburn <fishburn@ianywhere.com>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 3.00
+	  	dbext.vim version 3.50
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -25,6 +25,7 @@ SourceForge: $Revision: 1.23 $
     3.1 Displaying Results                      |dbext-configure-results|
     3.2 Script Variables                        |dbext-configure-variables|
     3.3 Database Specific Options               |dbext-configure-options|
+    3.4 DB2 Modes                               |dbext-configure-db2|
 4.  Mappings and commands			|dbext-mappings|
 5.  Adding new database types			|dbext-newdb|
 6.  Prompting for input parameters		|dbext-prompting|
@@ -51,6 +52,33 @@ SourceForge: $Revision: 1.23 $
 
 ------------------------------------------------------------------------------
 What's New						*dbext-new*
+
+Version 3.50
+
+ New Features
+ ------------
+ - g:dbext_default_inputdialog_cancel_support = 0 will prevent 
+   inputdialog from providing a cancel option.  This works around
+   a Vim7 bug.  dbext will automatically detect this and set the
+   option the first time it is encountered.
+ - Changed the order of some of the text in the dialog boxes to 
+   make them more readable when using the console version of Vim.
+ - dbext can parse SQL statements and prompt the user to replace
+   variables with values prior to sending the statement to the database
+   to be executed.  This is useful for testing SQL which is embedded
+   in your code without having to manually replace variables and string
+   concatentation.  A new identifier (the until flag) allows you to 
+   specify the beginning of a string and what to prompt for until a 
+   finishing string.  This makes it more flexible for you to configure
+   what you would like prompting for when looking for variables.
+
+ Bug Fixes
+ ------------
+ - DBPromptForBufferParameters can report "E180: Invalid complete value: -1"
+   if running the console version of Vim.  dbext will detect this problem 
+   and automatically set g:dbext_default_inputdialog_cancel_support = 0 to 
+   work around this Vim7 bug.
+
 
 Version 3.00
 
@@ -341,6 +369,17 @@ Version 2.00
              1 - Always prompt for variables
              0 - Ask if you want to (if variables are found)
             -1 - Never prompt for variables >
+    dbext_default_stop_prompt_for_variables 
+<       - This is used internally by dbext.  Each time a query is executed
+          and the user is prompted for variables, if you press "Ok" without
+          entering anything, you are prompted asking whether you want to:
+                1.  Skip the replacement for this string
+                2.  Replace it with a blank
+                3.  Stop prompting for just this query 
+                4.  Never prompt for variables (including subsequent queries)
+                5.  Abort the query and do NOT execute it
+        - If option 3 is chosen, dbext sets this variable and resets it for
+          the next query. >
     dbext_default_display_cmd_line 
 <       - When the command is run, the results are displayed in the Result
           buffer, setting display_cmd_line = 1, will also display the command
@@ -418,8 +457,9 @@ Version 2.00
             :let  g:dbext_default_history_max_entry = 4096
     dbext_default_dict_show_owner
 <       - When creating a dictionary of tables, procedures and views
-          the owner name can also be included.  The default is enabled, 
-          to disable add the following to your vimrc: >
+          the owner name can also be included.  The omni sql complete
+          plugin uses this setting.  The default is enabled, to disable 
+          add the following to your vimrc: >
             :let  g:dbext_default_dict_show_owner = 0
 <
  Buffer variables
@@ -567,11 +607,29 @@ Version 2.00
                                 \ "set tab off\n\n"
         dbext_default_ORA_cmd_terminator       = ";\nquit;"
         dbext_default_ORA_cmd_options          = '-S'
+        dbext_default_DB2_use_db2batch         = 0
         dbext_default_DB2_bin                  = 'db2batch'
         dbext_default_DB2_cmd_header           = ''
-        dbext_default_DB2_cmd_terminator       = ''
+        dbext_default_DB2_cmd_terminator       = ';'
         dbext_default_DB2_cmd_options          = '-q del -s off'
+        dbext_default_DB2_db2cmd_bin           = 'db2cmd'
+        dbext_default_DB2_db2cmd_cmd_options   = '-c -w -i -t db2 -s'
 <    
+
+3.4 DB2 Modes                                           *dbext-configure-db2*
+    DB2 provides two different binaries to execute commands: db2batch, db2cmd.  
+    The dbext plugin supports both.  To change modes for the current buffer
+    you can execute this command: >
+        :DBSetOption DB2_use_db2batch = 1
+        :DBSetOption DB2_use_db2batch = 0
+<
+    To change on a permenant basis add the following to your vimrc: >
+        let dbext_default_DB2_use_db2batch = 1
+<
+    Each has their own advantages or disadvantages.  Depending on your 
+    platform you may only have access to one or the other.  Please
+    try both to see which fits your needs.
+
 
 ------------------------------------------------------------------------------
 4. Mappings and commands				*dbext-mappings*
@@ -866,6 +924,22 @@ Version 2.00
  plugin finds more matches that expected, you can choose Cancel when prompted
  for the variable name, and choose Skip, to move to the next match.
  
+ Another type of criteria is specified.  You can also use the "unitl" setting
+ which allows you to specify the start of the string, and the everything
+ should be replaced "until" another string.  Here is an example: >
+        SELECT * FROM Customers WHERE ID = http_variable('cust_id')
+<
+ In this case, we want dbext to prompt for anything like "http_variable(...)".
+ This can be configured using: >
+        DBSetOption variable_def='http_varu)'
+<
+ This option has special rules, and is broken down as:
+        http_var - Look for this string
+        u        - Assume a match UNTIL
+        )        - This string
+ So in this case, matching "http_var" until the ")" will force dbext to 
+ prompt the user for a replacement of "http_variable('cust_id')".
+
  For more information on specific filetype support see |dbext-filetypes|
 
 ------------------------------------------------------------------------------
