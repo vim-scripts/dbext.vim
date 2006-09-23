@@ -1,10 +1,10 @@
 " dbext.vim - Commn Database Utility
 " ---------------------------------------------------------------
-" Version:  3.50
+" Version:  4.03
 " Maintainer:  David Fishburn <fishburn@ianywhere.com>
 " Authors:  Peter Bagyinszki <petike1@dpg.hu>
 "           David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Wed Jun 14 2006 8:30:44 AM
+" Last Modified: Sun Sep 17 2006 11:20:33 AM
 " Based On: sqlplus.vim (author: Jamis Buck <jgb3@email.byu.edu>)
 " Created:  2002-05-24
 " Homepage: http://vim.sourceforge.net/script.php?script_id=356
@@ -22,21 +22,15 @@
 if exists('g:loaded_dbext') || &cp
     finish
 endif
-if !exists("loaded_multvals")
-  runtime plugin/multvals.vim
-endif
-if !exists("loaded_multvals") || loaded_multvals < 304
-    echomsg "dbext: You need to have multvals version 3.4 or higher"
+if v:version < 700
+    echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext = 350
+let g:loaded_dbext = 403
 
 " Script variable defaults, these are used internal and are never displayed
 " to the end user via the DBGetOption command  {{{
-let s:mv_sep = ","
 let s:dbext_buffers_with_dict_files = ''
-let s:dbext_unique_cnt = 0
-let s:dbext_settings_comp_str = ''
 let s:dbext_tempfile = fnamemodify(tempname(), ":h").
             \ (has('win32')?'\':'/').
             \ 'dbext.sql'
@@ -45,143 +39,122 @@ let s:dbext_tempfile = fnamemodify(tempname(), ":h").
 " Build internal lists {{{
 function! s:DB_buildLists()
     " Available DB types - maintainer in ()
-    let s:db_types_mv = ''
+    let s:db_types_mv = []
     "sybase adaptive server anywhere (fishburn)
-    let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'ASA')
+    call add(s:db_types_mv, 'ASA')
     "sybase adaptive server enterprise (fishburn)
-    let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'ASE')
+    call add(s:db_types_mv, 'ASE')
     "db2 (fishburn)
-    let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'DB2')
+    call add(s:db_types_mv, 'DB2')
     "ingres (schoppet)
-    let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'INGRES')
+    call add(s:db_types_mv, 'INGRES')
     "interbase (bagyinszki)
-    let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'INTERBASE')
+    call add(s:db_types_mv, 'INTERBASE')
     "mysql (fishburn)
-    let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'MYSQL')
+    call add(s:db_types_mv, 'MYSQL')
     "oracle (fishburn)
-    let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'ORA')
+    call add(s:db_types_mv, 'ORA')
     "postgresql (fishburn)
-    let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'PGSQL')
+    call add(s:db_types_mv, 'PGSQL')
     "microsoft sql server (fishburn)
-    let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'SQLSRV')
+    call add(s:db_types_mv, 'SQLSRV')
     "sqlite (fishburn)
-    let s:db_types_mv = MvAddElement(s:db_types_mv, s:mv_sep, 'SQLITE')
+    call add(s:db_types_mv, 'SQLITE')
 
     " Integrated Login Supported DB types
-    let s:intlogin_types_mv = ''
+    let s:intlogin_types_mv = []
     "sybase adaptive server anywhere (fishburn)
-    let s:intlogin_types_mv = MvAddElement(s:intlogin_types_mv, s:mv_sep, 'ASA')
+    call add(s:intlogin_types_mv, 'ASA')
     "microsoft sql server (fishburn)
-    let s:intlogin_types_mv = MvAddElement(s:intlogin_types_mv, s:mv_sep, 'SQLSRV')
+    call add(s:intlogin_types_mv, 'SQLSRV')
 
     " Connection parameters
-    let s:conn_params_mv = ''
-    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'profile')
-    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'type')
-    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'integratedlogin')
-    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'user')
-    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'passwd')
-    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'dsnname')
-    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'srvname')
-    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'dbname')
-    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'host')
-    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'port')
-    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'extra')
-    let s:conn_params_mv = MvAddElement(s:conn_params_mv, s:mv_sep, 'bin_path')
+    let s:conn_params_mv = []
+    call add(s:conn_params_mv, 'profile')
+    call add(s:conn_params_mv, 'type')
+    call add(s:conn_params_mv, 'integratedlogin')
+    call add(s:conn_params_mv, 'user')
+    call add(s:conn_params_mv, 'passwd')
+    call add(s:conn_params_mv, 'dsnname')
+    call add(s:conn_params_mv, 'srvname')
+    call add(s:conn_params_mv, 'dbname')
+    call add(s:conn_params_mv, 'host')
+    call add(s:conn_params_mv, 'port')
+    call add(s:conn_params_mv, 'extra')
+    call add(s:conn_params_mv, 'bin_path')
 
     " Configuration parameters
-    let s:config_params_mv = ''
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'use_sep_result_buffer')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'query_statements')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'parse_statements')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'prompt_for_parameters')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'prompting_user')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'always_prompt_for_variables')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'stop_prompt_for_variables')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'display_cmd_line')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'variable_def')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'buffer_defaulted')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dict_show_owner')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dict_table_file')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dict_procedure_file')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'dict_view_file')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'replace_title')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'custom_title')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'use_tbl_alias')
-    let s:config_params_mv = MvAddElement(s:config_params_mv, s:mv_sep, 'delete_temp_file')
+    let s:config_params_mv = []
+    call add(s:config_params_mv, 'use_sep_result_buffer')
+    call add(s:config_params_mv, 'query_statements')
+    call add(s:config_params_mv, 'parse_statements')
+    call add(s:config_params_mv, 'prompt_for_parameters')
+    call add(s:config_params_mv, 'prompting_user')
+    call add(s:config_params_mv, 'always_prompt_for_variables')
+    call add(s:config_params_mv, 'stop_prompt_for_variables')
+    call add(s:config_params_mv, 'display_cmd_line')
+    call add(s:config_params_mv, 'variable_def')
+    call add(s:config_params_mv, 'buffer_defaulted')
+    call add(s:config_params_mv, 'dict_show_owner')
+    call add(s:config_params_mv, 'dict_table_file')
+    call add(s:config_params_mv, 'dict_procedure_file')
+    call add(s:config_params_mv, 'dict_view_file')
+    call add(s:config_params_mv, 'replace_title')
+    call add(s:config_params_mv, 'custom_title')
+    call add(s:config_params_mv, 'use_tbl_alias')
+    call add(s:config_params_mv, 'delete_temp_file')
 
     " Script parameters
-    let s:script_params_mv = ''
-    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'use_result_buffer')
-    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'buffer_lines')
-    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'result_bufnr')
-    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'history_bufnr')
-    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'history_file')
-    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'history_size')
-    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'history_max_entry')
-    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'dbext_version')
-    let s:script_params_mv = MvAddElement(s:script_params_mv, s:mv_sep, 'inputdialog_cancel_support')
+    let s:script_params_mv = []
+    call add(s:script_params_mv, 'use_result_buffer')
+    call add(s:script_params_mv, 'buffer_lines')
+    call add(s:script_params_mv, 'result_bufnr')
+    call add(s:script_params_mv, 'history_bufnr')
+    call add(s:script_params_mv, 'history_file')
+    call add(s:script_params_mv, 'history_size')
+    call add(s:script_params_mv, 'history_max_entry')
+    call add(s:script_params_mv, 'dbext_version')
+    call add(s:script_params_mv, 'inputdialog_cancel_support')
 
     " DB server specific params
     " See below for 3 additional DB2 items
-    let s:db_params_mv = ''
-    let s:db_params_mv = MvAddElement(s:db_params_mv, s:mv_sep, 'bin')
-    let s:db_params_mv = MvAddElement(s:db_params_mv, s:mv_sep, 'cmd_header')
-    let s:db_params_mv = MvAddElement(s:db_params_mv, s:mv_sep, 'cmd_terminator')
-    let s:db_params_mv = MvAddElement(s:db_params_mv, s:mv_sep, 'cmd_options')
-    let s:db_params_mv = MvAddElement(s:db_params_mv, s:mv_sep, 'on_error')
+    let s:db_params_mv = []
+    call add(s:db_params_mv, 'bin')
+    call add(s:db_params_mv, 'cmd_header')
+    call add(s:db_params_mv, 'cmd_terminator')
+    call add(s:db_params_mv, 'cmd_options')
+    call add(s:db_params_mv, 'on_error')
 
     " All parameters
-    let s:all_params_mv = ''
-
-    call MvIterCreate(s:conn_params_mv, s:mv_sep, "MvConnParams", s:mv_sep)
-    while MvIterHasNext('MvConnParams')
-        let s:all_params_mv = MvAddElement(s:all_params_mv, s:mv_sep, MvIterNext('MvConnParams'))
-    endwhile
-    call MvIterDestroy("MvConnParams")
-
-    call MvIterCreate(s:config_params_mv, s:mv_sep, "MvConfigParams", s:mv_sep)
-    while MvIterHasNext('MvConfigParams')
-        let s:all_params_mv = MvAddElement(s:all_params_mv, s:mv_sep, MvIterNext('MvConfigParams'))
-    endwhile
-    call MvIterDestroy("MvConfigParams")
-
-    call MvIterCreate(s:script_params_mv, s:mv_sep, "MvScriptParams", s:mv_sep)
-    while MvIterHasNext('MvScriptParams')
-        let s:all_params_mv = MvAddElement(s:all_params_mv, s:mv_sep, MvIterNext('MvScriptParams'))
-    endwhile
-    call MvIterDestroy("MvScriptParams")
+    let s:all_params_mv = []
+    call extend(s:all_params_mv, s:conn_params_mv)
+    call extend(s:all_params_mv, s:config_params_mv)
+    call extend(s:all_params_mv, s:script_params_mv)
 
     let loop_count         = 0
     let s:prompt_type_list = "\n0. None"
 
-    call MvIterCreate(s:db_types_mv, s:mv_sep, "MvDBTypes", s:mv_sep)
-    while MvIterHasNext('MvDBTypes')
-        let type_mv = MvIterNext('MvDBTypes')
+    for type_mv in s:db_types_mv
         let loop_count = loop_count + 1
         let s:prompt_type_list = s:prompt_type_list . "\n" . loop_count . '. ' . type_mv 
-        call MvIterCreate(s:db_params_mv, s:mv_sep, "MvDBParams", s:mv_sep)
-        while MvIterHasNext('MvDBParams')
-            " For each element in the db parameters, add the database
-            " type to the beginning of the string.
-            let s:all_params_mv = MvAddElement(
-                        \ s:all_params_mv, s:mv_sep, 
-                        \ type_mv.'_'.MvIterNext('MvDBParams'))
-        endwhile
-        call MvIterDestroy("MvDBParams")
-    endwhile
-    call MvIterDestroy("MvDBTypes")
+        for param_mv in s:db_params_mv
+            call add(s:all_params_mv, type_mv.'_'.param_mv)
+        endfor
+    endfor
 
     " Add 3 additional DB2 special cases
-    let s:all_params_mv = MvAddElement(s:all_params_mv, s:mv_sep, 'DB2_use_db2batch')
-    let s:all_params_mv = MvAddElement(s:all_params_mv, s:mv_sep, 'DB2_db2cmd_bin')
-    let s:all_params_mv = MvAddElement(s:all_params_mv, s:mv_sep, 'DB2_db2cmd_cmd_options')
+    call add(s:all_params_mv, 'DB2_use_db2batch')
+    call add(s:all_params_mv, 'DB2_db2cmd_bin')
+    call add(s:all_params_mv, 'DB2_db2cmd_cmd_options')
+
+    " Add 1 additional MySQL special cases
+    call add(s:all_params_mv, 'MYSQL_version')
 
 
     " Any predefined global connection profiles in the users vimrc
-    let s:conn_profiles_mv    = ''
+    let s:conn_profiles_mv    = []
     let loop_count            = 1
-    let s:prompt_profile_list = ''
+    let s:prompt_profile_list = "0. None"
 
 
     " Check if the user has any profiles defined in his vimrc
@@ -198,19 +171,21 @@ function! s:DB_buildLists()
         " Retrieve the name of option
         let prof_name = matchstr(l:global_vars, '\w\+', index)
         if strlen(prof_name) > 0
-            let s:prompt_profile_list = s:prompt_profile_list . "\n" .
-                        \  loop_count . '. ' . prof_name
             let prof_value = matchstr(l:global_vars, '\s*\zs[^'."\<C-J>".']\+', 
                         \ (index + strlen(prof_name))  )
-            let s:conn_profiles_mv = MvAddElement(s:conn_profiles_mv, s:mv_sep, prof_name)
-            let loop_count = loop_count + 1
+            call add(s:conn_profiles_mv, prof_name)
         endif
         let index = index + strlen(prof_name)+ strlen(prof_value) + 1
         let index = match(l:global_vars, prof_nm_re, index)
     endwhile
-    if loop_count > 1
-        let s:prompt_profile_list = "0. None" . s:prompt_profile_list
-    endif
+    " Sort the list ignoring CaSe
+    let s:conn_profiles_mv = sort(s:conn_profiles_mv,1)
+    " Build the profile prompt string
+	for item in s:conn_profiles_mv
+            let s:prompt_profile_list = s:prompt_profile_list . "\n" .
+                        \  loop_count . '. ' . item
+            let loop_count += 1
+	endfor
 
 endfunction 
 "}}}
@@ -228,10 +203,10 @@ function! s:DB_execFuncWCheck(name,...)
         if a:name == 'promptForParameters'
             " Handle the special case where no parameters were defaulted
             " but the process of resettting them has defaulted them.
-            call s:DB_warningMsg( "Connection parameters have been defaulted" )
+            call s:DB_warningMsg( "dbext:Connection parameters have been defaulted" )
         elseif s:DB_get("buffer_defaulted") != 1
-            call s:DB_warningMsg( "A valid database type must be chosen" )
-            return
+            call s:DB_warningMsg( "dbext:A valid database type must be chosen - a" )
+            return -1
         endif
     endif
 
@@ -262,18 +237,18 @@ function! s:DB_execFuncTypeWCheck(name,...)
     if s:DB_get("buffer_defaulted") != 1
         call s:DB_resetBufferParameters(use_defaults)
         if s:DB_get("buffer_defaulted") != 1
-            call s:DB_warningMsg( "A valid database type must be chosen" )
-            return
+            call s:DB_warningMsg( "dbext:A valid database type must be chosen - b" )
+            return -1
         endif
     endif
 
     if !exists("*s:DB_".b:dbext_type."_".a:name)
         let value = toupper(b:dbext_type)
-        if !MvContainsElement(s:db_types_mv, s:mv_sep, value)
-            call s:DB_warningMsg("Unknown database type: " . b:dbext_type)
+        if index(s:db_types_mv, value) == -1
+            call s:DB_warningMsg("dbext:Unknown database type: " . b:dbext_type)
             return ""
         else
-            call s:DB_warningMsg( "s:DB_" . b:dbext_type .
+            call s:DB_warningMsg( "dbext:s:DB_" . b:dbext_type .
                         \ '_' . a:name . 
                         \ ' not found'
                         \ )
@@ -386,7 +361,7 @@ endfunction
 
 "" Set buffer parameter value
 function! s:DB_set(name, value)
-    if MvContainsElement(s:all_params_mv, s:mv_sep, a:name)
+    if index(s:all_params_mv, a:name) > -1
         let value = a:value
 
         " Handle some special cases
@@ -406,7 +381,7 @@ function! s:DB_set(name, value)
             endif
         endif
 
-        if MvContainsElement(s:script_params_mv, s:mv_sep, a:name)
+        if index(s:script_params_mv, a:name) > -1
             let s:dbext_{a:name} = value
         else
             let b:dbext_{a:name} = value
@@ -416,7 +391,7 @@ function! s:DB_set(name, value)
             call s:DB_setTitle()
         endif
     else
-        call s:DB_warningMsg("Unknown parameter: " . a:name)
+        call s:DB_warningMsg("dbext:Unknown parameter: " . a:name)
     endif
 
     return 0
@@ -464,17 +439,16 @@ function! DB_listOption(...)
     let s:dbext_prev_winnr = winnr()
     let s:dbext_prev_bufnr = bufnr('%')
 
-    let conn_params_cnt   = MvNumberOfElements(s:conn_params_mv, s:mv_sep)
-    let config_params_cnt = MvNumberOfElements(s:config_params_mv, s:mv_sep)
-    let script_params_cnt = MvNumberOfElements(s:script_params_mv, s:mv_sep) 
+    let conn_params_cnt   = len(s:conn_params_mv)
+    let config_params_cnt = len(s:config_params_mv)
+    let script_params_cnt = len(s:script_params_mv)
 
     let option_cnt  = 1
     let option_list = 
                 \ "------------------------\n" .
                 \ "** Connection Options **\n" .
                 \ "------------------------\n"
-    call MvIterCreate(s:all_params_mv, s:mv_sep, "MvAllParams", s:mv_sep)
-    while MvIterHasNext('MvAllParams')
+    for param_mv in s:all_params_mv
         if option_cnt == (conn_params_cnt + 1) 
             let option_list = option_list .
                         \ "---------------------------\n" .
@@ -494,12 +468,11 @@ function! DB_listOption(...)
                         \ "** Database Options **\n" .
                         \ "----------------------\n"
         endif
-        let opt_name    = MvIterNext('MvAllParams')
+        let opt_name    = param_mv
         let opt_value   = opt_name . ' = ' . s:DB_get(opt_name)
         let option_list = option_list . opt_value . "\n"
         let option_cnt  = option_cnt + 1
-    endwhile
-    call MvIterDestroy("MvAllParams")
+    endfor
      
     call s:DB_addToResultBuffer(option_list, "clear")
 
@@ -513,7 +486,7 @@ function! s:DB_get(name, ...)
     let no_default   = 0
 
     let prefix = "b:dbext_"
-    if MvContainsElement(s:script_params_mv, s:mv_sep, a:name)
+    if index(s:script_params_mv, a:name) > -1
         let prefix = "s:dbext_"
     endif
 
@@ -602,6 +575,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "INTERBASE_cmd_terminator"|return (exists("g:dbext_default_INTERBASE_cmd_terminator")?g:dbext_default_INTERBASE_cmd_terminator.'':';')
     elseif a:name ==# "MYSQL_bin"               |return (exists("g:dbext_default_MYSQL_bin")?g:dbext_default_MYSQL_bin.'':'mysql')
     elseif a:name ==# "MYSQL_cmd_terminator"    |return (exists("g:dbext_default_MYSQL_cmd_terminator")?g:dbext_default_MYSQL_cmd_terminator.'':';')
+    elseif a:name ==# "MYSQL_version"           |return (exists("g:dbext_default_MYSQL_version")?g:dbext_default_MYSQL_version.'':'5')
     elseif a:name ==# "ORA_bin"                 |return (exists("g:dbext_default_ORA_bin")?g:dbext_default_ORA_bin.'':'sqlplus')
     elseif a:name ==# "ORA_cmd_header"          |return (exists("g:dbext_default_ORA_cmd_header")?g:dbext_default_ORA_cmd_header.'':"" .
                         \ "set pagesize 10000\n" .
@@ -686,11 +660,12 @@ endfunction
 " database type.
 function! s:DB_validateBufferParameters()
     let no_defaults = 0
+    let rc          = -1
 
-    " If a database type has been chosen, do not prompt
-    " for connection information
-    if s:db_types_mv =~ s:DB_get("type", no_defaults) &&
-                \ strlen(s:DB_get("type", no_defaults)) > 0
+    " If a database type has been chosen, do not prompt for connection
+    " information
+    let found = index( s:db_types_mv, s:DB_get("type", no_defaults) )
+    if found > -1
         call s:DB_set("buffer_defaulted", "1")
         let rc = 1
     else
@@ -707,12 +682,9 @@ function! s:DB_resetBufferParameters(use_defaults)
     let no_defaults  = 0
 
     " Reset configuration parameters to defaults
-    call MvIterCreate(s:config_params_mv, s:mv_sep, "MvConfigParams")
-    while MvIterHasNext('MvConfigParams')
-        let param = MvIterNext('MvConfigParams')
+    for param in s:config_params_mv
         call s:DB_set(param, s:DB_get(param))
-    endwhile
-    call MvIterDestroy("MvConfigParams")
+    endfor
 
     " Reset connection parameters to either blanks or defaults
     " depending on what was passed into this function
@@ -720,11 +692,7 @@ function! s:DB_resetBufferParameters(use_defaults)
     " connection parameters.
     " Calling this function can be nested, so we must generate
     " a unique IterCreate name.
-    let l:iter_unique_name = "MvConnParamsRBP".s:dbext_unique_cnt
-    let s:dbext_unique_cnt = s:dbext_unique_cnt + 1
-    call MvIterCreate(s:conn_params_mv, s:mv_sep, l:iter_unique_name)
-    while MvIterHasNext(l:iter_unique_name)
-        let param = MvIterNext(l:iter_unique_name)
+    for param in s:conn_params_mv
         if a:use_defaults == 0
             call s:DB_set(param, "")
         else
@@ -734,8 +702,7 @@ function! s:DB_resetBufferParameters(use_defaults)
                 call s:DB_set(param, s:DB_get(param))
             endif
         endif
-    endwhile
-    call MvIterDestroy(l:iter_unique_name)
+    endfor
 
     " If a database type has been chosen, do not prompt
     " for connection information
@@ -778,17 +745,14 @@ function! s:DB_getParameters(scope)
     elseif (a:scope == "d")
         let prefix = "g:dbext_default_"
     else
-        call s:DB_warningMsg("Invalid scope in parameter: '" . a:scope . "'")
+        call s:DB_warningMsg("dbext:Invalid scope in parameter: '" . a:scope . "'")
         return ""
     endif
     let variables = ""
 
-    call MvIterCreate(s:all_params_mv, s:mv_sep, "MvAllParams")
-    while MvIterHasNext('MvAllParams')
-        let param = MvIterNext('MvAllParams')
+    for param in s:all_params_mv
         let variables = variables . s:DB_varToString(prefix . param)
-    endwhile
-    call MvIterDestroy("MvAllParams")
+    endfor
 
     return variables
 endfunction
@@ -806,10 +770,7 @@ function! s:DB_promptForParameters(...)
 
     " Loop through and prompt the user for all buffer
     " connection parameters
-    call MvIterCreate(s:conn_params_mv, s:mv_sep, "MvConnParams")
-    while MvIterHasNext('MvConnParams')
-        let param = MvIterNext('MvConnParams')
-
+    for param in s:conn_params_mv
         if (a:0 > 0)
             " If the specified parameter has already been prompted
             " for, exit this loop
@@ -827,9 +788,7 @@ function! s:DB_promptForParameters(...)
 
         if param ==# 'type'
             let l:old_value = 1 + 
-                        \ MvIndexOfElement(s:db_types_mv, s:mv_sep, 
-                        \ s:DB_get(param, no_default) 
-                        \ )
+                        \ index(s:db_types_mv, s:DB_get(param, no_default))
 
             let l:new_value = s:DB_getInput( 
                         \ s:DB_getDefault("prompt_" . param), 
@@ -837,14 +796,12 @@ function! s:DB_promptForParameters(...)
                         \ "-1"
                         \ )
         elseif param ==# 'profile'
-            if MvNumberOfElements(s:conn_profiles_mv, s:mv_sep) == 0
+            if empty(s:conn_profiles_mv)
                 continue
             endif
 
             let l:old_value = 1 + 
-                        \ MvIndexOfElement(s:conn_profiles_mv, s:mv_sep, 
-                        \ s:DB_get(param, no_default) 
-                        \ )
+                        \ index(s:conn_profiles_mv, s:DB_get(param, no_default))
 
             let l:new_value = s:DB_getInput( 
                         \ s:DB_getDefault("prompt_" . param), 
@@ -855,7 +812,7 @@ function! s:DB_promptForParameters(...)
             " Integrated login is only supported on Windows platforms
             if !has("win32")
                 continue
-            elseif MvContainsElement(s:intlogin_types_mv, s:mv_sep, s:DB_get("type") ) == 0
+            elseif count(s:intlogin_types_mv, s:DB_get("type") ) == 0
                 " If the chosen datatype type does not support 
                 " integrated logins, do not prompt for it
                 continue
@@ -912,9 +869,8 @@ function! s:DB_promptForParameters(...)
 
             if param == "profile"
                 if l:new_value > 0 && l:new_value <= 
-                            \ MvNumberOfElements(s:conn_profiles_mv, s:mv_sep)
-                    let retval = MvElementAt(s:conn_profiles_mv, s:mv_sep, 
-                                \ (l:new_value-1))
+                            \ len(s:conn_profiles_mv)
+                    let retval = s:conn_profiles_mv[(l:new_value-1)]
                     call s:DB_set(param, retval)
                 else
                     call s:DB_set(param, "")
@@ -925,9 +881,8 @@ function! s:DB_promptForParameters(...)
                 endif
             elseif param == "type"
                 if l:new_value > 0 && l:new_value <= 
-                            \ MvNumberOfElements(s:db_types_mv, s:mv_sep)
-                    let retval = MvElementAt(s:db_types_mv, s:mv_sep, 
-                                \ (l:new_value-1))
+                            \ len(s:db_types_mv)
+                    let retval = s:db_types_mv[(l:new_value-1)]
                     call s:DB_set(param, retval)
                 else
                     call s:DB_set(param, "") 
@@ -946,8 +901,7 @@ function! s:DB_promptForParameters(...)
 
             endif
         endif
-    endwhile
-    call MvIterDestroy("MvConnParams")
+    endfor
 
     call s:DB_validateBufferParameters()
 
@@ -1082,7 +1036,7 @@ function! s:DB_setMultipleOptions(multi_options)
     let rc = 0
 
     " Strip leading or following quotes, single or double
-    let options_mv = s:DB_stripLeadFollowQuotesSpace(a:multi_options)
+    let options_cs = s:DB_stripLeadFollowQuotesSpace(a:multi_options)
 
     " Choose a bad separator (:), and it is too late to choose another one
     " with the plugin available.
@@ -1090,24 +1044,18 @@ function! s:DB_setMultipleOptions(multi_options)
     " parameter, since it can have C:\
     if has("win32")
         " Replace the : with a !, and correct it later
-        let options_mv = substitute(options_mv, 'bin_path\s*=\s*.\zs:\ze\\', 
+        let options_cs = substitute(options_cs, 'bin_path\s*=\s*.\zs:\ze\\', 
                     \ '!', '' )
-        let options_mv = substitute(options_mv, '\w\+_bin\s*=\s*.\zs:\ze\\', 
+        let options_cs = substitute(options_cs, '\w\+_bin\s*=\s*.\zs:\ze\\', 
                     \ '!', '' )
-        let options_mv = substitute(options_mv, 'dbname\s*=\s*.\zs:\ze\\', 
+        let options_cs = substitute(options_cs, 'dbname\s*=\s*.\zs:\ze\\', 
                     \ '!', '' )
     endif
 
-    " Loop through and prompt the user for all buffer
-    " connection parameters.
-    " Calling this function can be nested, so we must generate
-    " a unique IterCreate name.
-    let l:iter_unique_name = "MvOptions".s:dbext_unique_cnt
-    let s:dbext_unique_cnt = s:dbext_unique_cnt + 1
-    " echomsg 'DB_setMultipleOptions: unique name:' . l:iter_unique_name
-    call MvIterCreate(options_mv, ":", l:iter_unique_name)
-    while MvIterHasNext(l:iter_unique_name)
-        let option = MvIterNext(l:iter_unique_name)
+    " Convert the comma  separate list into a List
+    let options_mv = split(options_cs, ':')
+    " Loop through and prompt the user for all buffer connection parameters.
+    for option in options_mv
         if strlen(option) > 0
             " Retrieve the option name 
             let opt_name  = matchstr(option, '.\{-}\ze=')
@@ -1126,8 +1074,7 @@ function! s:DB_setMultipleOptions(multi_options)
             endif
             call s:DB_set(opt_name, opt_value)
         endif
-    endwhile
-    call MvIterDestroy(l:iter_unique_name)
+    endfor
 
     return rc
 endfunction 
@@ -1174,8 +1121,8 @@ command! -nargs=+ Alter          :call s:DB_execSql("alter " . <q-args>)
 command! -nargs=+ Create         :call s:DB_execSql("create " . <q-args>)
 command! -nargs=1 DBSetOption    :call s:DB_setMultipleOptions(<q-args>)
 command! -nargs=? DBGetOption    :echo DB_listOption(<q-args>)
-command! -nargs=* -complete=custom,<SID>DB_settingsComplete DBSetOption :call s:DB_setMultipleOptions(<q-args>)
-command! -nargs=* -complete=custom,<SID>DB_settingsComplete DBGetOption :echo DB_listOption(<q-args>)
+command! -nargs=* -complete=customlist,<SID>DB_settingsComplete DBSetOption :call s:DB_setMultipleOptions(<q-args>)
+command! -nargs=* -complete=customlist,<SID>DB_settingsComplete DBGetOption :echo DB_listOption(<q-args>)
 
 if !exists(':DBExecVisualSQL')
     command! -nargs=0 -range DBExecVisualSQL :call s:DB_execSql(DB_getVisualBlock())
@@ -2273,6 +2220,10 @@ function! s:DB_MYSQL_getListTable(table_prefix)
 endfunction
 
 function! s:DB_MYSQL_getListProcedure(proc_prefix)
+    if s:DB_getWType('version') < '5'
+        call s:DB_warningMsg( 'dbext:MySQL does not support procedures' )
+        return '-1'
+    endif
     let owner   = s:DB_getObjectOwner(a:proc_prefix)
     let object  = s:DB_getObjectName(a:proc_prefix)
     let query = "SELECT specific_name, routine_schema  ".
@@ -2283,6 +2234,10 @@ function! s:DB_MYSQL_getListProcedure(proc_prefix)
 endfunction
 
 function! s:DB_MYSQL_getListView(view_prefix)
+    if s:DB_getWType('version') < '5'
+        call s:DB_warningMsg( 'dbext:MySQL does not support views' )
+        return '-1'
+    endif
     let owner   = s:DB_getObjectOwner(a:view_prefix)
     let object  = s:DB_getObjectName(a:view_prefix)
     let query = "SELECT table_name AS view_name, table_schema  ".
@@ -2325,15 +2280,23 @@ function! s:DB_MYSQL_stripHeaderFooter(result) "{{{
 endfunction "}}}
 
 function! s:DB_MYSQL_getDictionaryTable() "{{{
-    let query = "SELECT ".(s:DB_get('dict_show_owner')==1?"CONCAT_WS('.', TABLE_SCHEMA, TABLE_NAME)":"TABLE_NAME").
-                \ "  FROM INFORMATION_SCHEMA.TABLES " .
-                \ " WHERE TABLE_TYPE  = 'BASE TABLE' ".
-                \ " ORDER BY ".(s:DB_get('dict_show_owner')==1?"TABLE_SCHEMA, ":'')."TABLE_NAME"
-    let result = s:DB_MYSQL_execSql(query)
+    if s:DB_getWType('version') < '5'
+        let result = s:DB_MYSQL_getListTable('')
+    else
+        let query = "SELECT ".(s:DB_get('dict_show_owner')==1?"CONCAT_WS('.', TABLE_SCHEMA, TABLE_NAME)":"TABLE_NAME").
+                    \ "  FROM INFORMATION_SCHEMA.TABLES " .
+                    \ " WHERE TABLE_TYPE  = 'BASE TABLE' ".
+                    \ " ORDER BY ".(s:DB_get('dict_show_owner')==1?"TABLE_SCHEMA, ":'')."TABLE_NAME"
+        let result = s:DB_MYSQL_execSql(query)
+    endif
     return s:DB_MYSQL_stripHeaderFooter(result)
 endfunction "}}}
 
 function! s:DB_MYSQL_getDictionaryProcedure() "{{{
+    if s:DB_getWType('version') < '5'
+        call s:DB_warningMsg( 'dbext:MySQL does not support procedures' )
+        return '-1'
+    endif
     let query = "SELECT ".(s:DB_get('dict_show_owner')==1?"CONCAT_WS('.', ROUTINE_SCHEMA, SPECIFIC_NAME)":"SPECIFIC_NAME").
                 \ "  FROM INFORMATION_SCHEMA.ROUTINES " .
                 \ " ORDER BY ".(s:DB_get('dict_show_owner')==1?"ROUTINE_SCHEMA, ":'')."SPECIFIC_NAME"
@@ -2342,6 +2305,10 @@ function! s:DB_MYSQL_getDictionaryProcedure() "{{{
 endfunction "}}}
 
 function! s:DB_MYSQL_getDictionaryView() "{{{
+    if s:DB_getWType('version') < '5'
+        call s:DB_warningMsg( 'dbext:MySQL does not support views' )
+        return '-1'
+    endif
     let query = "SELECT ".(s:DB_get('dict_show_owner')==1?"CONCAT_WS('.', TABLE_SCHEMA, TABLE_NAME)":"TABLE_NAME").
                 \ "  FROM INFORMATION_SCHEMA.VIEWS " .
                 \ " ORDER BY ".(s:DB_get('dict_show_owner')==1?"TABLE_SCHEMA, ":'')."TABLE_NAME"
@@ -2353,7 +2320,7 @@ endfunction "}}}
 function! s:DB_SQLITE_execSql(str)
 
     if s:DB_get("dbname") == ""
-        call s:DB_errorMsg("You must specify a database name/file")
+        call s:DB_errorMsg("dbext:You must specify a database name/file")
         return -1
     endif
 
@@ -2928,7 +2895,7 @@ function! s:DB_execSql(query)
     let query = a:query
 
     if strlen(query) == 0
-        call s:DB_warningMsg("No statement to execute!")
+        call s:DB_warningMsg("dbext:No statement to execute!")
         return
     endif
 
@@ -2948,7 +2915,7 @@ function! s:DB_execSqlWithDefault(...)
     if (a:0 > 0)
         let sql = a:1
     else
-        call s:DB_warningMsg("No statement to execute!")
+        call s:DB_warningMsg("dbext:No statement to execute!")
         return
     endif
     if(a:0 > 1)
@@ -3017,7 +2984,7 @@ function! DB_getListColumn(...)
     " Remove any newline characters (especially from Visual mode)
     let table_name = substitute( table_name, "[\<C-J>]*", '', 'g' )
     if table_name == ""
-        call s:DB_warningMsg( 'You must supply a table name' )
+        call s:DB_warningMsg( 'dbext:You must supply a table name' )
         return
     endif
 
@@ -3028,7 +2995,7 @@ function! DB_getListColumn(...)
     call s:DB_set('use_result_buffer', l:prev_use_result_buffer)
 
     if col_list == '-1'
-        call s:DB_warningMsg( 'Failed to create column list for ' .
+        call s:DB_warningMsg( 'dbext:Failed to create column list for ' .
                     \ table_name )
         return ''
     endif
@@ -3038,7 +3005,7 @@ function! DB_getListColumn(...)
     " Remove all blanks and carriage returns to check for an empty string
     if strlen(col_list) < 2
         if silent_mode == 0
-            call s:DB_warningMsg( 'Table not found: ' . table_name )
+            call s:DB_warningMsg( 'dbext:Table not found: ' . table_name )
         endif
         return ''
     endif
@@ -3286,7 +3253,7 @@ function! s:DB_getInput(prompt, default_value, cancel_value)
     if v:errmsg =~ '^E180' && s:DB_get('inputdialog_cancel_support') == 1
         " Workaround for the Vim7 bug in inputdialog
         let g:dbext_default_inputdialog_cancel_support = 0
-        call s:DB_warningMsg("Vim7 bug found, setting g:dbext_default_inputdialog_cancel_support = 0")
+        call s:DB_warningMsg("dbext:Vim7 bug found, setting g:dbext_default_inputdialog_cancel_support = 0")
         let val = inputdialog( a:prompt, a:default_value )
     endif
 
@@ -3302,12 +3269,11 @@ function! DB_getVisualBlock() range
 endfunction 
 
 function! s:DB_settingsComplete(ArgLead, CmdLine, CursorPos)
-    if s:dbext_settings_comp_str == ''
-        let s:dbext_settings_comp_str = 
-                    \ substitute(s:all_params_mv, ',', "\n", 'g') 
+    let items = copy(s:all_params_mv)
+    if a:ArgLead != ''
+        let items = filter(items, "v:val =~ '^".a:ArgLead."'")
     endif
-
-    return s:dbext_settings_comp_str
+    return items
 endfunction
 function! s:DB_getObjectOwner(object) "{{{
     " The owner regex matches a word at the start of the string which is
@@ -3399,7 +3365,7 @@ function! DB_DictionaryCreate( drop_dict, which ) "{{{
 
     " Give the user the ability to remove a dictionary
     if a:drop_dict == 1
-        return
+        return ""
     endif
 
     let l:prev_use_result_buffer = s:DB_get('use_result_buffer')
@@ -3426,7 +3392,7 @@ function! DB_DictionaryCreate( drop_dict, which ) "{{{
 
         return temp_file
     else
-        call s:DB_warningMsg( 'Failed to create ' . which_dict . ' dictionary' )
+        call s:DB_warningMsg( 'dbext:Failed to create ' . which_dict . ' dictionary' )
     endif
 
     return -1 
@@ -3441,7 +3407,7 @@ function! s:DB_DictionaryDelete( which ) "{{{
         " Now remove the temporary file
         let rc = delete(dict_file)
         if rc != 0
-            call s:DB_warningMsg( 'Failed to delete ' . which_dict . ' dictionary: ' . 
+            call s:DB_warningMsg( 'dbext:Failed to delete ' . which_dict . ' dictionary: ' . 
                         \ dict_file .
                         \ '  rc: ' . rc )
         endif
@@ -3456,7 +3422,7 @@ function! DB_getDictionaryName( which ) "{{{
     let dict_file = s:DB_get("dict_".which_dict."_file")
     if strlen(dict_file) == 0
         if DB_DictionaryCreate( 0, a:which ) == -1
-            return
+            return ""
         endif
     endif
 
@@ -3587,7 +3553,7 @@ function! s:DB_runPrevCmd(sql)
             endif
         endif
     else
-        call s:DB_warningMsg('Buffer:'.s:dbext_prev_bufnr.' no longer exists')
+        call s:DB_warningMsg('dbext:Buffer:'.s:dbext_prev_bufnr.' no longer exists')
         " If empty, check if they want to leave it empty
         " of skip this variable
         let response = confirm("Buffer #:".s:dbext_prev_bufnr.
@@ -3655,6 +3621,15 @@ function! s:DB_runCmd(cmd, sql)
                         \ "Last SQL:\n" .
                         \ a:sql . "\n" 
             call s:DB_addToResultBuffer(output, "add")
+        else
+            if exists('*DBextPostResult') 
+                let res_buf_name   = s:DB_resBufName()
+                if s:DB_switchToBuffer(res_buf_name, res_buf_name, 'result_bufnr') == 1
+                    " Switch back to the result buffer and execute
+                    " the user defined function
+                    call DBextPostResult(s:DB_get('type'), s:DB_get('result_bufnr'))
+                endif
+            endif
         endif
 
         " Return to original window
@@ -3667,8 +3642,10 @@ function! s:DB_runCmd(cmd, sql)
         let result = system(a:cmd)
 
         " If there was an error, return -1
-        " in this mode do not show the actual message
+        " and display a message informing the user.  This is necessary
+        " when using sqlComplete, or things slightly fail.
         if v:shell_error
+            echo 'dbext:'.result
             let result = '-1'
         endif
 
@@ -4021,105 +3998,106 @@ function! s:DB_parseHostVariables(query)
         " Process each variable definition, format is as follows:
         " identifier1[wW][qQ];identifier2[wW][qQ];identifier3[wW][qQ];
         let pos = 0
-        call MvIterCreate(s:DB_get("variable_def"), ',', "MvIdentifiers")
-        while MvIterHasNext('MvIdentifiers')
-            let variable_def = MvIterNext('MvIdentifiers')
-            " Extract the identifier, use the greedy nature of regex.
-            " Allow them to specify more than a single character for the
-            " search. We must assume they follow the correct format
-            " though and the criteria ends with a WQ; (case insensitive)
-            let until_str = ''
-            let identifier = matchstr(variable_def,'\zs\(.*\)\ze[wW][qQ]$')
-            " let identifier = substitute(variable_def,'\(.*\)[wWu][qQ]$','\1','')
-            let following_word_option = 
-                        \ matchstr(variable_def, '.*\zs[wW]\ze[qQ]$')
-                        " substitute(variable_def, '.*\([wW]\)[qQ]$', '\1', '')
-            let quotes_option = 
-                        \ matchstr(variable_def, '.*\zs[qQ]\ze$')
-                        " substitute(variable_def, '.*\([qQ]\)$', '\1', '')
-            if identifier == ''
-                let until_str = 
-                        \ matchstr(variable_def, '.*[u]\zs.\+\ze$')
-                        " substitute(variable_def, '.*[u]\(.\+\)$', '\1', '')
-                let identifier = 
-                        \ matchstr(variable_def, '\zs.*\ze[u]\(.\+\)$')
-            endif
+        let var_list = split(s:DB_get("variable_def"), ',')
+        
+        if !empty(var_list)
+            for variable_def in var_list
+                " Extract the identifier, use the greedy nature of regex.
+                " Allow them to specify more than a single character for the
+                " search. We must assume they follow the correct format
+                " though and the criteria ends with a WQ; (case insensitive)
+                let until_str = ''
+                let identifier = matchstr(variable_def,'\zs\(.*\)\ze[wW][qQ]$')
+                " let identifier = substitute(variable_def,'\(.*\)[wWu][qQ]$','\1','')
+                let following_word_option = 
+                            \ matchstr(variable_def, '.*\zs[wW]\ze[qQ]$')
+                            " substitute(variable_def, '.*\([wW]\)[qQ]$', '\1', '')
+                let quotes_option = 
+                            \ matchstr(variable_def, '.*\zs[qQ]\ze$')
+                            " substitute(variable_def, '.*\([qQ]\)$', '\1', '')
+                if identifier == ''
+                    let until_str = 
+                            \ matchstr(variable_def, '.*[u]\zs.\+\ze$')
+                            " substitute(variable_def, '.*[u]\(.\+\)$', '\1', '')
+                    let identifier = 
+                            \ matchstr(variable_def, '\zs.*\ze[u]\(.\+\)$')
+                endif
 
-            " Validation checks
-            if strlen(identifier) != 0
-                " Make sure no word characters preceed the identifier
-                let no_preceed_word = '\(\w\)\@<!'
-            else
-                let msg = "dbext: Variable Def: Invalid identifier[" .
-                            \ variable_def . "]"
-                call s:DB_warningMsg(msg)
-                return query
-            endif
-            if until_str != ''
-                " Prompt up until the following 
-                let following_word = ''
-                let retrieve_ident = identifier . following_word
-            elseif following_word_option ==# 'w'
-                " w - MUST have word characters after it
-                let following_word = '\w\+'
-                let retrieve_ident = identifier . following_word
-            elseif following_word_option ==# 'W'
-                " W - CANNOT have any word characters after it
-                let following_word = '\(\w\)\@<!'
-                let retrieve_ident = identifier
-            else
-                let msg = "dbext: Variable Def: " .
-                            \ "Invalid following word indicator[" .
-                            \ variable_def . "]"
-                call s:DB_warningMsg(msg)
-                return query
-            endif
-            if until_str != ''
-                " Prompt up until the following 
-                let quotes = ''
-            elseif quotes_option ==# 'q'
-                " q - quotes do not matter
-                let quotes = ''
-            elseif quotes_option ==# 'Q'
-                " Q - CANNOT be surrounded in quotes
-                let quotes = "'".'\@<!'
-            else
-                let msg = "dbext: Variable Def: Invalid quotes indicator[" .
-                            \ variable_def . "]"
-                call s:DB_warningMsg(msg)
-                return query
-            endif
+                " Validation checks
+                if strlen(identifier) != 0
+                    " Make sure no word characters preceed the identifier
+                    let no_preceed_word = '\(\w\)\@<!'
+                else
+                    let msg = "dbext: Variable Def: Invalid identifier[" .
+                                \ variable_def . "]"
+                    call s:DB_warningMsg(msg)
+                    return query
+                endif
+                if until_str != ''
+                    " Prompt up until the following 
+                    let following_word = ''
+                    let retrieve_ident = identifier . following_word
+                elseif following_word_option ==# 'w'
+                    " w - MUST have word characters after it
+                    let following_word = '\w\+'
+                    let retrieve_ident = identifier . following_word
+                elseif following_word_option ==# 'W'
+                    " W - CANNOT have any word characters after it
+                    let following_word = '\(\w\)\@<!'
+                    let retrieve_ident = identifier
+                else
+                    let msg = "dbext: Variable Def: " .
+                                \ "Invalid following word indicator[" .
+                                \ variable_def . "]"
+                    call s:DB_warningMsg(msg)
+                    return query
+                endif
+                if until_str != ''
+                    " Prompt up until the following 
+                    let quotes = ''
+                elseif quotes_option ==# 'q'
+                    " q - quotes do not matter
+                    let quotes = ''
+                elseif quotes_option ==# 'Q'
+                    " Q - CANNOT be surrounded in quotes
+                    let quotes = "'".'\@<!'
+                else
+                    let msg = "dbext: Variable Def: Invalid quotes indicator[" .
+                                \ variable_def . "]"
+                    call s:DB_warningMsg(msg)
+                    return query
+                endif
 
 
-            " If W is chosen, then the identifier cannot be followed
-            " by any word characters.  If this is the case (like with ?s)
-            " there is no way to distinguish between which ? you are 
-            " prompting for, therefore count the identifier and
-            " display this information while prompting.
-            let count_matches = 0
-            if variable_def =~# 'W[qQ]$'
-                let count_matches = 1
-            endif
+                " If W is chosen, then the identifier cannot be followed
+                " by any word characters.  If this is the case (like with ?s)
+                " there is no way to distinguish between which ? you are 
+                " prompting for, therefore count the identifier and
+                " display this information while prompting.
+                let count_matches = 0
+                if variable_def =~# 'W[qQ]$'
+                    let count_matches = 1
+                endif
 
-            if until_str != ''
-                let srch_cond      = escape(identifier, '\\/.*$^~[]') .
-                            \ '.\{-}' .
-                            \ escape(until_str, '\\/.*$^~[]')
-                let retrieve_ident = srch_cond
-            else
-                let srch_cond = quotes . no_preceed_word .
-                        \ identifier . following_word . quotes
-            endif
+                if until_str != ''
+                    let srch_cond      = escape(identifier, '\\/.*$^~[]') .
+                                \ '.\{-}' .
+                                \ escape(until_str, '\\/.*$^~[]')
+                    let retrieve_ident = srch_cond
+                else
+                    let srch_cond = quotes . no_preceed_word .
+                            \ identifier . following_word . quotes
+                endif
 
-            let query = s:DB_searchReplace(query, srch_cond,
-                        \ retrieve_ident, count_matches)
-            if query == ""
-                " User has aborted the parsing and does not want
-                " the statement executed
-                break
-            endif
-        endwhile
-        call MvIterDestroy("MvIdentifiers")
+                let query = s:DB_searchReplace(query, srch_cond,
+                            \ retrieve_ident, count_matches)
+                if query == ""
+                    " User has aborted the parsing and does not want
+                    " the statement executed
+                    break
+                endif
+            endfor
+        endif
     endif
     return query
 endfunction
@@ -4466,10 +4444,6 @@ function! s:DB_parseProfile(value)
         return -1
     endif
 
-    " Reset previous multval profile variables
-    let l:profile_params_mv = ''
-    let l:profile_values_mv = ''
-
     let profile_name = "g:dbext_default_profile_" . a:value
 
     if exists(profile_name)
@@ -4535,7 +4509,7 @@ function! s:DB_historyUse(line)
     let i = matchstr(getline(a:line), '^\d\+')
 
     if i !~ '\d'
-        " call s:DB_warningMsg('Invalid choice:'.getline(a:line))
+        " call s:DB_warningMsg('dbext:Invalid choice:'.getline(a:line))
         return
     endif
 
@@ -4549,7 +4523,7 @@ function! s:DB_historyDel(line)
     let i = matchstr(getline(a:line), '^\d\+')
 
     if i !~ '\d'
-        " call s:DB_warningMsg('Invalid choice:'.getline(a:line))
+        " call s:DB_warningMsg('dbext:Invalid choice:'.getline(a:line))
         return
     endif
 

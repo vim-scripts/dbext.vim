@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 6.0.  Last change: Wed Jun 14 2006 8:35:37 AM
+*dbext.txt*	For Vim version 6.0.  Last change: Sun Sep 17 2006 11:22:54 AM
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      David Fishburn <fishburn@ianywhere.com>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 3.50
+	  	dbext.vim version 4.03
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -52,6 +52,30 @@ SourceForge: $Revision: 1.23 $
 
 ------------------------------------------------------------------------------
 What's New						*dbext-new*
+
+Version 4.00
+
+ New Features
+ ------------
+ - dbext.vim now requires Vim7.
+ - dbext.vim required 2 additional plugins multvals and genutil to operate.
+   These dependencies have been removed by taking advantage of the new Vim7
+   features (Lists and Dictionaries).
+ - When using the DBCompleteTable, DBCompleteProcedure, DBCompleteView
+   commands errors are displayed instead of silently ignored.  This makes
+   them more useful with the sqlComplete plugin (see |sql.txt|).
+ - Added new option, dbext_default_MYSQL_version, for MySQL to indicate the
+   version you using.
+ - You can optionally define a function, DBextPostResult, in your .vimrc, this
+   function will be called each time the result window is updated.  This
+   function can be used to do anything, for example, syntax highlighting the
+   result set in the result window.
+
+ Bug Fixes
+ ------------
+ - Added version support with MySQL to control what SQL is sent for version
+   4 and 5 servers.
+
 
 Version 3.50
 
@@ -330,6 +354,33 @@ Version 2.00
  populated the result window.  Pressing 'R' calls the DBRefreshResult 
  command.
 
+ If you define a function, DBextPostResult, in your .vimrc (or elsewhere)
+ it will be called automatically each time the Result buffer is updated.
+ This can be used to do anything you need, the initial request for the 
+ feature was for the ability to use Vim's syntax highlighting to make
+ the results displayed from a MYSQL query more readable.
+
+ The function takes two parameters: >
+    db_type
+<       - The database type specified for the buffer which caused the
+          Result buffer to be updated.  It will be one of the following:
+          ASA,ASE,DB2,INGRES,INTERBASE,MYSQL,ORA,PGSQL,SQLSRV,SQLITE >
+    buf_nr
+<       - The buffer number of the result window    
+ Here is a very simple example which will:
+    - Do nothing if connected to a database other than MYSQL
+    - Highlight any numeric values at the beginning of a line  >
+        function! DBextPostResult(db_type, buf_nr)
+            " If dealing with a MYSQL database
+            if a:db_type == 'MYSQL'
+                " Assuming the first column is an integer
+                " highlight it using the WarningMsg color
+                syn match logWarn '^\d\+'
+                hi def link logWarn		WarningMsg
+            endif
+        endfunction
+<
+
 3.2 Script Variables                            *dbext-configure-variables* 
 
  Global variables: >
@@ -573,6 +624,7 @@ Version 2.00
         dbext_default_MYSQL_cmd_header         = ''
         dbext_default_MYSQL_cmd_terminator     = ''
         dbext_default_MYSQL_cmd_options        = ''
+        dbext_default_MYSQL_version            = '5'
         dbext_default_ASA_bin                  = 'dbisql'
         dbext_default_ASA_cmd_header           = ''
         dbext_default_ASA_cmd_terminator       = ';'
@@ -614,7 +666,15 @@ Version 2.00
         dbext_default_DB2_cmd_options          = '-q del -s off'
         dbext_default_DB2_db2cmd_bin           = 'db2cmd'
         dbext_default_DB2_db2cmd_cmd_options   = '-c -w -i -t db2 -s'
-<    
+
+    dbext_default_MYSQL_version
+<       - MySQL version 5 supports stored procedures, views and new system
+          tables.  By default dbext takes advantage of these new
+          INFORMATION_SCHEMA tables.  If you are using dbext with MySQL 4
+          add the following to your vimrc to prevent the use of the new
+          system tables: >
+            let g:dbext_default_MYSQL_version = '4'
+
 
 3.4 DB2 Modes                                           *dbext-configure-db2*
     DB2 provides two different binaries to execute commands: db2batch, db2cmd.  
