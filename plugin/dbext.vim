@@ -1,23 +1,20 @@
 " dbext.vim - Commn Database Utility
 " ---------------------------------------------------------------
-" Version:  4.03
-" Maintainer:  David Fishburn <fishburn@ianywhere.com>
-" Authors:  Peter Bagyinszki <petike1@dpg.hu>
-"           David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Sun Sep 17 2006 11:20:33 AM
-" Based On: sqlplus.vim (author: Jamis Buck <jgb3@email.byu.edu>)
-" Created:  2002-05-24
-" Homepage: http://vim.sourceforge.net/script.php?script_id=356
+" Version:       4.10
+" Maintainer:    David Fishburn <fishburn@ianywhere.com>
+" Authors:       Peter Bagyinszki <petike1@dpg.hu>
+"                David Fishburn <fishburn@ianywhere.com>
+" Last Modified: Tue Nov 21 2006 11:46:07 AM
+" Based On:      sqlplus.vim (author: Jamis Buck)
+" Created:       2002-05-24
+" Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 " Contributors:  Joerg Schoppet <joerg.schoppet@web.de>
 "                Hari Krishna Dara <hari_vim@yahoo.com>
 "                Ron Aaron
-" Dependencies:
-"   - Requires multvals.vim to be installed. Download from:
-"       http://www.vim.org/script.php?script_id=171
 "
-" SourceForge: $Revision: 1.38 $
+" SourceForge:  $Revision: 1.38 $
 "
-" Help:     :h dbext.txt 
+" Help:         :h dbext.txt 
 
 if exists('g:loaded_dbext') || &cp
     finish
@@ -26,7 +23,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext = 403
+let g:loaded_dbext = 410
 
 " Script variable defaults, these are used internal and are never displayed
 " to the end user via the DBGetOption command  {{{
@@ -457,9 +454,9 @@ function! DB_listOption(...)
         elseif option_cnt == (conn_params_cnt +
                     \ config_params_cnt + 1)  
             let option_list = option_list .
-                        \ "----------------------\n" .
+                        \ "--------------------------\n" .
                         \ "** Script Level Options **\n" .
-                        \ "----------------------\n"
+                        \ "--------------------------\n"
         elseif option_cnt == (conn_params_cnt +
                     \ config_params_cnt +
                     \ script_params_cnt + 1)  
@@ -474,6 +471,48 @@ function! DB_listOption(...)
         let option_cnt  = option_cnt + 1
     endfor
      
+    let option_list = option_list .
+                \ "--------------\n" .
+                \ "** Profiles **\n" .
+                \ "--------------\n"
+    for profile_mv in s:conn_profiles_mv
+        let opt_name    = profile_mv
+        " let opt_value   = opt_name . ' = ' . s:DB_get(opt_name)
+        let opt_value   = ''
+        if exists('g:dbext_default_profile_'.opt_name)
+            let opt_value = matchstr(g:dbext_default_profile_{opt_name}, 'type=\zs\w\+\ze\(:\|$\)')
+        endif
+        let option_list = option_list . opt_name . ' T(' . opt_value . ")\n"
+    endfor
+     
+    let option_list = option_list .
+                \ "-------------------------------\n" .
+                \ "** Overrides (via the vimrc) **\n" .
+                \ "-------------------------------\n"
+    " Check if the user has any profiles defined in his vimrc
+    let saveA = @a
+    redir  @a
+    silent! exec 'let'
+    redir END
+    let l:global_vars = @a
+    let @a = saveA
+
+    let dbext_default_prefix = 'dbext_default_\zs\(\w\+\)'
+    let index = match(l:global_vars, dbext_default_prefix)
+    while index > -1
+        " Retrieve the name of option
+        let opt_name = matchstr(l:global_vars, '\w\+', index)
+        if strlen(opt_name) > 0
+            let opt_value = matchstr(l:global_vars, '\s*\zs[^'."\<C-J>".']\+', 
+                        \ (index + strlen(opt_name))  )
+            if opt_name !~ 'profile_'
+                let option_list = option_list . opt_name . ' = ' . opt_value . "\n"
+            endif
+        endif
+        let index = index + strlen(opt_name)+ strlen(opt_value) + 1
+        let index = match(l:global_vars, dbext_default_prefix, index)
+    endwhile
+
     call s:DB_addToResultBuffer(option_list, "clear")
 
     return ""
@@ -1987,30 +2026,30 @@ endfunction
 
 function! s:DB_DB2_getDictionaryTable()
     let result = s:DB_DB2_execSql( 
-                \ "select ".(s:DB_get('dict_show_owner')==1?"CAST(tabschema AS VARCHAR(15)) AS tabschema||'.'||":'').
-                \ "       CAST(tabname AS VARCHAR(40)) AS tabname " .
-                \ "  from syscat.tables                           " .
-                \ " order by ".(s:DB_get('dict_show_owner')==1?"CAST(tabschema AS VARCHAR(15)), ":'')."tabname" 
+                \ "select ".(s:DB_get('dict_show_owner')==1?"TRIM(CAST(tabschema AS VARCHAR(15))) || '.' || ":'').
+                \ "       CAST(tabname AS VARCHAR(40)) AS tabschema_tabname " .
+                \ "  from syscat.tables " .
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"tabschema, ":'')."tabname" 
                 \ )
     return s:DB_DB2_stripHeaderFooter(result)
 endfunction 
 
 function! s:DB_DB2_getDictionaryProcedure()
     let result = s:DB_DB2_execSql( 
-                \ "select ".(s:DB_get('dict_show_owner')==1?"CAST(procschema AS VARCHAR(15)) AS procschema||'.'||":'').
-                \ "       CAST(procname AS VARCHAR(40)) AS procname " .
-                \ "  from syscat.procedures                         " .
-                \ " order by ".(s:DB_get('dict_show_owner')==1?"CAST(procschema AS VARCHAR(15)), ":'')."procname" 
+                \ "select ".(s:DB_get('dict_show_owner')==1?"TRIM(CAST(procschema AS VARCHAR(15))) || '.' || ":'').
+                \ "       CAST(procname AS VARCHAR(40)) AS procschema_procname " .
+                \ "  from syscat.procedures " .
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"procschema, ":'')."procname" 
                 \ )
     return s:DB_DB2_stripHeaderFooter(result)
 endfunction
 
 function! s:DB_DB2_getDictionaryView() 
     let result = s:DB_DB2_execSql( 
-                \ "select ".(s:DB_get('dict_show_owner')==1?"CAST(viewschema AS VARCHAR(15)) AS viewschema||'.'||":'').
-                \ "       CAST(viewname AS VARCHAR(40)) AS viewname " .
-                \ "  from syscat.views                              " .
-                \ " order by ".(s:DB_get('dict_show_owner')==1?"CAST(viewschema AS VARCHAR(15)), ":'')."viewname" 
+                \ "select ".(s:DB_get('dict_show_owner')==1?"TRIM(CAST(viewschema AS VARCHAR(15))) || '.' || ":'').
+                \ "       CAST(viewname AS VARCHAR(40)) AS viewschema_viewname " .
+                \ "  from syscat.views " .
+                \ " order by ".(s:DB_get('dict_show_owner')==1?"viewschema, ":'')."viewname" 
                 \ )
     return s:DB_DB2_stripHeaderFooter(result)
 endfunction 

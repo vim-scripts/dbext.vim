@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 6.0.  Last change: Sun Sep 17 2006 11:22:54 AM
+*dbext.txt*	For Vim version 6.0.  Last change: Tue Nov 21 2006 11:45:54 AM
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      David Fishburn <fishburn@ianywhere.com>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 4.03
+	  	dbext.vim version 4.10
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -52,6 +52,23 @@ SourceForge: $Revision: 1.23 $
 
 ------------------------------------------------------------------------------
 What's New						*dbext-new*
+
+Version 4.10
+
+ New Features
+ ------------
+ - Updated DBGetOption to additionally display a list of all database profiles
+   and their types.  All dbext options that have been overriden via the
+   vimrc are also displayed.
+
+ Bug Fixes
+ ------------
+ - db2 support had issues with the queries when running DBCompleteTable,
+   DBCompleteProcedure, DBCompleteView which also affected the sqlcomplete.vim
+   plugin included with Vim7 (Peter Princz).
+ - The documentation was still indicating there was a plugin dependency which
+   has been removed with Vim7.
+
 
 Version 4.00
 
@@ -214,12 +231,14 @@ Version 2.20
    removal of the INTO clause to ensure it does not interfer with an
    INSERT or MERGE statement.
 
+
 Version 2.11
 
  Bug Fixes
  ---------
  - On some platforms the temporary file created to execute SQL statements must
    end in ".sql".  Corrected this for all databases
+
 
 Version 2.10
 
@@ -246,6 +265,7 @@ Version 2.10
  - Overhauled the DB2 support. 
  - bin_path did not work correctly on windows platforms.
  - Updated the connection text in the Result buffer.
+
 
 Version 2.00
 
@@ -326,9 +346,6 @@ Version 2.00
 	:helptags $VIM/vimfiles/doc (Windows)
 	:helptags $VIM/.vim/doc     (Unix)
 
- dbext has a dependency on the multvals.vim plugin. Download from:
-      http://www.vim.org/script.php?script_id=171
- 
 ------------------------------------------------------------------------------
 3. Configuration					*dbext-configure*
 
