@@ -1,10 +1,10 @@
 " dbext.vim - Commn Database Utility
 " ---------------------------------------------------------------
-" Version:       4.10
+" Version:       4.20
 " Maintainer:    David Fishburn <fishburn@ianywhere.com>
 " Authors:       Peter Bagyinszki <petike1@dpg.hu>
 "                David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Tue Nov 21 2006 11:46:07 AM
+" Last Modified: Tue Dec 19 2006 10:39:10 PM
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -23,7 +23,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext = 410
+let g:loaded_dbext = 420
 
 " Script variable defaults, these are used internal and are never displayed
 " to the end user via the DBGetOption command  {{{
@@ -112,6 +112,9 @@ function! s:DB_buildLists()
     call add(s:script_params_mv, 'history_max_entry')
     call add(s:script_params_mv, 'dbext_version')
     call add(s:script_params_mv, 'inputdialog_cancel_support')
+    call add(s:script_params_mv, 'buffers_with_dict_files')
+    call add(s:script_params_mv, 'use_win32_filenames')
+    call add(s:script_params_mv, 'temp_file')
 
     " DB server specific params
     " See below for 3 additional DB2 items
@@ -183,6 +186,20 @@ function! s:DB_buildLists()
                         \  loop_count . '. ' . item
             let loop_count += 1
 	endfor
+
+    " Check if we are using Cygwin, if so, let the user override
+    " the temporary filename to use backslashes
+    if has('win32unix') && s:DB_get('use_win32_filenames') == 1
+        let l:dbext_tempfile = system('cygpath -w '.s:dbext_tempfile)
+        if v:shell_error 
+            call s:DB_warningMsg('dbext:Failed to convert Cygwin path:'.v:errmsg)
+        else
+            " If executing the Windows path inside a Cygwin shell, you must
+            " double up the backslashes
+            let s:dbext_tempfile = substitute(l:dbext_tempfile, '\\', '\\\\', 'g')
+        endif
+        " let s:dbext_tempfile = substitute(s:dbext_tempfile, '/', '\', 'g')
+    endif
 
 endfunction 
 "}}}
@@ -590,6 +607,9 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "replace_title"           |return (exists("g:dbext_default_replace_title")?g:dbext_default_replace_title.'':0)
     elseif a:name ==# "use_tbl_alias"           |return (exists("g:dbext_default_use_tbl_alias")?g:dbext_default_use_tbl_alias.'':'a')
     elseif a:name ==# "delete_temp_file"        |return (exists("g:dbext_default_delete_temp_file")?g:dbext_default_delete_temp_file.'':'1')
+    elseif a:name ==# "buffers_with_dict_files" |return s:dbext_buffers_with_dict_files
+    elseif a:name ==# "temp_file"               |return s:dbext_tempfile
+    elseif a:name ==# "use_win32_filenames"     |return (exists("g:dbext_default_use_win32_filenames")?g:dbext_default_use_win32_filenames.'':'0')
     elseif a:name ==# "dbext_version"           |return (g:loaded_dbext)
     elseif a:name ==# "history_file"            |return (exists("g:dbext_default_history_file")?g:dbext_default_history_file.'':(has('win32')?$VIM.'/dbext_sql_history.txt':$HOME.'/dbext_sql_history.txt'))
     elseif a:name ==# "history_bufname"         |return (fnamemodify(s:DB_get('history_file'), ":t:r"))
@@ -2897,7 +2917,7 @@ function! s:DB_SQLSRV_getListView(view_prefix)
 endfunction 
 function! s:DB_SQLSRV_getDictionaryTable() "{{{
     let result = s:DB_SQLSRV_execSql(
-                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)||'.'||":'').
+                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)+'.'+":'').
                 \ "       convert(varchar,o.name) ".
                 \ "  from sysobjects o, sysusers u ".
                 \ " where o.uid=u.uid ".
@@ -2908,7 +2928,7 @@ function! s:DB_SQLSRV_getDictionaryTable() "{{{
 endfunction "}}}
 function! s:DB_SQLSRV_getDictionaryProcedure() "{{{
     let result = s:DB_SQLSRV_execSql(
-                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)||'.'||":'').
+                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)+'.'+":'').
                 \ "       convert(varchar,o.name) ".
                 \ "  from sysobjects o, sysusers u ".
                 \ " where o.uid=u.uid ".
@@ -2919,7 +2939,7 @@ function! s:DB_SQLSRV_getDictionaryProcedure() "{{{
 endfunction "}}}
 function! s:DB_SQLSRV_getDictionaryView() "{{{
     let result = s:DB_SQLSRV_execSql(
-                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)||'.'||":'').
+                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)+'.'+":'').
                 \ "       convert(varchar,o.name) ".
                 \ "  from sysobjects o, sysusers u ".
                 \ " where o.uid=u.uid ".
@@ -3626,6 +3646,9 @@ endfunction "}}}
 " runCmd {{{
 function! s:DB_runCmd(cmd, sql)
     let s:dbext_prev_sql   = a:sql
+
+    if has('win32unix') && s:DB_get('use_win32_filenames') == 1
+    endif
 
     let l:display_cmd_line = s:DB_get('display_cmd_line') 
 

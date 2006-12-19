@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 6.0.  Last change: Tue Nov 21 2006 11:45:54 AM
+*dbext.txt*	For Vim version 6.0.  Last change: Tue Dec 19 2006 10:40:50 PM
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      David Fishburn <fishburn@ianywhere.com>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 4.10
+	  	dbext.vim version 4.20
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -52,6 +52,24 @@ SourceForge: $Revision: 1.23 $
 
 ------------------------------------------------------------------------------
 What's New						*dbext-new*
+
+Version 4.20
+
+ New Features
+ ------------
+ - Improved support for Cygwin.  If you are using a Cygwin compiled Vim (on
+   Windows) and are accessing Windows compiled binaries (i.e. sqlplus.exe)
+   the binary will complain since it does not understand Unix path names.
+   Added the option g:dbext_default_use_win32_filenames which allows you to
+   indicate the binaries must use translated Windows paths instead. (Richard)
+ - DBGetOption displays more information.
+
+ Bug Fixes
+ ------------
+ - SQL Server support had issues with the queries when running DBCompleteTable,
+   DBCompleteProcedure, DBCompleteView which also affected the sqlcomplete.vim
+   plugin included with Vim7 (Albie Janse van Rensburg).
+
 
 Version 4.10
 
@@ -529,6 +547,16 @@ Version 2.00
           plugin uses this setting.  The default is enabled, to disable 
           add the following to your vimrc: >
             :let  g:dbext_default_dict_show_owner = 0
+    dbext_default_use_win32_filenames
+<       - If using Cygwin on Windows and the 3rd party binaries (sqlplus.exe,
+          mysql.exe, dbisql.exe, ...) are Windows compiled then they will not
+          understand Unix style filenames (with forward slashes).  Setting
+          this option to 1, forces all filenames to be referenced with
+          double backslashes instead.  It also uses the Cygwin utility,
+          cygpath, to identify the absolute filename from a Windows
+          perspective.  The default is 0, to enable add the following to your
+          vimrc: >
+            :let  g:dbext_default_use_win32_filenames = 1
 <
  Buffer variables
     You can check all options for the buffer without specifying an option name
