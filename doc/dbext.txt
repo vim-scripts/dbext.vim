@@ -1,57 +1,91 @@
-*dbext.txt*	For Vim version 6.0.  Last change: Tue Dec 19 2006 10:40:50 PM
+*dbext.txt*	For Vim version 6.0.  Last change: Sun 26 Aug 2007 07:42:52 PM Eastern Daylight Time
 
 
                 	  VIM REFERENCE MANUAL 
                                 by 
-                     Peter Bagyinszki <petike1@dpg.hu>
                      David Fishburn <fishburn@ianywhere.com>
+                     Peter Bagyinszki <petike1@dpg.hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 4.20
+	  	dbext.vim version 5.06
 
 For instructions on installing this file, type
 	:help add-local-help
 |add-local-help| inside Vim.
 
 Homepage: http://vim.sourceforge.net/script.php?script_id=356
-SourceForge: $Revision: 1.23 $
 
 *dbext* *dbext.vim* *db_ext* *db_ext.vim* *database-extension* *pgsql* *mysql*
-*asa* *ase* *ingres* *interbase* *sqlite* *sqlsrv* *ora* *db2*
+*asa* *ase* *ingres* *interbase* *sqlite* *sqlsrv* *ora* *db2* *DBI*
 
-1.  Overview					|dbext-overview|
-2.  Installation				|dbext-install|
-3.  Configuration				|dbext-configure|
-    3.1 Displaying Results                      |dbext-configure-results|
-    3.2 Script Variables                        |dbext-configure-variables|
-    3.3 Database Specific Options               |dbext-configure-options|
-    3.4 DB2 Modes                               |dbext-configure-db2|
-4.  Mappings and commands			|dbext-mappings|
-5.  Adding new database types			|dbext-newdb|
-6.  Prompting for input parameters		|dbext-prompting|
-7.  Setting up connection information		|dbext-connect|
-    7.1 Connection Parameters                  	|dbext-connect-parameters|
-    7.2 Prompting for Parameters                |dbext-connect-prompting|
-    7.3 Connection profiles                     |dbext-connect-profiles|
-    7.4 Connection information in modelines     |dbext-connect-modelines|
-    7.5 Asking for connection parameters        |dbext-connect-ask|
-8.  Creating mappings using dbext commands	|dbext-in-mappings|
-9.  Object Completion                          	|dbext-completion|
-10. Listing Objects in the Database            	|dbext-list-objects|
-11. Plugin integration             	        |dbext-integration|
-    11.1 OMNI completion integration            |dbext-omni-completion|
-    11.2 Intellisense integration             	|dbext-intellisense|
-12. Filetype support                         	|dbext-filetypes|
-    12.1 Using filetype support                 |dbext-filetypes-using|
-    12.2 Adding new filetypes                   |dbext-filetypes-adding|
-13. Using SQL History                         	|dbext-history|
-14. Open Source                         	|dbext-sourceforge|
-15. Tutorial                             	|dbext-tutorial|
+1.  Overview				      |dbext-overview|
+2.  Installation                              |dbext-install|
+3.  Configuration		              |dbext-configure|
+    3.1 Displaying Results                    |dbext-configure-results|
+    3.2 Script Variables                      |dbext-configure-variables|
+    3.3 Database Specific Options             |dbext-configure-options|
+    3.4 DB2 Modes                             |dbext-configure-db2|
+    3.5 DBI Installation                      |dbext-configure-dbi|
+4.  Mappings and commands		      |dbext-mappings|
+5.  Adding new database types		      |dbext-newdb|
+6.  Prompting for input parameters	      |dbext-prompting|
+7.  Setting up connection information	      |dbext-connect|
+    7.1 Connection Parameters                 |dbext-connect-parameters|
+    7.2 Prompting for Parameters              |dbext-connect-prompting|
+    7.3 Connection profiles                   |dbext-connect-profiles|
+    7.4 Connection profile examples           |dbext-connect-profiles-examples|
+    7.5 Connection information in modelines   |dbext-connect-modelines|
+    7.6 Asking for connection parameters      |dbext-connect-ask|
+8.  Creating mappings using dbext commands    |dbext-in-mappings|
+9.  Object Completion                         |dbext-completion|
+10. Listing Objects in the Database           |dbext-list-objects|
+11. Plugin integration             	      |dbext-integration|
+    11.1 OMNI completion integration          |dbext-omni-completion|
+    11.2 Intellisense integration             |dbext-intellisense|
+12. Filetype support                          |dbext-filetypes|
+    12.1 Using filetype support               |dbext-filetypes-using|
+    12.2 Adding new filetypes                 |dbext-filetypes-adding|
+13. Using SQL History                         |dbext-history|
+14. Open Source                               |dbext-sourceforge|
+15. Tutorial                                  |dbext-tutorial|
+    15.1 DBI Tutorial                         |dbext-tutorial-dbi|
 
 {Vi does not have any of this}
 
-------------------------------------------------------------------------------
+==============================================================================
 What's New						*dbext-new*
+
+Version 5.00
+
+ New Features
+ ------------
+ - Added Perl's DBI and DBI::ODBC support.  This opens additional database
+   support without having to adjust the scripts.  You must have a Perl enabled
+   Vim (:echo has('perl')).  Using the DBI layer offers some advantages over
+   using the native binary tools:
+        - Transaction support which allows you to maintain a transaction during 
+          your editing session and either commit or rollback and changes.
+          This is not possible without using the DBI layer.
+        - Speed improvements, since the database connection is maintained, the
+          there is less overhead per command.
+ - New commands are available to select only a few rows instead of an entire
+   result set.  In most databases this is referred to as TOP X.
+   DBExecSQLTopX, DBExecVisualSQLTopX, DBExecSQLUnderCursorTopX have been
+   added plus associated mappings (Albie Janse van Rensburg).
+ - Made Cygwin detection a bit easier using the shellslash option (Steve
+   Gibson)
+
+ Bug Fixes
+ ------------
+ - SQL Server support had issues with the queries when running DBCompleteTable,
+   DBCompleteProcedure, DBCompleteView which also affected the sqlcomplete.vim
+   plugin included with Vim7 (Albie Janse van Rensburg).
+ - Oracle reported "rows will be truncated", added "set linesize 10000" to the
+   Oracle headers (Stuart Brock)
+ - When prompting for connection parameters if you choose a profile of "0" 
+   which is no profile, you had to re-run the wizard to prompt for the rest
+   of the parameters, now the wizard continues as expected.
+
 
 Version 4.20
 
@@ -301,7 +335,7 @@ Version 2.00
  - Intellisense Addin Support                   |dbext-intellisense|
 =======
 
-------------------------------------------------------------------------------
+==============================================================================
 1. Overview						*dbext-overview*
 
  This plugin contains functions/mappings/commands to enable Vim to access 
@@ -351,7 +385,7 @@ Version 2.00
  against the database is displayed in the Result buffer.  This is done to 
  help determine what is the cause of the problem might be.  
 
-------------------------------------------------------------------------------
+==============================================================================
 2. Installing the plugin				*dbext-install*
 
  You can use this script as a plugin by copying it to your plugin directory. 
@@ -364,7 +398,7 @@ Version 2.00
 	:helptags $VIM/vimfiles/doc (Windows)
 	:helptags $VIM/.vim/doc     (Unix)
 
-------------------------------------------------------------------------------
+==============================================================================
 3. Configuration					*dbext-configure*
 
  The behavior of dbext.vim are governed by several variables. These variables
@@ -557,6 +591,172 @@ Version 2.00
           perspective.  The default is 0, to enable add the following to your
           vimrc: >
             :let  g:dbext_default_use_win32_filenames = 1
+    dbext_default_DBI_dict_proc_<DBI Driver Name>
+<       - DBI has meta data for tables and views but not for procedures.
+          If you use stored procedure completion with DBI you can define
+          the SQL statement DBI will use to retrieve the list of stored
+          procedures from the database.  For the current supported databases
+          these settings have already been defined (if this was supported
+          by version 4.20). >
+            :let  g:dbext_default_DBI_dict_proc_SQLAnywhere = 
+                      \ 'SELECT u.user_name ||''.''|| p.proc_name '.
+                      \ '  FROM SYS.SYSPROCEDURE as p, '.
+                      \ '       SYS.SYSUSERPERM as u '.
+                      \ ' WHERE p.creator = u.user_id '.
+                      \ ' ORDER BY u.user_name, proc_name')
+    dbext_default_DBI_list_proc_<DBI Driver Name>
+<       - DBI has meta data for tables and views but not for procedures.
+          If you use stored procedure completion with DBI you can define
+          the SQL statement DBI will use to retrieve the list of stored
+          procedures from the database.  For the current supported databases
+          these settings have already been defined (if this was supported
+          by version 4.20).  dbext prompts for search criteria.  The SQL
+          statement should support place holders to fill in both the
+          owner name and the beginning of the procedure name.  In the 
+          example below you can see if no owner or procedure name supplied
+          a match to '%' is used which retrieves all procedures.  Simply
+          add similar support to your own SQL statement.  >
+            :let  g:dbext_default_DBI_list_proc_SQLAnywhere = 
+                      \ 'SELECT p.proc_name, u.user_name '.
+                      \ '  FROM SYS.SYSPROCEDURE as p, '.
+                      \ '       SYS.SYSUSERPERM as u '.
+                      \ ' WHERE p.creator = u.user_id '.
+                      \ '   AND p.proc_name like ''dbext_replace_name%''   '.
+                      \ '   AND u.user_name like ''dbext_replace_owner%''  '.
+                      \ ' ORDER BY proc_name')
+    dbext_default_DBI_desc_proc_<DBI Driver Name>
+<       - DBI has meta data for tables and views but not for procedures.
+          To "describe" a stored procedure (usually means seeing the
+          parameters required) you must supply the SQL statement to send
+          to the database.  Since each SQL statement will be different 
+          depending on what database you are connected to the DBI driver
+          name is used to distinguish what statement to send.  
+          For the current supported databases
+          these settings have already been defined (if this was supported
+          by version 4.20).  The dbext_replace_name name is automatically
+          replaced by dbext before being executed against the database.
+          Simply add similar support to your own SQL statement.  >
+            :let  g:dbext_default_DBI_desc_proc_SQLAnywhere = 
+                      \ 'SELECT * '.
+                      \ '  FROM SYS.SYSPROCPARMS as pp '.
+                      \ ' WHERE pp.parmtype = 0 '.
+                      \ '   AND pp.procname = ''dbext_replace_name''  '
+    dbext_default_DBI_max_rows
+<       - By default, we will only retrieve 300 rows from the DBI / ODBC 
+          layer.   You can temporarily override the max row count using
+          the :DBSetOption command.  DBI_max_rows is used by both the DBI
+          and DBI / ODBC layer.  Setting this value to 0 removes the 
+          limit.  >
+            :let  g:dbext_default_DBI_max_rows = 500
+            :DBSetOption DBI_max_rows=500
+            :DBSetOption DBI_max_rows=     " Resets back to the default
+            :DBSetOption DBI_max_rows=0    " Retrieve all rows
+    dbext_default_DBI_commit_on_disconnect
+<       - By default, when disconnecting from a DBI or ODBC datasource
+          and AutoCommit is set to 0, a COMMIT will be issued against
+          the database.  If you would prefer any outstanding changes
+          to be rolled back on disconnect you can change this option. >
+            :let  g:dbext_default_DBI_commit_on_disconnect = 0
+            :DBSetOption DBI_commit_on_disconnect=1
+            :DBSetOption DBI_commit_on_disconnect=     " Resets back to the default
+    dbext_default_DBI_disconnect_onerror
+<       - By default, if an error is reported by the database the 
+          DBI / ODBC layer will disconnect from the database.  The next 
+          time a command is sent to the database it will automatically 
+          reconnect.  When disconnecting, the DBI_commit_on_disconnect
+          option will be used.  Setting this value to 0 prevents the
+          disconnect.  >
+            :let  g:dbext_default_DBI_disconnect_onerror = 0
+            :DBSetOption DBI_disconnect_onerror=0
+            :DBSetOption DBI_disconnect_onerror=     " Resets back to the default
+    dbext_default_DBI_split_on_pattern
+<       - The DBI driver you are using dictates whether you can send 
+          multiple statements (usually ; delimited) to the driver and have
+          it execute each statement.  For example, in the MySQL 3.x DBI
+          driver, you cannot send ; delimited statements, the driver
+          will report an error.  This has apparantly been updated in the
+          MySQL 4.x DBI driver.  For SQL Anywhere and SQL Server you
+          can send multiple statements delimited by ;, but if you use
+          the command terminated "go", the DBI layer will report errors.
+          To work around these limitations, you can specify a regex
+          pattern to instruct dbext on how to split the group of 
+          statements into individual ones and execute independently.
+          If an error is encountered during the execution, it will stop
+          executing the statements and report the error.  The current 
+          default pattern is: >
+            "\n".'\s*\<go\>\s*'."\n"
+<            
+          If "go" is the only text found on a line, the statement will
+          be split and set individually.  Notice the double quotes are 
+          used to represent the newline, which is a special string in 
+          Vim's regex.  You can define your own, or use the DBSetOption
+          to override it for a particular buffer.  For example, if you
+          are still using a MySQL DBI driver < version 4.x you can set
+          the pattern to be a ";".  This would mean you cannot create
+          stored procedures since each statement within the procedure
+          is terminated with a ";".  That would send the entire procedure
+          as individual statements which would result in syntax errors. >
+            :let  g:dbext_default_DBI_split_on_pattern = ';'
+            :DBSetOption DBI_split_on_pattern=';'
+            :DBSetOption DBI_split_on_pattern=     " Resets back to the default
+    dbext_default_DBI_cmd_terminator
+<       - Most databases support the ";" as a command terminator, which
+          is the default for the DBI / ODBC layer.  This is used by
+          the DBI_read_file_cmd.  It can be overriden using: >
+            :let  g:dbext_default_DBI_cmd_terminator = ';'
+            :DBSetOption DBI_cmd_terminator=';'
+            :DBSetOption DBI_cmd_terminator=     " Resets back to the default
+    dbext_default_DBI_read_file_cmd
+<       - Often you need to place common SQL statements in a file and 
+          execute them with other statements.  You can consider this 
+          similar to an IMPORT or INCLUDE command in other languages.
+          The dbext plugin will look for the DBI_read_file_cmd and check
+          if the following text is a filename.  If the filename exists, 
+          the contents of the file will replace the DBI_read_file_cmd
+          and filename plus an optional DBI_cmd_terminator. By default
+          the DBI_read_file_cmd is set to "read ".  Notice the space after
+          the word, which is important.  You could override this to something
+          like '@', in which case no space is required since that is more
+          like a control character.  It would not be confused with part
+          of the following filename.  If the DBI_read_file_cmd command is
+          found within a line which has been commented out, it will not
+          be replaced.  Comments are determined by Vim's |comments| option. 
+          The DBI_read_file_cmd can be nested indefinitely. >
+            :let  g:dbext_default_DBI_read_file_cmd = '\.'
+            :DBSetOption DBI_read_file_cmd='\.'
+            :DBSetOption DBI_read_file_cmd=     " Resets back to the default
+            
+            read c:\temp\my.sql;
+            read /temp/my.sql;
+    dbext_default_DBI_orientation
+<       - By default, result sets returned by the database are displayed
+          in a tablular format: >
+                ID   GivenName  Surname       
+                ---  ---------  ------------  
+                101  Michaels   Devlin        
+                102  Beth       Reiser        
+<         There are times when a vertical (versus horizontal) view is more
+          appropriate.  The DBI layer also has this capability.  If the
+          format is set to "horizontal" the standard output is used.
+          Setting the format to anything other than "horizontal" will
+          result in a vertical output: >
+            :let  g:dbext_default_DBI_orientation = 'vertical'
+            :DBSetOption DBI_orientation='v'
+                ****** Row: 1 ******
+                       ID: 101
+                GivenName: Michaels 
+                  Surname: Devlin      
+                ****** Row: 2 ******
+                       ID: 102
+                GivenName: Beth     
+                  Surname: Reiser      
+                (2 rows)
+
+            :DBSetOption DBI_orientation=     " Resets back to the default
+                ID   GivenName  Surname       
+                ---  ---------  ------------  
+                101  Michaels   Devlin        
+                102  Beth       Reiser        
 <
  Buffer variables
     You can check all options for the buffer without specifying an option name
@@ -618,6 +818,32 @@ Version 2.00
 <
           This has the net result of creating the following command line: >
               dbisql -c "UID=dba;PWD=sql;CON=myconn"
+    driver
+<       - When using the DBI interface specify the driver name to use.
+          Some common examples: SQLAnywhere, Oracle, MySQL. This is
+          the name of the .pm module installed under the Perl 
+          subdirectories. >
+              DBSetOption driver=SQLAnywhere
+    conn_parms
+<       - When using the DBI interface specify the additional connection
+          parameters which are passed to the DBI driver.
+          These parameters vary based on which vendor's DBI module you
+          are using. >
+              " SQL Anywhere
+              DBSetOption conn_parms=ENG=demo10;DBN=demo
+              " MySQL
+              DBSetOption conn_parms=database=mysql;host=localhost
+    driver_parms
+<       - When using the DBI interface specify the additional driver
+          parameters which are passed to the DBI driver.
+          Generally, the only time this option is required is if you
+          wish to maintain a transaction during a editing session.  The
+          default behaviour is AutoCommit.  Each statement executed is
+          automatically committed by the DBI layer.  If you wish to be
+          able to rollback any changes, you can add the AutoCommit=0
+          to your driver line.  The commands :DBCommit and :DBRollback 
+          can be used to control the transaction. >
+              DBSetOption driver_parms=AutoCommit=0
     bin_path
 <       - If tools provided by the database are not in the path, you can 
           optionally supply full path to the binaries.  This is also useful
@@ -736,7 +962,90 @@ Version 2.00
     try both to see which fits your needs.
 
 
-------------------------------------------------------------------------------
+3.5 DBI Installation                                    *dbext-configure-dbi*
+    To use the DBI interface you must first have a Perl enabled Vim.
+    You can test your installation by running this command: >
+        :echo has('perl')
+<
+    If you Vim is not Perl enabled you can:
+        1.  Compile your own Vim and enable it.  Tony Mechelynck has posted
+            some instructions on how to compile your own:
+            - For Windows
+                http://users.skynet.be/antoine.mechelynck/vim/compile.htm
+            - For Unix
+                http://users.skynet.be/antoine.mechelynck/vim/compunix.htm
+
+        2.  Download a pre-built version of Vim with Perl already enabled
+            - Steve Hall's Cream site which includes a non-cream version of
+              Vim.  He routinely updates these builds which includes all 
+              patches to the source as of his build.  This link includes only
+              Perl, not the additional Cream add-ons.
+                http://cream.sourceforge.net/download.html
+
+    In order to use DBI, the Perl DBI modules must be installed.
+
+    Install these perl modules, using ActiveState Perl on Windows you can do
+    it as follows:
+        cd Perl_Root_dir\bin
+        ppm.bat
+            install DBI
+            install DBD::ODBC
+            quit
+
+    Installing the SQL Anywhere DBI module (ensure you are using 10.0.1.3525
+    and above)
+        cd %SQLANY10%\src\perl
+        copy "%SQLANYSAMP10%\demo.db"
+        dbeng10 demo
+
+        Make sure SQLANY10 is in your path before any other versions of SQL
+        Anywhere.
+        "C:\Program Files\Microsoft Visual Studio .Net 2003\Common7\Tools\vsvars32.bat"
+        or
+        "C:\Program Files\Microsoft Visual Studio 8\Common7\Tools\vsvars32.bat"
+            perl Makefile.PL
+            nmake
+            nmake test
+            nmake install
+
+    Installing the Oracle DBI module
+        cd Perl_Root_dir\bin
+        ppm-shell.bat
+            install DBD::Oracle
+            quit
+
+    Installing the Sybase (ASE) DBI module
+        "C:\Program Files\Microsoft Visual Studio 8\Common7\Tools\vsvars32.bat"
+        cd Perl_Root_dir\bin
+        perl -MCPAN -e shell
+            install DBD::Sybase
+            quit
+
+    Installing the DB2 DBI module
+        Make sure your DB2_HOME directory has been set
+        cd Perl_Root_dir\bin
+        perl -MCPAN -e shell
+            install DBD::DB2
+            quit
+
+    Installing the binary MySQL DBI module
+        cd Perl_Root_dir\bin
+        ppm-shell.bat
+            install DBD-mysql
+            quit
+
+    Installing the Sybase ASE or SQL Server DBI module
+        http://lists.ibiblio.org/pipermail/freetds/2001q3/004748.html
+        "C:\Program Files\Microsoft Visual Studio .Net 2003\Common7\Tools\vsvars32.bat"
+        or
+        "C:\Program Files\Microsoft Visual Studio 8\Common7\Tools\vsvars32.bat"
+        cd Perl_Root_dir\bin
+        ppm-shell.bat
+            install Sybase-TdsServer
+            install DBD-mysql
+            quit
+
+==============================================================================
 4. Mappings and commands				*dbext-mappings*
 
  Default visual/normal mode mappings (|:vmap|,|:nmap|):
@@ -799,6 +1108,13 @@ Version 2.00
     nnoremap <unique> <Leader>se <Plug>DBExecSQL
     :DBExecSQL
 
+    " Execute SQL query under cursor. You need a semicolon at the 
+    " end of the query.  Prompt the user for how many rows to
+    " return from the result set.
+    " sql - Execute (capital E indicating a difference)
+    nnoremap <unique> <Leader>sE <Plug>DBExecSQLTopX
+    :DBExecSQLTopX
+
     " Execute a range of lines
     " sql - execute - all
     nnoremap <unique> <Leader>sea :1,$DBExecRangeSQL
@@ -811,6 +1127,13 @@ Version 2.00
     " sql - table
     nnoremap <unique> <Leader>st <Plug>DBSelectFromTable
     :DBSelectFromTable
+
+    " select * from the table under the cursor
+    " Prompt the user for how many rows to return 
+    " from the result set.
+    " sql - Table (capital T indicating a difference)
+    nnoremap <unique> <Leader>sT <Plug>DBSelectFromTableTopX
+    :DBSelectFromTableTopX
 
     " select * from the table under the cursor prompt for where clause
     " sql - table - where 
@@ -868,6 +1191,13 @@ Version 2.00
     " sql - history
     nnoremap <unique> <Leader>sh :DBHistory
     
+    " When using the DBI or DBI::ODBC interface you have the option
+    " of displaying the results in the standard horizontal layout
+    " or in a vertical layout which is especially useful for one
+    " or two rows of output.
+    " sql - orientation
+    nnoremap <unique> <Leader>so :DBOrientation
+    
     " Prompt for connection information
     " [Optional] Profile
     " [Required] Database type - MySQL, ASA, Ingress, Oracle (see above) 
@@ -891,32 +1221,51 @@ Version 2.00
 <    
  Commands
     (In addition to the above mappings)
-    DBExecSQL       - Enter any command you want sent to the database
-    DBExecRangeSQL  - Enter any command you want sent to the database
-    Select          - Enter the remainder of a select (ie :Select from customer)
-    Update          - Enter the remainder of an update
-    Insert          - Enter the remainder of an insert
-    Delete          - Enter the remainder of an delete
-    Call            - Enter the remainder of a call/exec statement
-    Drop            - Enter the remainder of a drop
-    Alter           - Enter the remainder of an alter
-    Create          - Enter the remainder of a create
-    DBSetOption     - Allow you to set options from the command line.  This is
-                      useful in functions and mappings, see |dbext-in-mappings|.
-    DBGetOption     - Retrieves current setting
-    DBCheckModeline - Checks the file for a dbext modeline, and sets the
-                      connection information
-    DBCompleteTable - Sets up table name completion for the buffer
+    DBExecSQL           - Enter any command you want sent to the database
+    DBExecSQLTopX       - Enter any command you want sent to the database
+                          and limit the result set to X rows
+    DBExecRangeSQL      - Enter any command you want sent to the database
+    Select              - Enter the remainder of a select (ie :Select from
+                          customer)
+    Update              - Enter the remainder of an update
+    Insert              - Enter the remainder of an insert
+    Delete              - Enter the remainder of an delete
+    Call                - Enter the remainder of a call/exec statement
+    Drop                - Enter the remainder of a drop
+    Alter               - Enter the remainder of an alter
+    Create              - Enter the remainder of a create
+    DBSetOption         - Allow you to set options from the command line.
+                          This is useful in functions and mappings, see
+                          |dbext-in-mappings|.
+    DBGetOption         - Retrieves current setting
+    DBCheckModeline     - Checks the file for a dbext modeline, and sets the
+                          connection information
+    DBRefreshResult     - Re-runs the statement currently displayed in the 
+                          result window
+    DBCompleteTable     - Sets up table name completion for the buffer
     DBCompleteProcedure - Sets up table name completion for the buffer
-    DBCompleteView  - Sets up table name completion for the buffer
-    DBListTable     - Lists all tables (optional wildcard)
-    DBListProcedure - Lists all procedures (optional wildcard)
-    DBListView      - Lists all views (optional wildcard)
-    DBListColumn    - Comma separated list of columns for the given table
-    DBRefreshResult - Re-runs the statement currently displayed in the 
-                      result window
+    DBCompleteView      - Sets up table name completion for the buffer
+    DBListTable         - Lists all tables (optional wildcard)
+    DBListProcedure     - Lists all procedures (optional wildcard)
+    DBListView          - Lists all views (optional wildcard)
+    DBListColumn        - Comma separated list of columns for the given table
+    DBListConnections   - Lists all active DBI connections
+    DBCommit            - When using the DBI or ODBC layer and in your
+                          connection profile you have specified AutoCommit=1,
+                          you have the ability to commit any changes on the
+                          connection.
+    DBRollback          - When using the DBI or ODBC layer and in your
+                          connection profile you have specified AutoCommit=1,
+                          you have the ability to rollback any changes on the
+                          connection.
+    DBOrientation       - When using the DBI or DBI::ODBC interface you have
+                          the option of displaying the results in the standard
+                          horizontal layout or in a vertical layout which is
+                          especially useful for one or two rows of output.
+                          This will toggle the current display.
 
-------------------------------------------------------------------------------
+
+==============================================================================
 5. Adding new database types				*dbext-newdb*
 
  Select a unique name for your extension. Add it's uppercase name to 
@@ -943,7 +1292,7 @@ Version 2.00
  your needs.  Please consult the other databases for more ideas and
  examples.
 
-------------------------------------------------------------------------------
+==============================================================================
 6. Prompting for input parameters			*dbext-prompting*
 
  This plugin has the ability to parse the statement being executed and
@@ -1047,7 +1396,7 @@ Version 2.00
 
  For more information on specific filetype support see |dbext-filetypes|
 
-------------------------------------------------------------------------------
+==============================================================================
 7. Setting up connection information			*dbext-connect*
 
  Connection information is setup for each buffer.  This way you can have one
@@ -1094,7 +1443,7 @@ To specify the type of database you connect to most often, you can place the
  prompted with a number list, which allows you to choose which profile you
  would like to use.  This is convenient since it can be difficult to remember
  the names of your profiles.  This feature can also be used with the dbext
- modelines (see section 7.4).
+ modelines (see section 7.5).
 
  In your |.vimrc| you can define the following: >
      let g:dbext_default_profile_ASA_generic = 'type=ASA:user=DBA:passwd=SQL'
@@ -1117,7 +1466,41 @@ To specify the type of database you connect to most often, you can place the
  Profiles are always specified in this format in your |.vimrc| file: >
      let g:dbext_default_profile_[your_profile_name] = 'type=ORA:user=scott'
 <
-7.4 Connection information in modelines           *dbext-connect-modelines*
+7.4 Connection profiles examples                *dbext-connect-profiles-examples*
+
+ Here are some sample profiles I maintain.  These can help when trying to
+ setup your own: >
+    " SQL Anywhere (Normal, DBI and ODBC)
+    let g:dbext_default_profile_cons = 'type=ASA:dsnname=cons'
+    let g:dbext_default_profile_ASA_DBI = 'type=DBI:user=dba:passwd=sql:driver=SQLAnywhere:conn_parms=:driver_parms=AutoCommit=1;PrintError=0'
+    let g:dbext_default_profile_ASA_DBI_demo10 = 'type=DBI:user=dba:passwd=sql:driver=SQLAnywhere:conn_parms=ENG=demo10;DBN=demo:driver_parms=AutoCommit=0'
+    let g:dbext_default_profile_ASA_ODBC = 'type=ODBC:user=dba:passwd=sql:dsnname=SQL Anywhere 10 Demo'
+    
+    " Sybase ASE
+    let g:dbext_default_profile_ASE = 'type=ASE:user=sa:passwd=whatever:srvname=my_server:dbname=ml8'
+    
+    " IBM DB2
+    let g:dbext_default_profile_DB2 = 'type=DB2:user=db2admin:passwd=whatever:dbname=SSD:bin_path=C:\Programs\IBM\SQLLIB\BIN'
+    let g:dbext_default_profile_DB2_cons_1d = 'type=DB2:user=mlink:passwd=whatever:dbname=db2_2a:host=my_lab_box:port=60000'
+    
+    " MySQL
+    let g:dbext_default_profile_mysql_local = 'type=MYSQL:user=root:passwd=whatever:dbname=mysql:extra=-t'
+    let g:dbext_default_profile_mysql_local_DBI = 'type=DBI:user=root:passwd=whatever:driver=mysql:conn_parms=database=mysql;host=localhost'
+    let g:dbext_default_profile_mysql_local_ODBC = 'type=ODBC:user=root:passwd=whatever:dsnname=mysql'
+    
+    " Oracle
+    let g:dbext_default_profile_ORA = 'type=ORA:srvname=ffs42ga:user=john:passwd=whatever'
+    
+    " Postgress
+    let g:dbext_default_profile_PG = 'type=PGSQL:user=postgres'
+    
+    " Microsoft SQL Server
+    let g:dbext_default_profile_SQLSRV = 'type=SQLSRV:user=sa:passwd=whatever:host=localhost:replace_title=1'
+    
+    " SQLite
+    let g:dbext_default_profile_POPFile = 'type=SQLITE:SQLITE_bin=C:\Programs\POPFile\sqlite.exe:dbname=C:\Programs\POPFile\popfile.db'
+<
+7.5 Connection information in modelines           *dbext-connect-modelines*
 
  See |modeline| for details on what are modelines.  dbext uses a similar
  format to vim modelines.  This feature is enabled if the vim option 'modeline'
@@ -1161,7 +1544,7 @@ To specify the type of database you connect to most often, you can place the
 <
 
 
-7.5 Ask for connection parameters	           *dbext-connect-ask*
+7.6 Ask for connection parameters	           *dbext-connect-ask*
 
  Modelines can also take three special values: @askg, @askb, @ask.
 
@@ -1178,7 +1561,7 @@ To specify the type of database you connect to most often, you can place the
  userid for each buffer.  You will also be prompted for your password each
  time dbext is used.
 
-------------------------------------------------------------------------------
+==============================================================================
 8. Creating mappings using dbext commands        	*dbext-in-mappings*
 
  dbext's commands can be used within mappings.  Here is a simple example 
@@ -1203,7 +1586,7 @@ To specify the type of database you connect to most often, you can place the
            \      "where name = '" . expand("%:t") . "';"<CR>
            \ :exec sql_cmd<CR>
 <
-------------------------------------------------------------------------------
+==============================================================================
 9. Object Completion                                 	*dbext-completion*
 
  Table/Procedure/View (Keyword) Completion
@@ -1225,7 +1608,7 @@ To specify the type of database you connect to most often, you can place the
  For complete code completion added via various plugins see
  |dbext-integration|.
 
-------------------------------------------------------------------------------
+==============================================================================
 10. Listing Ojects in the Database                     	*dbext-list-objects*
 
  Many times you just want to see what is available in a given database.
@@ -1255,7 +1638,7 @@ To specify the type of database you connect to most often, you can place the
 
  If no table name is supplied, the current word is chosen as the table name.
 
-------------------------------------------------------------------------------
+==============================================================================
 11. Plugin integration                     	        *dbext-integration*
 
  SQL code completion has an interface component which provides a popup window
@@ -1285,7 +1668,7 @@ To specify the type of database you connect to most often, you can place the
 
  The first version of Intellisense to have the SQL plugin is 1.24.
 
-------------------------------------------------------------------------------
+==============================================================================
 12. Filetype support                         	        *dbext-filetypes*
 
  SQL can be used from a variety of languages.  Each development language (PHP,
@@ -1366,7 +1749,7 @@ To specify the type of database you connect to most often, you can place the
  If you do add a new language, please forward along the code to 
  David Fishburn -and- Peter Bagyinszki for inclusion into future versions.
  
-------------------------------------------------------------------------------
+==============================================================================
 13. Using SQL History                         	        *dbext-history*
 
  As of version 3.0, dbext maintains a history file which is shared between 
@@ -1399,13 +1782,13 @@ To specify the type of database you connect to most often, you can place the
  g:dbext_default_history_max_entry variable.  See |dbext-configure-variables| 
  for more details.
  
-------------------------------------------------------------------------------
+==============================================================================
 14. Open Source                         	        *dbext-sourceforge*
 
  dbext is now an open source project found at: >
      https://sourceforge.net/projects/dbext/
 < 
-------------------------------------------------------------------------------
+==============================================================================
 15. Tutorial                            	        *dbext-tutorial*
 
  This tutorial is designed to take you through the common features of dbext
@@ -1624,6 +2007,16 @@ To specify the type of database you connect to most often, you can place the
 
 
  There are a few variants on this, leaving the cursor on the contact word:
+    a) Command:
+        :DBSelectFromTableTopX
+    b) Mapping:
+        \sT  s (sql) T (table) - Capital
+    c) Menu (if available):
+        Plugin->dbext->Select Table TopX
+
+ This will prompt you for the number of rows to return from the query.
+
+ Leaving the cursor on the contact word:
     a) Command:
         :DBSelectFromTableWithWhere
     b) Mapping:
@@ -1935,6 +2328,168 @@ To specify the type of database you connect to most often, you can place the
  re-run the statement.  See |dbext-history| for more details.
 
 
+15.1 DBI Tutorial                            	        *dbext-tutorial-dbi*
+
+ Assuming you have already followed the main tutorial, the DBI interface
+ adds some additional commands and features not available when using the
+ native binary tools.
+
+ Creating a profile is by the far the best approach if you are going to
+ access a database more than once.  DBI profiles are nearly identical, but
+ allow you to specify some additional parameters. >
+     " Connect to the first SQL Anywhere engine running
+     let g:dbext_default_profile_SA_db1  = 'type=DBI:user=DBA:passwd=SQL:driver=SQLAnywhere'
+     " Specify usual SQL Anywhere connection strings
+     let g:dbext_default_profile_SA_db2  = 'type=DBI:user=DBA:passwd=SQL:driver=SQLAnywhere:conn_parms=ENG=my_engine;DBN=my_db'
+
+     " Use ODBC (via DBI) with a SQL Anywhere DSN called:my_dsn 
+     let g:dbext_default_profile_SA_db3  = 'type=ODBC:user=DBA:passwd=SQL:dsnname=my_dsn'
+
+     " Specify an Oracle Service Name or SID
+     let g:dbext_default_profile_ORA_db2 = 'type=DBI:user=scott:passwd=tiger:driver=Oracle:conn_parms=SID_NAME'
+
+     " Specify a MySQL database and the host name where it is running
+     let g:dbext_default_profile_mysql_local_DBI = 'type=DBI:user=root:passwd=:driver=mysql:conn_parms=database=my_db;host=localhost'
+
+     " Use ODBC (via DBI) with MySQL DSN called:my_dsn
+     let g:dbext_default_profile_mysql_local_ODBC = 'type=ODBC:user=root:passwd=:dsnname=my_dsn'
+<
+ In some cases you will want to take advantage of the transactional
+ capabilities of the DBI layer.  This can be enabled two different ways.
+ Using the connection profile you can specify AutoCommit using the 
+ driver parameters.  >
+     " Connect to the first SQL Anywhere engine running
+     let g:dbext_default_profile_SA_db4  = 'type=DBI:user=DBA:passwd=SQL:driver=SQLAnywhere:driver_parms=AutoCommit=1'
+< 
+ The second way allows you to change the transactional nature of the 
+ connection at anytime.  This allows you to maintain the default 
+ AutoCommit on behaviour until you may wish to perform actions
+ that require transactions spanning multiple calls to the DBI layer. >
+     DBSetOption AutoCommit=0
+< 
+ Each buffer maintains it's own connection to a database.  You can 
+ view the DBI (and DBI ODBC) connections via the DBListConnections
+ command. >
+     DBListConnections
+        Connection: T(DBI)  I(SQLAnywhere)  P(AutoCommit=1)  U(dba)  
+        Buffers with active Perl DBI database connections:        
+        Buffer  Driver       AutoCommit  Connection Parameters          
+        ------  ------       ----------  ---------------------          
+        1       mysql        1           database=mysql;host=localhost  
+        3       SQLAnywhere  1                                          
+        (2 rows)
+
+     DBSetOption AutoCommit=0
+
+     DBListConnections
+        Connection: T(DBI)  I(Mysql)  C(database=mysql;host=localhost)  U(root)  
+        Buffers with active Perl DBI database connections:        
+        Buffer  Driver       AutoCommit  Connection Parameters          
+        ------  ------       ----------  ---------------------          
+        1       mysql        0           database=mysql;host=localhost  
+        3       SQLAnywhere  1                                          
+        (2 rows)
+<
+ After performing a transaction (which can be done using the :Update, 
+ :Insert, ... commands) you can either commit or rollback the change using >
+     DBCommit
+     DBRollback
+<
+ When you delete the buffer or close Vim, an autocmd will fire which will
+ disconnect from the database.  You can also manually disconnect from the
+ database. >
+     DBDisconnect
+
+     DBListConnections
+        Connection: T(DBI)  I(SQLAnywhere)  P(AutoCommit=1)  U(dba)  
+        Buffers with active Perl DBI database connections:        
+        Buffer  Driver  AutoCommit  Connection Parameters          
+        ------  ------  ----------  ---------------------          
+        1       mysql   0           database=mysql;host=localhost  
+        (1 rows)
+<
+ By default only 300 rows will be retrieved from the database and displayed
+ at any one time.  See the dbext_default_DBI_max_rows setting to change 
+ this permanently via your vimrc.  You can override this setting for the
+ current buffer at anytime by using DBSetOption.  Run a Select statement
+ which returns many rows.  Then try setting the max row count to 5, rerun
+ the same query.  Setting this option to blank will reset to the default.  >
+        DBSetOption DBI_max_rows=5
+        DBSetOption DBI_max_rows=
+<
+ By default, result sets returned by the database are displayed in a tablular
+ format: >
+        ID   GivenName  Surname       
+        ---  ---------  ------------  
+        101  Michaels   Devlin        
+        102  Beth       Reiser        
+<There are times when a vertical (versus horizontal) view is more appropriate.
+ The DBI layer also has this capability.  If the format is set to "horizontal"
+ the standard output is used.  Setting the format to anything other than
+ "horizontal" will result in a vertical output: >
+    :DBSetOption DBI_orientation='v'
+        ****** Row: 1 ******
+               ID: 101
+        GivenName: Michaels 
+          Surname: Devlin      
+        ****** Row: 2 ******
+               ID: 102
+        GivenName: Beth     
+          Surname: Reiser      
+        (2 rows)
+
+    :DBSetOption DBI_orientation=     " Resets back to the default
+        ID   GivenName  Surname       
+        ---  ---------  ------------  
+        101  Michaels   Devlin        
+        102  Beth       Reiser        
+<
+ There are two ways to flip back an forth between orientations.
+ While in the Result window, you can press "O" (for Orientation) to redisplay
+ the current result and toggle the orientation.  If your cursor is in your
+ buffer, you can use the <Leader>so (default \so) map to tell the Result
+ window to redisplay toggling the orientation.  These maps only redisplay the
+ results, they do not re-query the database.
+
+ Often you need to place common SQL statements in a file and execute them with
+ other statements.  You can consider this similar to an IMPORT or INCLUDE
+ command in other languages.  The dbext plugin will look for the
+ DBI_read_file_cmd (default "read ") and check if the following text is a
+ filename.  If the filename exists, the contents of the file will replace the
+ DBI_read_file_cmd and filename plus an optional DBI_cmd_terminator. By
+ default the DBI_cmd_terminator is set to ";".   
+
+ Create a file c:\temp\my.sql with the following content: >
+        INSERT INTO my_table (c1, c2)
+        VALUES(1,2);
+        INSERT INTO my_table (c1, c2)
+        VALUES(1,2);
+<
+ Create a new buffer run the DBSetOption option and add the following
+ statements.  Notice, there is no space between between the '\.' and
+ the filename.  If there is, you must set the read_file_cmd to '\. ': >
+        :DBSetOption DBI_read_file_cmd='\.'
+            \.c:\temp\my.sql;
+            \./temp/my.sql;
+<
+ If you execute all statements in this file, the following SQL will be
+ executed: >
+        INSERT INTO my_table (c1, c2)
+        VALUES(1,2);
+        INSERT INTO my_table (c1, c2)
+        VALUES(1,2);
+        INSERT INTO my_table (c1, c2)
+        VALUES(1,2);
+        INSERT INTO my_table (c1, c2)
+        VALUES(1,2);
+<            
+ The DBI_read_file_cmd, filename, command terminator are replaced with the
+ contents of "my.sql".  Since we have 2 DBI_read_file_cmd's, the SQL
+ is replaced twice.  If you had not issued the DBSetOption command the 
+ default read_file_cmd is "read " and is used as: >
+        read c:\temp\my.sql;
+        read /temp/my.sql;
+<
 
  Summary
  -------
@@ -1943,8 +2498,8 @@ To specify the type of database you connect to most often, you can place the
  that can be customized for your project.
 
  Above all, enjoy the plugin.  Feedback is always appreciated, please send it
- to both Peter and David.
+ to both David and Peter.
 
 
-------------------------------------------------------------------------------
+==============================================================================
   vim:tw=78:fo=tcq2:ts=8:ft=help:norl:
