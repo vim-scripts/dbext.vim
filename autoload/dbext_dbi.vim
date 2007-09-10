@@ -4,10 +4,10 @@
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       5.06
+" Version:       5.11
 " Maintainer:    David Fishburn <fishburn@ianywhere.com>
 " Authors:       David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Wed 15 Aug 2007 04:49:35 PM Eastern Daylight Time
+" Last Modified: Mon 10 Sep 2007 09:35:04 AM Eastern Daylight Time
 " Created:       2007-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 "
@@ -120,7 +120,7 @@ if !has('perl')
     let g:loaded_dbext_dbi_msg = 'Vim does not have perl support enabled'
     finish
 endif
-let g:loaded_dbext_dbi = 506
+let g:loaded_dbext_dbi = 511
 
 if !exists("dbext_dbi_debug")
    let g:dbext_dbi_debug = 0

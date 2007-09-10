@@ -1,17 +1,18 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       5.06
+" Version:       5.11
 " Maintainer:    David Fishburn <fishburn@ianywhere.com>
 " Authors:       Peter Bagyinszki <petike1@dpg.hu>
 "                David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Wed 15 Aug 2007 04:49:24 PM Eastern Daylight Time
+" Last Modified: Mon 10 Sep 2007 09:34:14 AM Eastern Daylight Time
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 " Contributors:  Joerg Schoppet <joerg.schoppet@web.de>
 "                Hari Krishna Dara <hari_vim@yahoo.com>
 "                Ron Aaron
+"                Andi Stern
 "
 " SourceForge:  $Revision: 1.38 $
 "
@@ -38,7 +39,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 506
+let g:loaded_dbext_auto = 511
 
 " call confirm("Loaded dbext autoload", "&Ok")
 " Script variable defaults, these are used internal and are never displayed
@@ -47,7 +48,7 @@ let s:dbext_buffers_with_dict_files = ''
 " +shellslash is set on windows so it can be used to decide
 " what type of slash to use
 let s:dbext_tempfile = fnamemodify(tempname(), ":h").
-            \ ((has('win32') && ! exists('+shellslash'))?'\':'/').
+            \ ((has('win32') && ! exists('+shellslash'))?'\':(has('vms')?'':'/')).
             \ 'dbext.sql'
 let s:dbext_prev_sql   = ''
 " }}}
@@ -76,6 +77,8 @@ function! s:DB_buildLists()
     call add(s:db_types_mv, 'SQLSRV')
     " SQLite (fishburn)
     call add(s:db_types_mv, 'SQLITE')
+    " Oracle Rdb (stern)
+    call add(s:db_types_mv, 'RDB')
 
     " The following are only available with the
     " Perl DBI extension plug.
@@ -232,26 +235,19 @@ function! s:DB_buildLists()
 
 
     " Check if the user has any profiles defined in his vimrc
-    let saveA = @a
-    redir  @a
-    silent! exec 'let'
+    redir => vars
+    silent! let g:
     redir END
-    let l:global_vars = @a
-    let @a = saveA
+    let varlist = split(vars, '\n')
+    call map(varlist, 'matchstr(v:val, ''^\S\+'')')
+    call filter(varlist, 'v:val =~ ''^dbext_default_profile_''')
 
-    let prof_nm_re = 'dbext_default_profile_\zs\(\w\+\)'
-    let index = match(l:global_vars, prof_nm_re)
-    while index > -1
-        " Retrieve the name of option
-        let prof_name = matchstr(l:global_vars, '\w\+', index)
+	for item in varlist
+        let prof_name = matchstr(item, 'dbext_default_profile_\zs\(\w\+\)')
         if strlen(prof_name) > 0
-            let prof_value = matchstr(l:global_vars, '\s*\zs[^'."\<C-J>".']\+', 
-                        \ (index + strlen(prof_name))  )
             call add(s:conn_profiles_mv, prof_name)
         endif
-        let index = index + strlen(prof_name)+ strlen(prof_value) + 1
-        let index = match(l:global_vars, prof_nm_re, index)
-    endwhile
+	endfor
     " Sort the list ignoring CaSe
     let s:conn_profiles_mv = sort(s:conn_profiles_mv,1)
     " Build the profile prompt string
@@ -260,6 +256,35 @@ function! s:DB_buildLists()
                         \  loop_count . '. ' . item
             let loop_count += 1
 	endfor
+    "     " Check if the user has any profiles defined in his vimrc
+    "     let saveA = @a
+    "     redir  @a
+    "     silent! exec 'let'
+    "     redir END
+    "     let l:global_vars = @a
+    "     let @a = saveA
+
+    "     let prof_nm_re = 'dbext_default_profile_\zs\(\w\+\)'
+    "     let index = match(l:global_vars, prof_nm_re)
+    "     while index > -1
+    "         " Retrieve the name of option
+    "         let prof_name = matchstr(l:global_vars, '\w\+', index)
+    "         if strlen(prof_name) > 0
+    "             let prof_value = matchstr(l:global_vars, '\s*\zs[^'."\<C-J>".']\+', 
+    "                         \ (index + strlen(prof_name))  )
+    "             call add(s:conn_profiles_mv, prof_name)
+    "         endif
+    "         let index = index + strlen(prof_name)+ strlen(prof_value) + 1
+    "         let index = match(l:global_vars, prof_nm_re, index)
+    "     endwhile
+    "     " Sort the list ignoring CaSe
+    "     let s:conn_profiles_mv = sort(s:conn_profiles_mv,1)
+    "     " Build the profile prompt string
+	"     for item in s:conn_profiles_mv
+    "             let s:prompt_profile_list = s:prompt_profile_list . "\n" .
+    "                         \  loop_count . '. ' . item
+    "             let loop_count += 1
+	"     endfor
 
     " Check if we are using Cygwin, if so, let the user override
     " the temporary filename to use backslashes
@@ -749,10 +774,13 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "DB2_SQL_Top_pat"         |return (exists("g:dbext_default_DB2_SQL_Top_pat")?g:dbext_default_DB2_SQL_Top_pat.'':'\(\cselect\)')
     elseif a:name ==# "DB2_SQL_Top_sub"         |return (exists("g:dbext_default_DB2_SQL_Top_sub")?g:dbext_default_DB2_SQL_Top_sub.'':'\1 TOP @dbext_topX ')
     elseif a:name ==# "INGRES_bin"              |return (exists("g:dbext_default_INGRES_bin")?g:dbext_default_INGRES_bin.'':'sql')
+    elseif a:name ==# "INGRES_cmd_options"      |return (exists("g:dbext_default_INGRES_cmd_options")?g:dbext_default_INGRES_cmd_options.'':'')
     elseif a:name ==# "INGRES_cmd_terminator"   |return (exists("g:dbext_default_INGRES_cmd_terminator")?g:dbext_default_INGRES_cmd_terminator.'':'\p\g')
     elseif a:name ==# "INTERBASE_bin"           |return (exists("g:dbext_default_INTERBASE_bin")?g:dbext_default_INTERBASE_bin.'':'isql')
+    elseif a:name ==# "INTERBASE_cmd_options"   |return (exists("g:dbext_default_INTERBASE_cmd_options")?g:dbext_default_INTERBASE_cmd_options.'':'')
     elseif a:name ==# "INTERBASE_cmd_terminator"|return (exists("g:dbext_default_INTERBASE_cmd_terminator")?g:dbext_default_INTERBASE_cmd_terminator.'':';')
     elseif a:name ==# "MYSQL_bin"               |return (exists("g:dbext_default_MYSQL_bin")?g:dbext_default_MYSQL_bin.'':'mysql')
+    elseif a:name ==# "MYSQL_cmd_options"       |return (exists("g:dbext_default_MYSQL_cmd_options")?g:dbext_default_MYSQL_cmd_options.'':'')
     elseif a:name ==# "MYSQL_cmd_terminator"    |return (exists("g:dbext_default_MYSQL_cmd_terminator")?g:dbext_default_MYSQL_cmd_terminator.'':';')
     elseif a:name ==# "MYSQL_version"           |return (exists("g:dbext_default_MYSQL_version")?g:dbext_default_MYSQL_version.'':'5')
     elseif a:name ==# "MYSQL_SQL_Top_pat"       |return (exists("g:dbext_default_MYSQL_SQL_Top_pat")?g:dbext_default_MYSQL_SQL_Top_pat.'':'\(.*\)')
@@ -771,11 +799,21 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "ORA_SQL_Top_pat"         |return (exists("g:dbext_default_ORA_SQL_Top_pat")?g:dbext_default_ORA_SQL_Top_pat.'':'\(.*\)')
     elseif a:name ==# "ORA_SQL_Top_sub"         |return (exists("g:dbext_default_ORA_SQL_Top_sub")?g:dbext_default_ORA_SQL_Top_sub.'':'SELECT * FROM (\1) WHERE rownum <= @dbext_topX ')
     elseif a:name ==# "PGSQL_bin"               |return (exists("g:dbext_default_PGSQL_bin")?g:dbext_default_PGSQL_bin.'':'psql')
+    elseif a:name ==# "PGSQL_cmd_options"       |return (exists("g:dbext_default_PGSQL_cmd_options")?g:dbext_default_PGSQL_cmd_options.'':'')
     elseif a:name ==# "PGSQL_cmd_terminator"    |return (exists("g:dbext_default_PGSQL_cmd_terminator")?g:dbext_default_PGSQL_cmd_terminator.'':';')
     elseif a:name ==# "PGSQL_SQL_Top_pat"       |return (exists("g:dbext_default_PGSQL_SQL_Top_pat")?g:dbext_default_PGSQL_SQL_Top_pat.'':'\(.*\)')
     elseif a:name ==# "PGSQL_SQL_Top_sub"       |return (exists("g:dbext_default_PGSQL_SQL_Top_sub")?g:dbext_default_PGSQL_SQL_Top_sub.'':'\1 LIMIT @dbext_topX ')
+    elseif a:name ==# "RDB_bin"                 |return (exists("g:dbext_default_RDB_bin")?g:dbext_default_RDB_bin.'':'mc sql$')
+    elseif a:name ==# "RDB_cmd_header"          |return (exists("g:dbext_default_RDB_cmd_header")?g:dbext_default_RDB_cmd_header.'':"".
+                \ "set line length 10000\n" .
+                \ "set page length 10000\n")
+    elseif a:name ==# "RDB_cmd_options"         |return (exists("g:dbext_default_RDB_cmd_options")?g:dbext_default_RDB_cmd_options.'':"")
+    elseif a:name ==# "RDB_cmd_terminator"      |return (exists("g:dbext_default_RDB_cmd_terminator")?g:dbext_default_RDB_cmd_terminator.'':";\n")
+    elseif a:name ==# "RDB_SQL_Top_pat"         |return (exists("g:dbext_default_RDB_SQL_Top_pat")?g:dbext_default_RDB_SQL_Top_pat.'':'\(.*\)')
+    elseif a:name ==# "RDB_SQL_Top_sub"         |return (exists("g:dbext_default_RDB_SQL_Top_sub")?g:dbext_default_RDB_SQL_Top_sub.'':'\1 LIMIT to @dbext_topX rows ')
     elseif a:name ==# "SQLITE_bin"              |return (exists("g:dbext_default_SQLITE_bin")?g:dbext_default_SQLITE_bin.'':'sqlite')
     elseif a:name ==# "SQLITE_cmd_header"       |return (exists("g:dbext_default_SQLITE_cmd_header")?g:dbext_default_SQLITE_cmd_header.'':".mode column\n.headers ON\n")
+    elseif a:name ==# "SQLITE_cmd_options"      |return (exists("g:dbext_default_SQLITE_cmd_options")?g:dbext_default_SQLITE_cmd_options.'':'')
     elseif a:name ==# "SQLITE_cmd_terminator"   |return (exists("g:dbext_default_SQLITE_cmd_terminator")?g:dbext_default_SQLITE_cmd_terminator.'':';')
     elseif a:name ==# "SQLSRV_bin"              |return (exists("g:dbext_default_SQLSRV_bin")?g:dbext_default_SQLSRV_bin.'':'osql')
     elseif a:name ==# "SQLSRV_cmd_options"      |return (exists("g:dbext_default_SQLSRV_cmd_options")?g:dbext_default_SQLSRV_cmd_options.'':'-w 10000 -r -b -n')
@@ -2732,6 +2770,205 @@ function! s:DB_PGSQL_getDictionaryView()
                 \ )
     return s:DB_PGSQL_stripHeaderFooter(result)
 endfunction 
+"}}}
+" RDB exec {{{
+function! s:DB_RDB_describeProcedure(procedure_name) "{{{
+    return s:DB_RDB_execSql("show procedure " . a:procedure_name)
+endfunction "}}}
+function! s:DB_RDB_describeTable(table_name) "{{{
+    return s:DB_RDB_execSql("show table " . a:table_name)
+endfunction "}}}
+function! s:DB_RDB_execSql(str) "{{{
+    let host    = s:DB_get("host")
+    let srvname = s:DB_get("srvname")
+    let user    = s:DB_get("user")
+    let passwd  = s:DB_get("passwd")
+    let sup     = ''
+
+    if host != ''
+        let srvname = host
+    endif
+    if srvname != ''
+        if user != ''
+            if passwd != ''
+                let sup = srvname . '"' . user . ' ' . passwd . '"::'
+            else
+                let sup = srvname . '"' . user . '"::'
+            endif
+        else
+            let sup = srvname . '::'
+        endif
+    endif
+                
+    " All defaults are specified in the DB_getDefault function.
+    " This contains the defaults settings for all database types
+    let output = s:DB_option( 
+                \     'attach ''filename ', 
+                \     sup . s:DB_get("dbname"), 
+                \     '''' 
+                \ )  . 
+                \ dbext#DB_getWType("cmd_terminator") .
+                \ dbext#DB_getWType("cmd_header") . 
+                \ a:str
+    " Only include a command terminator if one has not already
+    " been added
+    if output !~ s:DB_escapeStr(dbext#DB_getWType("cmd_terminator")) . 
+                \ '['."\n".' \t]*$'
+        let output = output . dbext#DB_getWType("cmd_terminator")
+    endif
+    " Added quit to the end of the command to exit SQLPLUS
+    if output !~ s:DB_escapeStr("\nquit".dbext#DB_getWType("cmd_terminator")) . 
+                \ '['."\n".' \t]*$'
+        let output = output . "\nquit".dbext#DB_getWType("cmd_terminator")
+    endif
+
+    exe 'redir! > ' . s:dbext_tempfile
+    silent echo output
+    redir END
+
+    let dbext_bin = s:DB_fullPath2Bin(dbext#DB_getWType("bin"))
+
+    let cmd = dbext_bin . ' @' . s:dbext_tempfile
+    let result = s:DB_runCmd(cmd, output, "")
+
+    return result
+endfunction "}}}
+function! s:DB_RDB_getDictionaryProcedure() "{{{
+    let result = s:DB_RDB_execSql(
+                \ "select ".(s:DB_get('dict_show_owner')==1?"decode(bitstring (RDB$FLAGS from 20 for 1),0,trim(RDB$ROUTINE_CREATOR),'SYS')||'.'||":'').
+                    \ "RDB$ROUTINE_NAME ".
+                  \ "from RDB$ROUTINES ".
+                  \ "where bitstring (RDB$FLAGS from 20 for 1) = 0 ".
+                  \ "order by RDB$ROUTINE_NAME "
+                \ )
+    return s:DB_RDB_stripHeaderFooter(result)
+endfunction "}}}
+function! s:DB_RDB_getDictionaryTable() "{{{
+    let result = s:DB_RDB_execSql(
+                \ "select ".(s:DB_get('dict_show_owner')==1?"decode(RDB$SYSTEM_FLAG,0,trim(RDB$RELATION_CREATOR),'SYS')||'.'||":'').
+                    \ "RDB$RELATION_NAME ".
+                  \ "from RDB$RELATIONS ".
+                  \ "where RDB$VIEW_BLR is null " .
+                  \ "order by RDB$RELATION_NAME "
+                \ )
+    return s:DB_RDB_stripHeaderFooter(result)
+endfunction "}}}
+function! s:DB_RDB_getDictionaryView() "{{{
+    let result = s:DB_RDB_execSql(
+                \ "select ".(s:DB_get('dict_show_owner')==1?"decode(RDB$SYSTEM_FLAG,0,trim(RDB$RELATION_CREATOR),'SYS')||'.'||":'').
+                    \ "RDB$RELATION_NAME " .
+                  \ "from RDB$RELATIONS " .
+                  \ "where RDB$VIEW_BLR is not null " .
+                  \ "order by RDB$RELATION_NAME "
+                \ )
+    return s:DB_RDB_stripHeaderFooter(result)
+endfunction "}}}
+function! s:DB_RDB_getListColumn(table_name) "{{{
+    let owner      = toupper(s:DB_getObjectOwner(a:table_name))
+    let table_name = toupper(s:DB_getObjectName(a:table_name))
+    let query =   "select RDB$FIELD_NAME \"\"".
+                  \ "from RDB$RELATION_FIELDS RF inner join RDB$RELATIONS R using (RDB$RELATION_NAME) ".
+                  \ "where RDB$RELATION_NAME = '".table_name."' "
+    if strlen(owner) > 0
+        let query = query .
+                    \ "and decode(R.RDB$SYSTEM_FLAG,0,R.RDB$RELATION_CREATOR,'SYS') = '".owner."' "
+    endif
+    let query = query .
+                  \ "order by RF.RDB$FIELD_POSITION "
+    let result = s:DB_RDB_execSql( query )
+    return s:DB_RDB_stripHeaderFooter(result)
+endfunction "}}}
+function! s:DB_RDB_getListProcedure(proc_prefix) "{{{
+    let owner      = toupper(s:DB_getObjectOwner(a:proc_prefix))
+    let obj_name   = toupper(s:DB_getObjectName(a:proc_prefix))
+"        RDB$ROUTINES.RDB$FLAGS "{{{
+"           Represents flags for RDB$ROUTINES system table.
+"
+"           Bit
+"           Position   Description
+"
+"           0          Routine is a function. (Call returns a result.)
+"           1          Routine is not valid. (Invalidated by a metadata
+"                      change.)
+"           2          The function is not deterministic (that is, the routine
+"                      is variant). A subsequent invocation of the routine
+"                      with identical parameters may return different results.
+"           3          Routine can change the transaction state.
+"           4          Routine is in a secured shareable image.
+"           5          Reserved for future use.
+"           6          Routine is not valid. (Invalidated by a metadata change
+"                      to the object upon which this routine depends. This
+"                      dependency is a language semantics dependency.)
+"           7          Reserved for future use.
+"           8          External function returns NULL when called with any
+"                      NULL parameter.
+"           9          Routine has been analyzed (used for trigger dependency
+"                      tracking).
+"           10         Routine inserts rows.
+"           11         Routine modifies rows.
+"           12         Routine deletes rows.
+"           13         Routine selects rows.
+"           14         Routine calls other routines.
+"           15         Reserved for future use.
+"           16         Routine created with USAGE IS LOCAL clause.
+"           17         Reserved for future use.
+"           18         Reserved for future use.
+"           19         Routine is a SYSTEM routine.
+"           20         Routine generated by Oracle Rdb.
+"                      Other bits are reserved for future use. "}}}
+
+    let query =   "select RDB$ROUTINE_NAME, ".
+                    \ "decode(bitstring (RDB$FLAGS from 20 for 1),0,RDB$ROUTINE_CREATOR,'SYS') RDB$ROUTINE_CREATOR ".
+                  \ "from RDB$ROUTINES ".
+                  \ "where RDB$ROUTINE_NAME LIKE '".obj_name."%' " 
+    if strlen(owner) > 0
+        let query = query .
+                    \ "and decode(bitstring (RDB$FLAGS from 20 for 1),0,RDB$ROUTINE_CREATOR,'SYS') = '".owner."' "
+    endif
+    let query = query .
+                \ " order by RDB$ROUTINE_NAME"
+    return s:DB_RDB_execSql( query )
+endfunction "}}}
+function! s:DB_RDB_getListTable(table_prefix) "{{{
+    let owner      = toupper(s:DB_getObjectOwner(a:table_prefix))
+    let table_name = toupper(s:DB_getObjectName(a:table_prefix))
+    let query =   "select RDB$RELATION_NAME, decode(RDB$SYSTEM_FLAG,0,RDB$RELATION_CREATOR,'SYS'), 'RDB_TABLESPACE' ".
+                  \ "from RDB$RELATIONS ".
+                  \ "where RDB$RELATION_NAME LIKE '".table_name."%' "
+    if strlen(owner) > 0
+        let query = query .
+                    \ "and decode(RDB$SYSTEM_FLAG,0,RDB$RELATION_CREATOR,'SYS') = '".owner."' "
+    endif
+    let query = query .
+                  \ "order by RDB$RELATION_NAME"
+    return s:DB_RDB_execSql( query )
+endfunction "}}}
+function! s:DB_RDB_getListView(view_prefix) "{{{
+    let owner      = toupper(s:DB_getObjectOwner(a:view_prefix))
+    let obj_name   = toupper(s:DB_getObjectName(a:view_prefix))
+    let query =   "select RDB$RELATION_NAME, decode(RDB$SYSTEM_FLAG,0,RDB$RELATION_CREATOR,'SYS') ".
+                  \ "from RDB$RELATIONS ".
+                  \ "where RDB$RELATION_NAME LIKE '".obj_name."%' " .
+                    \ "and RDB$VIEW_BLR is not null "
+    if strlen(owner) > 0
+        let query = query .
+                    \ "and decode(RDB$SYSTEM_FLAG,0,RDB$RELATION_CREATOR,'SYS') = '".owner."' "
+    endif
+    let query = query .
+                  \ "order by RDB$RELATION_NAME"
+    return s:DB_RDB_execSql( query )
+endfunction "}}}
+function! s:DB_RDB_stripHeaderFooter(result) "{{{
+    " Strip off column headers ending with a newline
+    let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
+    " Strip off query statistics
+    let stripped = substitute( stripped, '\d\+ rows\_.*', '', '' )
+    " Strip off no rows selected
+    let stripped = substitute( stripped, 'no rows selected\_.*', '', '' )
+    " Strip off trailing spaces
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    return stripped
+endfunction "}}}
 "}}}
 " SQLSRV exec {{{
 function! s:DB_SQLSRV_execSql(str)
@@ -5107,7 +5344,7 @@ function! s:DB_runCmd(cmd, sql, result)
         if (v:shell_error && s:DB_get('type') !~ '\<DBI\>\|\<ODBC\>') ||
                     \ (dbi_result == -1 && s:DB_get('type') =~ '\<DBI\>\|\<ODBC\>') 
             let output = "To change connection parameters:\n" .
-                        \ ":DBPromptForParameters\n" .
+                        \ ":DBPromptForBufferParameters\n" .
                         \ "Or\n" .
                         \ ":DBSetOption user\|passwd\|dsnname\|srvname\|dbname\|host\|port\|...=<value>\n" .
                         \ ":DBSetOption user=tiger:passwd=scott\n" .

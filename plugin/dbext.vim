@@ -2,11 +2,11 @@
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 "
 " ---------------------------------------------------------------
-" Version:       5.06
+" Version:       5.11
 " Maintainer:    David Fishburn <fishburn@ianywhere.com>
 " Authors:       Peter Bagyinszki <petike1@dpg.hu>
 "                David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Wed 15 Aug 2007 04:49:42 PM Eastern Daylight Time
+" Last Modified: Mon 10 Sep 2007 09:35:21 AM Eastern Daylight Time
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -39,7 +39,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext = 506
+let g:loaded_dbext = 511
 
 " Commands {{{
 command! -nargs=+ DBExecSQL         :call dbext#DB_execSql(<q-args>)

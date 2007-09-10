@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 6.0.  Last change: Sun 26 Aug 2007 07:42:52 PM Eastern Daylight Time
+*dbext.txt*	For Vim version 6.0.  Last change: Mon 10 Sep 2007 09:35:41 AM Eastern Daylight Time
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki <petike1@dpg.hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 5.06
+	  	dbext.vim version 5.11
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -54,6 +54,16 @@ Homepage: http://vim.sourceforge.net/script.php?script_id=356
 
 ==============================================================================
 What's New						*dbext-new*
+
+Version 5.11
+
+ New Features
+ ------------
+ - Added support for Oracle Rdb on an Open VMS Node.  
+   For vim on Open VMS look at http://www.polarhome.com/vim/.  
+   For Open VMS http://h71000.www7.hp.com/openvms/.
+   Development of support by Andi Stern
+
 
 Version 5.00
 
