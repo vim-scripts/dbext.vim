@@ -4,10 +4,10 @@
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       5.11
+" Version:       5.20
 " Maintainer:    David Fishburn <fishburn@ianywhere.com>
 " Authors:       David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Mon 10 Sep 2007 09:35:04 AM Eastern Daylight Time
+" Last Modified: Sat 15 Sep 2007 11:05:29 PM Eastern Daylight Time
 " Created:       2007-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 "
@@ -120,7 +120,7 @@ if !has('perl')
     let g:loaded_dbext_dbi_msg = 'Vim does not have perl support enabled'
     finish
 endif
-let g:loaded_dbext_dbi = 511
+let g:loaded_dbext_dbi = 520
 
 if !exists("dbext_dbi_debug")
    let g:dbext_dbi_debug = 0
@@ -137,8 +137,11 @@ endif
 if !exists("dbext_dbi_max_rows")
    let g:dbext_dbi_max_rows = 300
 endif
+if !exists("dbext_default_dbi_column_delimiter")
+   let g:dbext_default_dbi_column_delimiter = "  "
+endif
 if !exists("dbext_dbi_trace_level")
-   let g:dbext_dbi_trace_level = 2
+   let g:dbext_dbi_trace_level = 0
 endif
 
 " See help use-cpo-save for info on the variable save_cpo  
@@ -184,9 +187,11 @@ my @result_set;
 my @result_col_length;
 my $result_max_col_width;
 my $max_rows      = 300;
+my $min_col_width = 4;   # First NULL
 my $test_inc      = 0;
 my $conn_inc      = 0;
 my $dbext_dbi_sql = "";
+my $col_sep_vert  = "  ";
 my $debug         = db_is_debug();
 
 
@@ -252,8 +257,10 @@ sub db_vim_eval
 db_set_vim_var('msg', '"db_vim_print"');
 sub db_vim_print 
 {
-    my $line_nbr = shift;
-    my $line_txt = shift;
+    my $line_nbr      = shift;
+    my $line_txt      = shift;
+    my $printed_lines = 0;
+    my $max_col_width = $result_max_col_width + 2;
 
     if ( ! defined($line_nbr) ) {
         db_echo('db_vim_print invalid line number');
@@ -264,7 +271,28 @@ sub db_vim_print
         $line_txt = "";
     }
 
-    $main::curbuf->Append($line_nbr, $line_txt);
+    my @lines = split("\n", $line_txt);
+
+    foreach my $line (@lines) {
+        if ( $printed_lines > 0 ) {
+            # Multiple lines will only be within the string if the
+            # user is printing in a vertical orientation.
+            # Therefore if the printed_lines is > 1 we know
+            # we have split the column data and we need to prepend
+            # blanks to line up the text with the data above.
+            $line = (' ' x $max_col_width).$line;
+        }
+        $main::curbuf->Append($line_nbr, $line);
+        $line_nbr++;
+        $printed_lines++;
+    }
+    return $printed_lines;
+}
+
+db_set_vim_var('msg', '"db_get_defaults"');
+sub db_get_defaults 
+{
+    $col_sep_vert = db_vim_eval('g:dbext_default_dbi_column_delimiter');
 }
 
 db_set_vim_var('msg', '"db_escape"');
@@ -745,16 +773,15 @@ sub db_format_results
     my @table;
     my @headers;
 
-    # TODO
-    # Check for the existence of this array first, some statements may not actually
-    # define this array if there are no columns coming back.
-    # mysql does this with a COMMIT statement for example
+    # Check if the NUM_OF_FIELDS is > 0.
+    # In mysql a COMMIT does not provide a result set.
     if (  $sth->{NUM_OF_FIELDS} > 0 ) {
         # Add the column list to the array
         push @headers,[ @{$sth->{NAME}} ];
         # Set the initial length of the columns
         foreach my $col_name ( @{$sth->{NAME}}  ) {
             $temp_length = length($col_name);
+            $temp_length = ($temp_length > $min_col_width ? $temp_length : $min_col_width);
             $max_col_width = ( $temp_length > $max_col_width ? $temp_length : $max_col_width );
             $col_length[$i] = $temp_length;
             $i++;
@@ -832,9 +859,8 @@ sub db_format_array()
         # blank padding each string.
         # Add an additional 3 spaces between columns.
         foreach my $col2 ( @{$row2} ) {
-            $fragment = substr ((defined($col2)?$col2:"").(' ' x $result_col_length[$i]), 0, $result_col_length[$i]);
-            # $result = $result.db_remove_newlines($fragment).'  ';
-            $col2 = db_remove_newlines($fragment);
+            $fragment = substr ((defined($col2)?$col2:"NULL").(' ' x $result_col_length[$i]), 0, $result_col_length[$i]);
+            $col2 = $fragment;
             $i++;
         }
         # Finally, escape any double quotes with a preceeding slash
@@ -872,7 +898,7 @@ sub db_print_results
             # Add an additional 3 spaces between columns.
             foreach my $col2 ( @{$row2} ) {
                 $fragment = substr ((defined($col2)?$col2:"").(' ' x $result_col_length[$i]), 0, $result_col_length[$i]);
-                $line .= db_remove_newlines($fragment).'  ';
+                $line .= db_remove_newlines($fragment).$col_sep_vert;
                 $i++;
             }
             # Finally, escape any double quotes with a preceeding slash
@@ -884,7 +910,7 @@ sub db_print_results
         $i = 0;
         $line = "";
         while ($i < scalar(@result_col_length) ) {
-            $line .= '-' x $result_col_length[$i].'  ';
+            $line .= '-' x $result_col_length[$i].$col_sep_vert;
             $i++;
         }
         db_vim_print($last_line, db_escape($line));
@@ -896,9 +922,9 @@ sub db_print_results
             # db_echo("db_print_results: row count:$row_count");
             $line = "";
             foreach my $col3 ( @{$row3} ) {
-                $line .= $col3.'  ';
+                $line .= $col3.$col_sep_vert;
             }
-            db_vim_print($last_line, db_escape($line));
+            db_vim_print($last_line, db_remove_newlines(db_escape($line)));
             $last_line++;
         }
     } else {
@@ -918,18 +944,20 @@ sub db_print_results
             $i++;
         }
         
+        my $lines_printed = 0;
         foreach my $row4 ( @result_set ) {
             $row_count++;
             # db_echo("db_print_results: row count:$row_count");
             $col_nbr = 0;
             db_vim_print($last_line, "****** Row: $row_count ******");
             $last_line++;
+            $lines_printed = 0;
             foreach my $col4 ( @{$row4} ) {
                 $fragment = "";
                 $line = "";
                 $line .= $formatted_headers[$col_nbr].' '.$col4;
-                db_vim_print($last_line, db_escape($line));
-                $last_line++;
+                $lines_printed = db_vim_print($last_line, db_escape($line));
+                $last_line += $lines_printed;
                 $col_nbr++;
             }
         }
@@ -1208,6 +1236,7 @@ sub db_odbc_catalogue
 
     return 0;
 }
+db_get_defaults();
 db_set_vim_var('msg', '"Perl subroutines ready"');
 db_set_vim_var('result', '""');
 

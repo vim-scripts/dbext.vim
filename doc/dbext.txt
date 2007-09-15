@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 6.0.  Last change: Mon 10 Sep 2007 09:35:41 AM Eastern Daylight Time
+*dbext.txt*	For Vim version 6.0.  Last change: Sat 15 Sep 2007 11:09:13 PM Eastern Daylight Time
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki <petike1@dpg.hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 5.11
+	  	dbext.vim version 5.20
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -54,6 +54,22 @@ Homepage: http://vim.sourceforge.net/script.php?script_id=356
 
 ==============================================================================
 What's New						*dbext-new*
+
+Version 5.20
+
+ New Features
+ ------------
+ - When using DBI or DBI::ODBC null fields are now displayed as NULL
+   instead of empty spaces (now you can distinguish between them).
+ - When using DBI or DBI::ODBC you can specify the column separator let
+   g:dbext_default_dbi_column_delimiter="\t" (Jean-Christophe Clavier)
+ - When using DBI or DBI::ODBC and you use a vertical orientation for the
+   result set, if there are any embedded newline characters in your
+   data this will be displayed and shifted to align with the column
+   above.  Prior to this all newlines were stripped from the output
+   when printing to preserve standard horizontal output (Jean-Christophe
+   Clavier).
+
 
 Version 5.11
 
@@ -767,6 +783,11 @@ Version 2.00
                 ---  ---------  ------------  
                 101  Michaels   Devlin        
                 102  Beth       Reiser        
+    dbext_default_DBI_column_delimiter
+<       - By default, each column is separated by 2 spaces.  It is often 
+          desirable to tab delimit the columns.  You can specify whatever
+          string you like by setting (NOTE: the use of the double quotes): >
+            :let  g:dbext_default_DBI_column_delimiter = "\t"
 <
  Buffer variables
     You can check all options for the buffer without specifying an option name

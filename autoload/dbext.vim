@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       5.11
+" Version:       5.20
 " Maintainer:    David Fishburn <fishburn@ianywhere.com>
 " Authors:       Peter Bagyinszki <petike1@dpg.hu>
 "                David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Mon 10 Sep 2007 09:34:14 AM Eastern Daylight Time
+" Last Modified: Sat 15 Sep 2007 11:09:57 PM Eastern Daylight Time
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -39,7 +39,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 511
+let g:loaded_dbext_auto = 520
 
 " call confirm("Loaded dbext autoload", "&Ok")
 " Script variable defaults, these are used internal and are never displayed
@@ -167,6 +167,7 @@ function! s:DB_buildLists()
     call add(s:config_dbi_mv, 'DBI_read_file_cmd')
     call add(s:config_dbi_mv, 'DBI_cmd_terminator')
     call add(s:config_dbi_mv, 'DBI_orientation')
+    call add(s:config_dbi_mv, 'DBI_column_delimiter')
 
     " DBI connection attributes
     let s:db_dbi_mv = []
@@ -855,6 +856,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "DBI_read_file_cmd"        |return (exists("g:dbext_default_DBI_read_file_cmd")?g:dbext_default_DBI_read_file_cmd.'':'read ')
     elseif a:name ==# "DBI_cmd_terminator"       |return (exists("g:dbext_default_DBI_cmd_terminator")?g:dbext_default_DBI_cmd_terminator.'':';')
     elseif a:name ==# "DBI_orientation"          |return (exists("g:dbext_default_DBI_orientation")?g:dbext_default_DBI_orientation.'':'horizontal')
+    elseif a:name ==# "DBI_column_delimiter"     |return (exists("g:dbext_default_DBI_column_delimiter")?g:dbext_default_DBI_column_delimiter.'':"  ")
     elseif a:name ==# "DBI_table_type"           |return (exists("g:dbext_default_DBI_table_type")?g:dbext_default_DBI_table_type.'':'TABLE')
     elseif a:name ==# "DBI_view_type"            |return (exists("g:dbext_default_DBI_view_type")?g:dbext_default_DBI_view_type.'':'VIEW')
     elseif a:name ==# "DBI_trace_level"          |return (exists("g:dbext_default_DBI_trace_level")?g:dbext_default_DBI_trace_level.'':'2')
