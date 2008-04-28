@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       5.20
+" Version:       6.00
 " Maintainer:    David Fishburn <fishburn@ianywhere.com>
 " Authors:       Peter Bagyinszki <petike1@dpg.hu>
 "                David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Sat 15 Sep 2007 11:09:57 PM Eastern Daylight Time
+" Last Modified: Thu 24 Apr 2008 10:25:55 PM Eastern Daylight Time
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -13,8 +13,6 @@
 "                Hari Krishna Dara <hari_vim@yahoo.com>
 "                Ron Aaron
 "                Andi Stern
-"
-" SourceForge:  $Revision: 1.38 $
 "
 " Help:         :h dbext.txt 
 "
@@ -39,18 +37,20 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 520
+let g:loaded_dbext_auto = 600
 
 " call confirm("Loaded dbext autoload", "&Ok")
 " Script variable defaults, these are used internal and are never displayed
 " to the end user via the DBGetOption command  {{{
-let s:dbext_buffers_with_dict_files = ''
+" let s:dbext_buffers_with_dict_files = ''
+let s:dbext_buffers_with_dict_files = []
 " +shellslash is set on windows so it can be used to decide
 " what type of slash to use
 let s:dbext_tempfile = fnamemodify(tempname(), ":h").
             \ ((has('win32') && ! exists('+shellslash'))?'\':(has('vms')?'':'/')).
             \ 'dbext.sql'
-let s:dbext_prev_sql   = ''
+let s:dbext_prev_sql     = ''
+let s:dbext_result_count = 0
 " }}}
 
 " Build internal lists {{{
@@ -113,6 +113,24 @@ function! s:DB_buildLists()
     call add(s:conn_params_mv, 'conn_parms')
     call add(s:conn_params_mv, 'driver_parms')
 
+    " Saved connection parameters
+    let s:saved_conn_params_mv = []
+    call add(s:saved_conn_params_mv, 'saved_profile')
+    call add(s:saved_conn_params_mv, 'saved_type')
+    call add(s:saved_conn_params_mv, 'saved_integratedlogin')
+    call add(s:saved_conn_params_mv, 'saved_user')
+    call add(s:saved_conn_params_mv, 'saved_passwd')
+    call add(s:saved_conn_params_mv, 'saved_dsnname')
+    call add(s:saved_conn_params_mv, 'saved_srvname')
+    call add(s:saved_conn_params_mv, 'saved_dbname')
+    call add(s:saved_conn_params_mv, 'saved_host')
+    call add(s:saved_conn_params_mv, 'saved_port')
+    call add(s:saved_conn_params_mv, 'saved_extra')
+    call add(s:saved_conn_params_mv, 'saved_bin_path')
+    call add(s:saved_conn_params_mv, 'saved_driver')
+    call add(s:saved_conn_params_mv, 'saved_conn_parms')
+    call add(s:saved_conn_params_mv, 'saved_driver_parms')
+
     " Configuration parameters
     let s:config_params_mv = []
     call add(s:config_params_mv, 'use_sep_result_buffer')
@@ -133,6 +151,8 @@ function! s:DB_buildLists()
     call add(s:config_params_mv, 'custom_title')
     call add(s:config_params_mv, 'use_tbl_alias')
     call add(s:config_params_mv, 'delete_temp_file')
+    call add(s:config_params_mv, 'autoclose')
+    call add(s:config_params_mv, 'autoclose_min_lines')
 
     " Script parameters
     let s:script_params_mv = []
@@ -257,35 +277,6 @@ function! s:DB_buildLists()
                         \  loop_count . '. ' . item
             let loop_count += 1
 	endfor
-    "     " Check if the user has any profiles defined in his vimrc
-    "     let saveA = @a
-    "     redir  @a
-    "     silent! exec 'let'
-    "     redir END
-    "     let l:global_vars = @a
-    "     let @a = saveA
-
-    "     let prof_nm_re = 'dbext_default_profile_\zs\(\w\+\)'
-    "     let index = match(l:global_vars, prof_nm_re)
-    "     while index > -1
-    "         " Retrieve the name of option
-    "         let prof_name = matchstr(l:global_vars, '\w\+', index)
-    "         if strlen(prof_name) > 0
-    "             let prof_value = matchstr(l:global_vars, '\s*\zs[^'."\<C-J>".']\+', 
-    "                         \ (index + strlen(prof_name))  )
-    "             call add(s:conn_profiles_mv, prof_name)
-    "         endif
-    "         let index = index + strlen(prof_name)+ strlen(prof_value) + 1
-    "         let index = match(l:global_vars, prof_nm_re, index)
-    "     endwhile
-    "     " Sort the list ignoring CaSe
-    "     let s:conn_profiles_mv = sort(s:conn_profiles_mv,1)
-    "     " Build the profile prompt string
-	"     for item in s:conn_profiles_mv
-    "             let s:prompt_profile_list = s:prompt_profile_list . "\n" .
-    "                         \  loop_count . '. ' . item
-    "             let loop_count += 1
-	"     endfor
 
     " Check if we are using Cygwin, if so, let the user override
     " the temporary filename to use backslashes
@@ -328,6 +319,8 @@ function! dbext#DB_execFuncWCheck(name,...)
         call s:DB_warningMsg( "dbext:Function DB_".a:name." does not exist" )
         return "-1"
     endif
+
+    echon 'dbext: Executing SQL at '.strftime("%H:%M")
 
     " Could not figure out how to do this with an unlimited #
     " of variables, so I limited this to 4.  Currently we only use
@@ -374,6 +367,8 @@ function! dbext#DB_execFuncTypeWCheck(name,...)
             return ""
         endif
     endif
+
+    echon 'dbext: Executing SQL at '.strftime("%H:%M")
 
     " Could not figure out how to do this with an unlimited #
     " of variables, so I limited this to 4.  Currently we only use
@@ -522,6 +517,15 @@ function! s:DB_set(name, value)
         else
             let b:dbext_{a:name} = a:value
         endif
+        if a:name == 'DBI_commit_on_disconnect'
+            " Special case since this option must be set
+            " both in the DBI layer and the dbext plugin
+            call s:DB_DBI_setOption(a:name, a:value)
+        endif
+    elseif index(s:saved_conn_params_mv, a:name) > -1
+        " Store these parameters as script variables
+        " since only 1 should ever be active at a time
+        let s:dbext_{a:name} = a:value
     else
         if index(s:db_dbi_mv, a:name) > -1
             let rc = 0
@@ -678,8 +682,15 @@ function! s:DB_get(name, ...)
     let use_defaults = ((a:0 > 0)?(a:1+0):1)
     let no_default   = 0
 
+    " Most parameters are buffer specific
     let prefix = "b:dbext_"
+
+    " These two Lists store the list of parameters
+    " that are script wide
     if index(s:script_params_mv, a:name) > -1
+        let prefix = "s:dbext_"
+    endif
+    if index(s:saved_conn_params_mv, a:name) > -1
         let prefix = "s:dbext_"
     endif
 
@@ -755,6 +766,8 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "history_bufname"         |return (fnamemodify(s:DB_get('history_file'), ":t:r"))
     elseif a:name ==# "history_size"            |return (exists("g:dbext_default_history_size")?g:dbext_default_history_size.'':'50')
     elseif a:name ==# "history_max_entry"       |return (exists("g:dbext_default_history_max_entry")?g:dbext_default_history_max_entry.'':'4096')
+    elseif a:name ==# "autoclose"               |return (exists("g:dbext_default_autoclose")?g:dbext_default_autoclose.'':'0')
+    elseif a:name ==# "autoclose_min_lines"     |return (exists("g:dbext_default_autoclose_min_lines")?g:dbext_default_autoclose_min_lines.'':'2')
     elseif a:name ==# "ASA_bin"                 |return (exists("g:dbext_default_ASA_bin")?g:dbext_default_ASA_bin.'':'dbisql')
     elseif a:name ==# "ASA_cmd_terminator"      |return (exists("g:dbext_default_ASA_cmd_terminator")?g:dbext_default_ASA_cmd_terminator.'':';')
     elseif a:name ==# "ASA_cmd_options"         |return (exists("g:dbext_default_ASA_cmd_options")?g:dbext_default_ASA_cmd_options.'':'-nogui')
@@ -826,8 +839,8 @@ function! s:DB_getDefault(name)
                 \ (s:prompt_profile_list."\n[Optional] Enter profile #: "))
                 \ )
     elseif a:name ==# "prompt_type"             |return (exists("g:dbext_default_prompt_type")?g:dbext_default_prompt_type.'':"" .
-                \ (has('gui_running')?("\nPlease choose # of database type:".s:prompt_type_list):
-                \ (s:prompt_type_list."\nPlease choose # of database type: "))
+                \ (has('gui_running')?("\nDatabase:".s:prompt_type_list):
+                \ (s:prompt_type_list."\nDatabase: "))
                 \ )
     elseif a:name ==# "prompt_integratedlogin"  |return (exists("g:dbext_default_prompt_integratedlogin")?g:dbext_default_prompt_integratedlogin.'':'[Optional] Use Integrated Login: ')
     elseif a:name ==# "prompt_user"             |return (exists("g:dbext_default_prompt_user")?g:dbext_default_prompt_user.'':'[Optional] Database user: ')
@@ -1196,6 +1209,13 @@ function! s:DB_promptForParameters(...)
     endif
     call s:DB_set('prompting_user', 0)
 
+    if (s:DB_get('type') =~ '\<DBI\>\|\<ODBC\>') 
+        " If we have changed any of our connection parameters
+        " force a disconnect or dbext_dbi.vim will simply
+        " use the existing connection for this buffer.
+        call dbext#DB_disconnect()
+    endif
+
     return retval
 endfunction
 
@@ -1284,11 +1304,14 @@ function! s:DB_stripLeadFollowSpaceLines(str)
     " Hmm, the sent the CPU to 100%, unless I broke it into 2
     " First, from each line, removing any beginning spaces by removing
     " all newlines and spaces with just a newline
-    let stripped = substitute(a:str, '[ \t\r\n]\+', '\n', 'g')
+    " let stripped = substitute(a:str, '[ \t\r\n]\+', '\n', 'g')
     " This has the side effect of adding a blank line at the top
-    let stripped = substitute(stripped, '^[\r\n]\+', '', '')
+    " let stripped = substitute(stripped, '^[\r\n]\+', '', '')
+    let stripped = substitute(a:str, '^[\r\n]\+', '', '')
     " Now take care of the other end of the string
     let stripped = substitute(stripped, '\([ \t]\+\)\([\r\n]\+\)', '\2', 'g')
+    " 
+    let stripped = substitute( stripped, '^\s*\(.\{-}\)[ \t\r\n]*$', '\1\n', '' )
 
     return stripped
 endfunction
@@ -1598,7 +1621,8 @@ function! s:DB_ASA_stripHeaderFooter(result)
     " Strip off query statistics
     let stripped = substitute( stripped, '(\(First\s\+\)\?\d\+ rows\_.*', '', '' )
     " Strip off trailing spaces
-    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
     return stripped
 endfunction 
 
@@ -1747,7 +1771,8 @@ function! s:DB_ASE_stripHeaderFooter(result) "{{{
     " Strip off query statistics
     let stripped = substitute( stripped, '(\d\+ rows\_.*', '', '' )
     " Strip off trailing spaces
-    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
     return stripped
 endfunction "}}}
 
@@ -1993,7 +2018,8 @@ function! s:DB_DB2_stripHeaderFooter(result)
         " Strip off column headers ending with a newline
         let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
         " Strip off trailing spaces
-        let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+        " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+        let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
         " Strip off query statistics
         let stripped = substitute( stripped, 'Number of rows\_.*', '', '' )
     else
@@ -2002,7 +2028,8 @@ function! s:DB_DB2_stripHeaderFooter(result)
         " Strip off query statistics
         let stripped = substitute( stripped, "\n".'\s*\d\+\s\+record(s)\s\+selected\_.*', '', '' )
         " Strip off trailing spaces
-        let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+        " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+        let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
     endif
     return stripped
 endfunction 
@@ -2218,6 +2245,7 @@ function! s:DB_MYSQL_execSql(str)
                 \ s:DB_option(' -h ', s:DB_get("host"), '') .
                 \ s:DB_option(' -P ', s:DB_get("port"), '') .
                 \ s:DB_option(' -D ', s:DB_get("dbname"), '') .
+                \ s:DB_option(' ', '-t', '') .
                 \ s:DB_option(' ', s:DB_get("extra"), '') .
                 \ ' < ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output, "")
@@ -2297,7 +2325,8 @@ function! s:DB_MYSQL_stripHeaderFooter(result) "{{{
     " Strip off preceeding and ending |s
     let stripped = substitute( stripped, '|', '', 'g' )
     " Strip off trailing spaces
-    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
     return stripped
 endfunction "}}}
 
@@ -2400,7 +2429,7 @@ function! s:DB_SQLITE_stripHeaderFooter(result)
     " " Strip off query statistics
     " let stripped = substitute( stripped, '(\d\+ rows\_.*', '', '' )
     " " Strip off trailing spaces
-    " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
     return stripped
 endfunction
 
@@ -2587,7 +2616,8 @@ function! s:DB_ORA_stripHeaderFooter(result) "{{{
     " Strip off no rows selected
     let stripped = substitute( stripped, 'no rows selected\_.*', '', '' )
     " Strip off trailing spaces
-    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
     return stripped
 endfunction "}}}
 
@@ -2740,7 +2770,8 @@ function! s:DB_PGSQL_stripHeaderFooter(result)
     " Strip off query statistics
     let stripped = substitute( stripped, '(\d\+ rows\_.*', '', '' )
     " Strip off trailing spaces
-    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
     return stripped
 endfunction 
 
@@ -2968,7 +2999,8 @@ function! s:DB_RDB_stripHeaderFooter(result) "{{{
     " Strip off no rows selected
     let stripped = substitute( stripped, 'no rows selected\_.*', '', '' )
     " Strip off trailing spaces
-    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
     return stripped
 endfunction "}}}
 "}}}
@@ -3022,7 +3054,9 @@ function! s:DB_SQLSRV_stripHeaderFooter(result)
     " Strip off query statistics
     let stripped = substitute( stripped, '(\d\+ rows\_.*', '', '' )
     " Strip off trailing spaces
-    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    " let stripped = substitute( stripped, '^\s*\(.\{-}\)[ \t\r\n]*$', '\1\n', '' )
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
     return stripped
 endfunction
 
@@ -3079,7 +3113,7 @@ function! s:DB_SQLSRV_getListView(view_prefix)
 endfunction 
 function! s:DB_SQLSRV_getDictionaryTable() "{{{
     let result = s:DB_SQLSRV_execSql(
-                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)||'.'||":'').
+                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)+'.'+":'').
                 \ "       convert(varchar,o.name) ".
                 \ "  from sysobjects o, sysusers u ".
                 \ " where o.uid=u.uid ".
@@ -3090,7 +3124,7 @@ function! s:DB_SQLSRV_getDictionaryTable() "{{{
 endfunction "}}}
 function! s:DB_SQLSRV_getDictionaryProcedure() "{{{
     let result = s:DB_SQLSRV_execSql(
-                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)||'.'||":'').
+                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)+'.'+":'').
                 \ "       convert(varchar,o.name) ".
                 \ "  from sysobjects o, sysusers u ".
                 \ " where o.uid=u.uid ".
@@ -3101,7 +3135,7 @@ function! s:DB_SQLSRV_getDictionaryProcedure() "{{{
 endfunction "}}}
 function! s:DB_SQLSRV_getDictionaryView() "{{{
     let result = s:DB_SQLSRV_execSql(
-                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)||'.'||":'').
+                \ "select ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name)+'.'+":'').
                 \ "       convert(varchar,o.name) ".
                 \ "  from sysobjects o, sysusers u ".
                 \ " where o.uid=u.uid ".
@@ -3375,7 +3409,8 @@ function! s:DB_DBI_stripHeaderFooter(result)
     " Strip off query statistics
     let stripped = substitute( stripped, '(\d\+ rows\_.*', '', '' )
     " Strip off trailing spaces
-    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
     return stripped
 endfunction
 
@@ -3403,50 +3438,35 @@ function! s:DB_DBI_getListColumn(table_name)
 
     perl db_results_variable()
 
-    "    return col_list
-    let result     = g:dbext_dbi_result
     let col_names  = matchstr(g:dbext_dbi_result,'DBI:\zsTABLE_CAT.\{-}\ze\n')
-    let col_header = matchstr(g:dbext_dbi_result,'\n\zs-[ -]*\ze\n')
     let col_values = matchstr(g:dbext_dbi_result,'\n-[ -]*\zs\n.*')
     " Strip off query statistics
     let col_values = substitute( col_values, '(\d\+ rows\_.*', '', '' )
-    let pos_owner  = match(col_names, 'TABLE_SCHEM')
-    let pos_table  = match(col_names, 'TABLE_NAME')
-    let has_owner  = 1
-    let col_regex  = '\n\s*'
+    let pos_column = match(col_names, 'COLUMN_NAME')
+    let pos_type   = match(col_names, 'DATA_TYPE')
 
     if col_names == ""
         call s:DB_warningMsg('DBI: No column info returned')
         return ""
     endif
 
-    if pos_owner !~ '\d\+'
-        call s:DB_errorMsg('DBI: Cannot find owner position')
+    if pos_column !~ '\d\+'
+        call s:DB_errorMsg('DBI: Cannot find column name position')
         return ""
     endif
 
-    " Check if the table_catalogue has been specified
-    " It is the first string in the column values
-    if col_values =~ '^\n\S'
-        " If so, add an additional regex to exclude this text from the match
-        let col_regex .= '\%(\S\+\s\+\)'
+    if pos_type !~ '\d\+'
+        call s:DB_errorMsg('DBI: Cannot find data type position')
+        return ""
     endif
-    " Check if the owner was specified by checking the column which contains
-    " the owner name.  It should be in the same position as the column name.
-    " Add 3 to account for the newline character.
-    if matchstr(col_values, '.\%'.(pos_owner+3).'c') =~ '\s'
-        let has_owner = 0
-    else
-        " Grab the owner/creator name
-        let col_regex .= '\%(\S\+\s\+\)'
-    endif
-    " Grab the table name
-    " Grab the column name
-    " Each match is on it's own line, so remove everything until the 
-    " end of each line.
-    let col_regex .= '\%(\S\+\s\+\)\(\S\+\).\{-}\ze\n'
 
-    " Join them together with a . separator
+    " For each row returned
+    " Strip off the unneeded values (pos_column - 1)
+    " Gather just the values we want (pos_type - pos_column)
+    " Ignore the remainder of the line
+    let col_regex  = '\n.\{'.(pos_column-1).'}.\(.\{'.(pos_type-pos_column).'}\).\{-}\ze\n'
+    
+    " Join them together with a newline separator
     let col_list = substitute(col_values, col_regex, '\1\n', 'g')
 
     return col_list
@@ -3596,61 +3616,70 @@ function! s:DB_DBI_getDictionaryTable() "{{{
         return -1
     endif
 
-    let result     = g:dbext_dbi_result
     let col_names  = matchstr(g:dbext_dbi_result,'DBI:\zsTABLE_CAT.\{-}\ze\n')
-    let col_header = matchstr(g:dbext_dbi_result,'\n\zs-[ -]*\ze\n')
     let col_values = matchstr(g:dbext_dbi_result,'\n-[ -]*\zs\n.*')
     " Strip off query statistics
     let col_values = substitute( col_values, '(\d\+ rows\_.*', '', '' )
     let pos_owner  = match(col_names, 'TABLE_SCHEM')
     let pos_table  = match(col_names, 'TABLE_NAME')
-    let has_owner  = 1
-    let col_regex  = '\n\s*'
+    let pos_type   = match(col_names, 'TABLE_TYPE')
 
     if col_names == ""
-        call s:DB_errorMsg('DBI: Incorrect result from DBI')
-        return "-1"
+        call s:DB_warningMsg('DBI: No column info returned')
+        return ""
     endif
 
     if pos_owner !~ '\d\+'
-        call s:DB_errorMsg('DBI: Cannot find owner position')
-        return "-1"
+        call s:DB_errorMsg('DBI: Cannot find owner name position')
+        return ""
     endif
 
-    " Check if the table_catalogue has been specified.
-    " It is the first string in the column values
-    if col_values =~ '^\n\S'
-        " If so, add an additional regex to exclude this text from the match
-        let col_regex .= '\%(\S\+\s\+\)'
+    if pos_table !~ '\d\+'
+        call s:DB_errorMsg('DBI: Cannot find table name position')
+        return ""
     endif
-    " Check if the owner was specified by checking the column which contains
-    " the owner name.  It should be in the same position as the column name.
-    " Not really sure why I need to add 3 for this check, but this is a 
-    " newline character at the start, so that could be it.
-    if matchstr(col_values, '.\%'.(pos_owner+3).'c') =~ '\s'
+
+    if pos_type !~ '\d\+'
+        call s:DB_errorMsg('DBI: Cannot find table type position')
+        return ""
+    endif
+
+    let col_regex  = '\n'
+
+    let has_owner  = 1
+    let table_owner = matchstr(col_values, '\n.\{'.(pos_owner).'}\zs.\{'.(pos_table-pos_owner).'}')
+    if table_owner =~ '^\s' || table_owner =~ '^NULL.*' 
         let has_owner = 0
+        let col_regex .= '.\{'.(pos_table).'}'
     else
         " Grab the owner/creator name
-        let col_regex .= '\(\S\+\)\s\+'
+        let col_regex .= '.\{'.(pos_owner-1).'}.\(.\{'.(pos_table-pos_owner).'}\)'
     endif
-    " Grab the table name.
-    " Each match is on it's own line, so remove everything until the 
-    " end of each line.
-    let col_regex .= '\(\S\+\).\{-}\ze\n'
 
+    let replace = '\1\n'
     if has_owner == 1
         if s:DB_get('dict_show_owner') == 1
             let replace = '\1.\2\n'
         else
             let replace = '\2\n'
         endif
-    else
-        let replace = '\1\n'
     endif
-    " Join them together with a . separator
-    let table_list = substitute(col_values, col_regex, replace, 'g')
 
-    return table_list
+    " For each row returned
+    " Strip off the unneeded values (pos_table - 1)
+    " Gather just the values we want (pos_type - pos_table)
+    " Ignore the remainder of the line
+    let col_regex .= '\(.\{'.(pos_type-pos_table).'}\).\{-}\ze\n'
+    
+    " Join them together with a newline separator
+    let obj_list = substitute(col_values, col_regex, replace, 'g')
+    " If an owner exists, there will be spaces between the 
+    " name and the ., remove these spaces.
+    if has_owner == 1 &&  s:DB_get('dict_show_owner') == 1
+        let obj_list = substitute(obj_list, '\s\+\.', '.', 'g')
+    endif
+
+    return obj_list
 endfunction "}}}
 function! s:DB_DBI_getDictionaryProcedure() "{{{
     if s:DB_DBI_Autoload() == -1
@@ -3723,63 +3752,73 @@ function! s:DB_DBI_getDictionaryView() "{{{
     " Populate the results variable
     perl db_results_variable()
 
-    let result     = g:dbext_dbi_result
     let col_names  = matchstr(g:dbext_dbi_result,'DBI:\zsTABLE_CAT.\{-}\ze\n')
-    let col_header = matchstr(g:dbext_dbi_result,'\n\zs-[ -]*\ze\n')
     let col_values = matchstr(g:dbext_dbi_result,'\n-[ -]*\zs\n.*')
     " Strip off query statistics
     let col_values = substitute( col_values, '(\d\+ rows\_.*', '', '' )
     let pos_owner  = match(col_names, 'TABLE_SCHEM')
     let pos_table  = match(col_names, 'TABLE_NAME')
-    let has_owner  = 1
-    let col_regex  = '\n\s*'
+    let pos_type   = match(col_names, 'TABLE_TYPE')
 
     if col_names == ""
-        call s:DB_errorMsg('DBI: Incorrect result from DBI')
-        return "-1"
+        call s:DB_warningMsg('DBI: No column info returned')
+        return ""
     endif
 
     if pos_owner !~ '\d\+'
-        call s:DB_errorMsg('DBI: Cannot find owner position')
-        return -1""
+        call s:DB_errorMsg('DBI: Cannot find owner name position')
+        return ""
     endif
 
-    " Check if the table_catalogue has been specified.
-    " It is the first string in the column values
-    if col_values =~ '^\n\S'
-        " If so, add an additional regex to exclude this text from the match
-        let col_regex .= '\%(\S\+\s\+\)'
+    if pos_table !~ '\d\+'
+        call s:DB_errorMsg('DBI: Cannot find table name position')
+        return ""
     endif
-    " Check if the owner was specified by checking the column which contains
-    " the owner name.  It should be in the same position as the column name.
-    " Not really sure why I need to add 3 for this check, but this is a 
-    " newline character at the start, so that could be it.
-    if matchstr(col_values, '.\%'.(pos_owner+3).'c') =~ '\s'
+
+    if pos_type !~ '\d\+'
+        call s:DB_errorMsg('DBI: Cannot find table type position')
+        return ""
+    endif
+
+    let col_regex  = '\n'
+
+    let has_owner  = 1
+    let table_owner = matchstr(col_values, '\n.\{'.(pos_owner).'}\zs.\{'.(pos_table-pos_owner).'}')
+    if table_owner =~ '^\s' || table_owner =~ '^NULL.*' 
         let has_owner = 0
+        let col_regex .= '.\{'.(pos_table).'}'
     else
         " Grab the owner/creator name
-        let col_regex .= '\(\S\+\)\s\+'
+        let col_regex .= '.\{'.(pos_owner-1).'}.\(.\{'.(pos_table-pos_owner).'}\)'
     endif
-    " Grab the table name.
-    " Each match is on it's own line, so remove everything until the 
-    " end of each line.
-    let col_regex .= '\(\S\+\).\{-}\ze\n'
 
+    let replace = '\1\n'
     if has_owner == 1
         if s:DB_get('dict_show_owner') == 1
             let replace = '\1.\2\n'
         else
             let replace = '\2\n'
         endif
-    else
-        let replace = '\1\n'
     endif
-    " Join them together with a . separator
-    let table_list = substitute(col_values, col_regex, replace, 'g')
 
-    return table_list
+    " For each row returned
+    " Strip off the unneeded values (pos_table - 1)
+    " Gather just the values we want (pos_type - pos_table)
+    " Ignore the remainder of the line
+    let col_regex .= '\(.\{'.(pos_type-pos_table).'}\).\{-}\ze\n'
+    
+    " Join them together with a newline separator
+    let obj_list = substitute(col_values, col_regex, replace, 'g')
+    " If an owner exists, there will be spaces between the 
+    " name and the ., remove these spaces.
+    if has_owner == 1 &&  s:DB_get('dict_show_owner') == 1
+        let obj_list = substitute(obj_list, '\s\+\.', '.', 'g')
+    endif
+
+    return obj_list
 endfunction "}}}
 function! s:DB_DBI_setOption(option_name, value) "{{{
+    let option_name = a:option_name
 
     if s:DB_DBI_Autoload() == -1
         return -1
@@ -3789,7 +3828,7 @@ function! s:DB_DBI_setOption(option_name, value) "{{{
         return -1
     endif
 
-    let cmd = "perl db_set_connection_option('".a:option_name."', '".a:value."')"
+    let cmd = "perl db_set_connection_option('".option_name."', '".a:value."')"
     exec cmd
     if g:dbext_dbi_result == -1
         " call s:DB_errorMsg(g:dbext_dbi_msg)
@@ -3937,7 +3976,8 @@ function! s:DB_ODBC_stripHeaderFooter(result)
     " Strip off query statistics
     let stripped = substitute( stripped, '(\d\+ rows\_.*', '', '' )
     " Strip off trailing spaces
-    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
     return stripped
 endfunction
 
@@ -3965,50 +4005,35 @@ function! s:DB_ODBC_getListColumn(table_name)
 
     perl db_results_variable()
 
-    "    return col_list
-    let result     = g:dbext_dbi_result
     let col_names  = matchstr(g:dbext_dbi_result,'DBI:\zsTABLE_CAT.\{-}\ze\n')
-    let col_header = matchstr(g:dbext_dbi_result,'\n\zs-[ -]*\ze\n')
     let col_values = matchstr(g:dbext_dbi_result,'\n-[ -]*\zs\n.*')
     " Strip off query statistics
     let col_values = substitute( col_values, '(\d\+ rows\_.*', '', '' )
-    let pos_owner  = match(col_names, 'TABLE_SCHEM')
-    let pos_table  = match(col_names, 'TABLE_NAME')
-    let has_owner  = 1
-    let col_regex  = '\n\s*'
+    let pos_column = match(col_names, 'COLUMN_NAME')
+    let pos_type   = match(col_names, 'DATA_TYPE')
 
     if col_names == ""
-        call s:DB_warningMsg('DBI::ODBC: No column info returned')
+        call s:DB_warningMsg('DBI: No column info returned')
         return ""
     endif
 
-    if pos_owner !~ '\d\+'
-        call s:DB_errorMsg('DBI::ODBC: Cannot find owner position')
+    if pos_column !~ '\d\+'
+        call s:DB_errorMsg('DBI: Cannot find column name position')
         return ""
     endif
 
-    " Check if the table_catalogue has been specified
-    " It is the first string in the column values
-    if col_values =~ '^\n\S'
-        " If so, add an additional regex to exclude this text from the match
-        let col_regex .= '\%(\S\+\s\+\)'
+    if pos_type !~ '\d\+'
+        call s:DB_errorMsg('DBI: Cannot find data type position')
+        return ""
     endif
-    " Check if the owner was specified by checking the column which contains
-    " the owner name.  It should be in the same position as the column name.
-    " Add 3 to account for the newline character.
-    if matchstr(col_values, '.\%'.(pos_owner+3).'c') =~ '\s'
-        let has_owner = 0
-    else
-        " Grab the owner/creator name
-        let col_regex .= '\%(\S\+\s\+\)'
-    endif
-    " Grab the table name
-    " Grab the column name
-    " Each match is on it's own line, so remove everything until the 
-    " end of each line.
-    let col_regex .= '\%(\S\+\s\+\)\(\S\+\).\{-}\ze\n'
 
-    " Join them together with a . separator
+    " For each row returned
+    " Strip off the unneeded values (pos_column - 1)
+    " Gather just the values we want (pos_type - pos_column)
+    " Ignore the remainder of the line
+    let col_regex  = '\n.\{'.(pos_column-1).'}.\(.\{'.(pos_type-pos_column).'}\).\{-}\ze\n'
+    
+    " Join them together with a newline separator
     let col_list = substitute(col_values, col_regex, '\1\n', 'g')
 
     return col_list
@@ -4167,61 +4192,70 @@ function! s:DB_ODBC_getDictionaryTable() "{{{
 
     perl db_results_variable()
 
-    let result     = g:dbext_dbi_result
     let col_names  = matchstr(g:dbext_dbi_result,'DBI:\zsTABLE_CAT.\{-}\ze\n')
-    let col_header = matchstr(g:dbext_dbi_result,'\n\zs-[ -]*\ze\n')
     let col_values = matchstr(g:dbext_dbi_result,'\n-[ -]*\zs\n.*')
     " Strip off query statistics
     let col_values = substitute( col_values, '(\d\+ rows\_.*', '', '' )
     let pos_owner  = match(col_names, 'TABLE_SCHEM')
     let pos_table  = match(col_names, 'TABLE_NAME')
-    let has_owner  = 1
-    let col_regex  = '\n\s*'
+    let pos_type   = match(col_names, 'TABLE_TYPE')
 
     if col_names == ""
-        call s:DB_errorMsg('DBI: Incorrect result from DBI::ODBC')
-        return "-1"
+        call s:DB_warningMsg('DBI: No column info returned')
+        return ""
     endif
 
     if pos_owner !~ '\d\+'
-        call s:DB_errorMsg('DBI: Cannot find owner position')
-        return "-1"
+        call s:DB_errorMsg('DBI: Cannot find owner name position')
+        return ""
     endif
 
-    " Check if the table_catalogue has been specified.
-    " It is the first string in the column values
-    if col_values =~ '^\n\S'
-        " If so, add an additional regex to exclude this text from the match
-        let col_regex .= '\%(\S\+\s\+\)'
+    if pos_table !~ '\d\+'
+        call s:DB_errorMsg('DBI: Cannot find table name position')
+        return ""
     endif
-    " Check if the owner was specified by checking the column which contains
-    " the owner name.  It should be in the same position as the column name.
-    " Not really sure why I need to add 3 for this check, but this is a 
-    " newline character at the start, so that could be it.
-    if matchstr(col_values, '.\%'.(pos_owner+3).'c') =~ '\s'
+
+    if pos_type !~ '\d\+'
+        call s:DB_errorMsg('DBI: Cannot find table type position')
+        return ""
+    endif
+
+    let col_regex  = '\n'
+
+    let has_owner  = 1
+    let table_owner = matchstr(col_values, '\n.\{'.(pos_owner).'}\zs.\{'.(pos_table-pos_owner).'}')
+    if table_owner =~ '^\s' || table_owner =~ '^NULL.*' 
         let has_owner = 0
+        let col_regex .= '.\{'.(pos_table).'}'
     else
         " Grab the owner/creator name
-        let col_regex .= '\(\S\+\)\s\+'
+        let col_regex .= '.\{'.(pos_owner-1).'}.\(.\{'.(pos_table-pos_owner).'}\)'
     endif
-    " Grab the table name.
-    " Each match is on it's own line, so remove everything until the 
-    " end of each line.
-    let col_regex .= '\(\S\+\).\{-}\ze\n'
 
+    let replace = '\1\n'
     if has_owner == 1
         if s:DB_get('dict_show_owner') == 1
             let replace = '\1.\2\n'
         else
             let replace = '\2\n'
         endif
-    else
-        let replace = '\1\n'
     endif
-    " Join them together with a . separator
-    let table_list = substitute(col_values, col_regex, replace, 'g')
 
-    return table_list
+    " For each row returned
+    " Strip off the unneeded values (pos_table - 1)
+    " Gather just the values we want (pos_type - pos_table)
+    " Ignore the remainder of the line
+    let col_regex .= '\(.\{'.(pos_type-pos_table).'}\).\{-}\ze\n'
+    
+    " Join them together with a newline separator
+    let obj_list = substitute(col_values, col_regex, replace, 'g')
+    " If an owner exists, there will be spaces between the 
+    " name and the ., remove these spaces.
+    if has_owner == 1 &&  s:DB_get('dict_show_owner') == 1
+        let obj_list = substitute(obj_list, '\s\+\.', '.', 'g')
+    endif
+
+    return obj_list
 endfunction "}}}
 function! s:DB_ODBC_getDictionaryProcedure() "{{{
     if s:DB_DBI_Autoload() == -1
@@ -4311,61 +4345,70 @@ function! s:DB_ODBC_getDictionaryView() "{{{
 
     perl db_results_variable()
 
-    let result     = g:dbext_dbi_result
     let col_names  = matchstr(g:dbext_dbi_result,'DBI:\zsTABLE_CAT.\{-}\ze\n')
-    let col_header = matchstr(g:dbext_dbi_result,'\n\zs-[ -]*\ze\n')
     let col_values = matchstr(g:dbext_dbi_result,'\n-[ -]*\zs\n.*')
     " Strip off query statistics
     let col_values = substitute( col_values, '(\d\+ rows\_.*', '', '' )
     let pos_owner  = match(col_names, 'TABLE_SCHEM')
     let pos_table  = match(col_names, 'TABLE_NAME')
-    let has_owner  = 1
-    let col_regex  = '\n\s*'
+    let pos_type   = match(col_names, 'TABLE_TYPE')
 
     if col_names == ""
-        call s:DB_errorMsg('DBI: Incorrect result from DBI::ODBC')
-        return "-1"
+        call s:DB_warningMsg('DBI: No column info returned')
+        return ""
     endif
 
     if pos_owner !~ '\d\+'
-        call s:DB_errorMsg('DBI: Cannot find owner position')
-        return "-1"
+        call s:DB_errorMsg('DBI: Cannot find owner name position')
+        return ""
     endif
 
-    " Check if the table_catalogue has been specified.
-    " It is the first string in the column values
-    if col_values =~ '^\n\S'
-        " If so, add an additional regex to exclude this text from the match
-        let col_regex .= '\%(\S\+\s\+\)'
+    if pos_table !~ '\d\+'
+        call s:DB_errorMsg('DBI: Cannot find table name position')
+        return ""
     endif
-    " Check if the owner was specified by checking the column which contains
-    " the owner name.  It should be in the same position as the column name.
-    " Not really sure why I need to add 3 for this check, but this is a 
-    " newline character at the start, so that could be it.
-    if matchstr(col_values, '.\%'.(pos_owner+3).'c') =~ '\s'
+
+    if pos_type !~ '\d\+'
+        call s:DB_errorMsg('DBI: Cannot find table type position')
+        return ""
+    endif
+
+    let col_regex  = '\n'
+
+    let has_owner  = 1
+    let table_owner = matchstr(col_values, '\n.\{'.(pos_owner).'}\zs.\{'.(pos_table-pos_owner).'}')
+    if table_owner =~ '^\s' || table_owner =~ '^NULL.*' 
         let has_owner = 0
+        let col_regex .= '.\{'.(pos_table).'}'
     else
         " Grab the owner/creator name
-        let col_regex .= '\(\S\+\)\s\+'
+        let col_regex .= '.\{'.(pos_owner-1).'}.\(.\{'.(pos_table-pos_owner).'}\)'
     endif
-    " Grab the table name.
-    " Each match is on it's own line, so remove everything until the 
-    " end of each line.
-    let col_regex .= '\(\S\+\).\{-}\ze\n'
 
+    let replace = '\1\n'
     if has_owner == 1
         if s:DB_get('dict_show_owner') == 1
             let replace = '\1.\2\n'
         else
             let replace = '\2\n'
         endif
-    else
-        let replace = '\1\n'
     endif
-    " Join them together with a . separator
-    let table_list = substitute(col_values, col_regex, replace, 'g')
 
-    return table_list
+    " For each row returned
+    " Strip off the unneeded values (pos_table - 1)
+    " Gather just the values we want (pos_type - pos_table)
+    " Ignore the remainder of the line
+    let col_regex .= '\(.\{'.(pos_type-pos_table).'}\).\{-}\ze\n'
+    
+    " Join them together with a newline separator
+    let obj_list = substitute(col_values, col_regex, replace, 'g')
+    " If an owner exists, there will be spaces between the 
+    " name and the ., remove these spaces.
+    if has_owner == 1 &&  s:DB_get('dict_show_owner') == 1
+        let obj_list = substitute(obj_list, '\s\+\.', '.', 'g')
+    endif
+
+    return obj_list
 endfunction "}}}
 "}}}
 " Selector functions {{{
@@ -4381,7 +4424,13 @@ function! dbext#DB_getSqlWithDefault(...)
         return
     endif
     if(a:0 > 1)
-        let sql = sql . a:2
+        " This will be a table name, check if there are any spaces,
+        " if so, add double quotes
+        if a:2 !~ '["\[\]]' && a:2 =~ '\w\s\+\w'
+            let sql = sql . '"' . a:2 . '"'
+        else
+            let sql = sql . a:2
+        endif
     else
         let sql = sql . expand("<cword>")
     endif
@@ -4405,6 +4454,8 @@ function! dbext#DB_execSql(query)
         let query = dbext#DB_parseQuery(query)
     endif
     
+    echon 'dbext: Executing SQL at '.strftime("%H:%M")
+
     if query != ""
         return dbext#DB_execFuncTypeWCheck('execSql', query)
     endif
@@ -4418,7 +4469,11 @@ function! dbext#DB_execSqlWithDefault(...)
         return
     endif
     if(a:0 > 1)
-        let sql = sql . a:2
+        if a:2 !~ '["\[\]]' && a:2 =~ '\w\s\+\w'
+            let sql = sql . '"' . a:2 . '"'
+        else
+            let sql = sql . a:2
+        endif
     else
         let sql = sql . expand("<cword>")
     endif
@@ -4500,7 +4555,7 @@ endfunction
 
 function! dbext#DB_describeTable(...)
     if(a:0 > 0)
-        let table_name = substitute(a:1, '\s*\(\S\+\).*', '\1', '')
+        let table_name = s:DB_getObjectAndQuote(a:1)
     else
         let table_name = expand("<cword>")
     endif
@@ -4514,7 +4569,7 @@ endfunction
 
 function! dbext#DB_describeProcedure(...)
     if(a:0 > 0)
-        let procedure_name = substitute(a:1, '\s*\(\S\+\).*', '\1', '')
+        let procedure_name = s:DB_getObjectAndQuote(a:1)
     else
         let procedure_name = expand("<cword>")
     endif
@@ -4569,17 +4624,20 @@ function! dbext#DB_getListColumn(table_name, silent_mode, use_newline_sep )
     if s:DB_get("use_tbl_alias") != 'n'
         let tbl_alias = s:DB_getTblAlias( table_name )
         " Add table alias to each column
-        let col_list = substitute( col_list, '\<\w\+\>', tbl_alias.'&', 'g' )
+        " let col_list = substitute( col_list, '\<\w\+\>', tbl_alias.'&', 'g' )
+        let col_list = substitute( col_list, '\<\w.\{-}\n', tbl_alias.'&', 'g' )
     endif
     
     if use_newline_sep == 0
         " Convert newlines into commas
         " let col_list = substitute( col_list, '\w\>\zs[ '."\<C-J>".']*\ze\w', '\1, ', 'g' )
-        let col_list = substitute( col_list, '\w\>\zs[^.].\{-}\ze\<\w', ', ', 'g' )
+        " let col_list = substitute( col_list, '\w\>\zs[^.].\{-}\ze\<\w', ', ', 'g' )
+        let col_list = substitute( col_list, '\s*\n', ', ', 'g' )
         " Make sure the column list does not end in a newline, makes
         " pasting into a buffer more difficult since  you cannot 
         " insert it between words
-        let col_list = substitute( col_list, "\\s*\\n$", '', '' )
+        " let col_list = substitute( col_list, ",\\?\\s*\\n$", '', '' )
+        let col_list = substitute( col_list, '[, \t\r\n]*$', '', '' )
     else
         let col_list = substitute( col_list, ',\s*', "\n", 'g' )
     endif
@@ -4852,55 +4910,88 @@ endfunction
 function! s:DB_getObjectOwner(object) "{{{
     " The owner regex matches a word at the start of the string which is
     " followed by a dot, but doesn't include the dot in the result.
-    " ^    - from beginning of line
-    " "\?  - ignore any quotes
-    " \zs  - start the match now
-    " \w\+ - get owner name
-    " \ze  - end the match
-    " "\?  - ignore any quotes
-    " \.   - must by followed by a .
-    let owner = matchstr( a:object, '^"\?\zs\w\+\ze"\?\.' )
+    " ^           - from beginning of line
+    " \("\|\[\)\? - ignore any quotes
+    " \zs         - start the match now
+    " .\{-}       - get owner name
+    " \ze         - end the match
+    " \("\|\[\)\? - ignore any quotes
+    " \.          - must by followed by a .
+    " let owner = matchstr( a:object, '^\s*\zs.*\ze\.' )
+    let owner = matchstr( a:object, '^\("\|\[\)\?\zs\.\{-}\ze\("\|\]\)\?\.' )
     return owner
 endfunction "}}}
-function! s:DB_getObjectName(object) "{{{
+function! s:DB_getObjectName(object) "{{{ 
     " The object regex matches a word at the start of the string, skipping over
     " any owner name if there is one.  Only the object name is returned.
-    " ^    - from beginning of line
-    " \(   - start of optional owner name
-    "        "\?  - ignore any quotes
-    "        \w*  - get owner name
-    "        "\?  - ignore any quotes
-    "        \.   - must be followed by a .
-    " \)\? - entire match is optional
-    " "\?  - ignore any quotes
-    " \zs  - start match
-    " \w\+ - get procedure name 
-    let object  = matchstr( a:object, '^\("\?\w*"\?\.\)\?"\?\zs\w*' )
+    " ^               - from beginning of line
+    " \(              - from beginning of line
+    "     \("\|\[\)\? - ignore any quotes
+    "     .\{-}       - get owner name
+    "     \("\|\[\)\? - ignore any quotes
+    "     \.          - must by followed by a .
+    " \)\?            - All this is optional
+    " \("\|\[\)\?     - ignore any quotes
+    " \zs             - start the match now
+    " .\{-}           - get owner name
+    " \ze             - end the match
+    " \("\|\[\)\?     - ignore any quotes
+    " \s*$            - ignoring to the end of the line
+    " let object  = matchstr( a:object, '^\(.*\.\)\?"\?\s*\zs.*' )
+    let object  = matchstr( a:object, '^\(\("\|\[\)\?.\{-}\("\|\]\)\?\.\)\?\("\|\[\)\?\s*\zs.\{-}\ze\("\|\]\)\?\s*$' )
+    return object
+endfunction "}}}
+function! s:DB_getObjectAndQuote(object) "{{{ 
+    let owner = s:DB_getObjectOwner(a:object)
+    let name  = s:DB_getObjectName(a:object)
+
+    let object = ''
+
+    if owner != ''
+        let object = (owner =~ '\S\s\+\S'?'"'.owner.'"':owner).'.'
+    endif
+    if name != ''
+        let object = object.(name =~ '\S\s\+\S'?'"'.name.'"':name)
+    endif
+    
     return object
 endfunction "}}}
 "}}}
 " Dictionary (Completion) Functions {{{
 function! s:DB_addBufDictList( buf_nbr ) "{{{
-    if s:dbext_buffers_with_dict_files !~ '\<'.a:buf_nbr.','
-        let s:dbext_buffers_with_dict_files = 
-                    \ s:dbext_buffers_with_dict_files . a:buf_nbr . ','
+    if index(s:dbext_buffers_with_dict_files, a:buf_nbr) == -1
+        call add(s:dbext_buffers_with_dict_files, a:buf_nbr)
     endif
+    " if s:dbext_buffers_with_dict_files !~ '\<'.a:buf_nbr.','
+    "     let s:dbext_buffers_with_dict_files = 
+    "                 \ s:dbext_buffers_with_dict_files . a:buf_nbr . ','
+    " endif
 endfunction "}}}
 function! s:DB_delBufDictList( buf_nbr ) "{{{
     " If the buffer has temporary files
-    if s:dbext_buffers_with_dict_files =~ '\<'.a:buf_nbr.','
+    let idx = index(s:dbext_buffers_with_dict_files, a:buf_nbr) 
+    if idx > -1
         " If all temporary files have been deleted
         if s:DB_get('dict_table_file') == '' && 
                     \ s:DB_get('dict_procedure_file') == '' && 
                     \ s:DB_get('dict_view_file') == ''
             " Remove the buffer number from the list
-            let s:dbext_buffers_with_dict_files = 
-                        \ substitute( s:dbext_buffers_with_dict_files,
-                        \ '\<' . a:buf_nbr . ',', 
-                        \ '',
-                        \ '' )
+            call remove(s:dbext_buffers_with_dict_files, idx) 
         endif
     endif
+    " if s:dbext_buffers_with_dict_files =~ '\<'.a:buf_nbr.','
+    "     " If all temporary files have been deleted
+    "     if s:DB_get('dict_table_file') == '' && 
+    "                 \ s:DB_get('dict_procedure_file') == '' && 
+    "                 \ s:DB_get('dict_view_file') == ''
+    "         " Remove the buffer number from the list
+    "         let s:dbext_buffers_with_dict_files = 
+    "                     \ substitute( s:dbext_buffers_with_dict_files,
+    "                     \ '\<' . a:buf_nbr . ',', 
+    "                     \ '',
+    "                     \ '' )
+    "     endif
+    " endif
 endfunction "}}}
 function! dbext#DB_DictionaryCreate( drop_dict, which ) "{{{
     " Store the lower case name, sometimes we use the 
@@ -5004,6 +5095,34 @@ function! dbext#DB_auVimLeavePre() "{{{
     " Disconnect if the buffer has a DBI or ODBC connection
     " Remove any dictionary files (if created)
 
+    " Save the current buffer to switch back to
+    let cur_buf = bufnr("%")
+
+    for buf_nbr in s:dbext_buffers_with_dict_files
+        " Switch to the buffer being deleted
+        silent! exec buf_nbr.'buffer'
+
+        call s:DB_DictionaryDelete( 'Table' )
+        call s:DB_DictionaryDelete( 'Procedure' )
+        call s:DB_DictionaryDelete( 'View' )
+    endfor
+
+    if exists('g:loaded_dbext_dbi')
+        perl db_disconnect_all()
+    endif
+
+    if s:DB_get("delete_temp_file") == 1
+        let rc = delete(s:dbext_tempfile)
+    endif
+
+    " Switch back to the current buffer
+    silent! exec cur_buf.'buffer'
+endfunction "}}}
+function! dbext#DB_auVimLeavePreOld() "{{{
+    " Loop through all buffers
+    " Disconnect if the buffer has a DBI or ODBC connection
+    " Remove any dictionary files (if created)
+
     redir => buffer_list
     silent! exec 'ls!'
     redir END
@@ -5048,7 +5167,8 @@ function! dbext#DB_auVimLeavePre() "{{{
         endif
 
         " If this buffer has dictionary files
-        if s:dbext_buffers_with_dict_files =~ ',\?'.buf_nbr.','
+        " if s:dbext_buffers_with_dict_files =~ ',\?'.buf_nbr.','
+        if index(s:dbext_buffers_with_dict_files, a:buf_nbr) > -1
             " DB_DictionaryDelete will remove the buffer number from 
             " dbext_buffers_with_temp_files, so just match on the first #
             call s:DB_DictionaryDelete( 'Table' )
@@ -5075,36 +5195,42 @@ function! dbext#DB_auBufDelete(del_buf_nr) "{{{
     
     " Save the current buffer to switch back to
     let cur_buf = bufnr("%")
+    " Some trickery to make sure this value is considered
+    " a number and not a string for use in the index() function.
+    let del_buf = a:del_buf_nr + 0
 
     " This can happen if the buffer does not have a name associated
     " with it, bufnr(expand("<afile">)) can return the current buffer
-    if cur_buf == a:del_buf_nr 
+    if cur_buf == del_buf
         return
     endif
 
-    " Switch to the buffer being deleted
-    silent! exec a:del_buf_nr.'buffer'
+    let idx = index(s:dbext_buffers_with_dict_files, del_buf)
+    
+    if idx > -1 || exists('g:loaded_dbext_auto')
+        " Switch to the buffer being deleted
+        silent! exec del_buf.'buffer'
 
-    " If the buffer connection parameters have not been 
-    " defaulted, dbext has not been used.
-    if s:DB_get("buffer_defaulted") == 1
-        " If using the DBI layer, drop any connections which may be active
-        if s:DB_get('type') =~ '\<DBI\>\|\<ODBC\>'
-            call dbext#DB_disconnect()
+        " If the buffer connection parameters have not been 
+        " defaulted, dbext has not been used.
+        if s:DB_get("buffer_defaulted") == 1
+            " If using the DBI layer, drop any connections which may be active
+            if s:DB_get('type') =~ '\<DBI\>\|\<ODBC\>'
+                call dbext#DB_disconnect()
+            endif
+
         endif
 
         " If the buffer number being deleted is in the script
         " variable that lists all buffers that have temporary dictionary
         " files, then remove the temporary dictionary files
-        if s:dbext_buffers_with_dict_files =~ '\<'.a:del_buf_nr.','
-            call s:DB_DictionaryDelete( 'Table' )
-            call s:DB_DictionaryDelete( 'Procedure' )
-            call s:DB_DictionaryDelete( 'View' )
-        endif
-    endif
+        call s:DB_DictionaryDelete( 'Table' )
+        call s:DB_DictionaryDelete( 'Procedure' )
+        call s:DB_DictionaryDelete( 'View' )
 
-    " Switch back to the current buffer
-    silent! exec cur_buf.'buffer'
+        " Switch back to the current buffer
+        silent! exec cur_buf.'buffer'
+    endif
 endfunction "}}}
 "}}}
 " Result buffer {{{
@@ -5312,6 +5438,9 @@ endfunction "}}}
 function! s:DB_runCmd(cmd, sql, result)
     let s:dbext_prev_sql   = a:sql
 
+    " Store current connection parameters
+    call s:DB_saveConnParameters()
+
     let l:display_cmd_line = s:DB_get('display_cmd_line') 
 
     if l:display_cmd_line == 1
@@ -5370,11 +5499,23 @@ function! s:DB_runCmd(cmd, sql, result)
                     call DBextPostResult(s:DB_get('type'), s:DB_get('result_bufnr'))
                 endif
             endif
+            if s:DB_get('autoclose') == '1' && s:dbext_result_count <= s:DB_get('autoclose_min_lines')
+                if s:dbext_result_count >= 2
+                    if getline(2) !~ '^SQLCode:'
+                        call dbext#DB_windowClose(s:DB_resBufName())
+                        echon 'dbext: Autoclose enabled, DBSetOption autoclose=0 to disable'
+                    endif
+                else
+                    call dbext#DB_windowClose(s:DB_resBufName())
+                    echon 'dbext: Autoclose enabled, DBSetOption autoclose=0 to disable'
+                endif
+            endif
         endif
 
         " Return to original window
         exec s:dbext_prev_winnr."wincmd w"
-    else " Don't use result buffer
+    else 
+        " Don't use result buffer
         if l:display_cmd_line == 1
             echo cmd_line
         endif
@@ -5401,6 +5542,9 @@ function! s:DB_runCmd(cmd, sql, result)
             echo 'dbext:'.result
             let result = '-1'
         endif
+
+        " Reset variable
+        let s:dbext_result_count = 0
 
         return result
     endif
@@ -5446,8 +5590,8 @@ function! s:DB_switchToBuffer(buf_name, buf_file, get_buf_nr_name)
 
     return 1
 endfunction "}}}
-" closeWindow {{{
-function! dbext#DB_closeWindow(buf_name)
+" windowClose {{{
+function! dbext#DB_windowClose(buf_name)
     if a:buf_name == '%'
         " The user hit 'q', which is a buffer specific mapping to close
         " the result or history window.  Save the size of the buffer
@@ -5461,20 +5605,25 @@ function! dbext#DB_closeWindow(buf_name)
         " Hide it 
         hide
     else
-        " Do not use bufexists(res_buf_name), since it uses a fully qualified
-        " path name to search for the buffer, which in effect opens multiple
-        " buffers called "Result" if the files that you are executing the
-        " commands from are in different directories.
-        let buf_exists  = bufexists(bufnr(a:buf_name))
-        let res_buf_nbr = bufnr(a:buf_name)
-        let buf_win_nbr = bufwinnr(res_buf_nbr)
+        let res_buf_name   = s:DB_resBufName()
 
-        if buf_win_nbr != -1
+        " Get the previously stored buffer number
+        let buf_nr_str  = s:DB_get('result_bufnr')
+        let res_buf_nbr = bufnr(res_buf_name)
+        let buf_win_nbr = bufwinnr(res_buf_nbr)
+        " The buffer number may not have been initialized, so we must
+        " handle this case.
+        " bufexists takes a numeric argument, so we must add 0 to it
+        " to convince Vim we are passing a numeric argument, if not
+        " bufexists returns an unexpected value
+        let buf_nr      = (buf_nr_str==''?-1:(buf_nr_str+0))
+        let buf_exists  = bufexists(buf_nr)
+
+        if bufwinnr(buf_nr) != -1
             " Update the local buffer variables with the current size
             " of the window, when we open it again we will use it's
             " size instead of the default
-            call s:DB_set('buffer_lines', winheight(buf_win_nbr))
-            " let s:dbext_buffer_lines = winheight(buf_win_nbr)
+            call s:DB_set('buffer_lines', winheight(bufwinnr(buf_nr)))
 
             " If the buffer is visible, switch to it
             exec bufwinnr(res_buf_nbr) . "wincmd w"
@@ -5483,6 +5632,29 @@ function! dbext#DB_closeWindow(buf_name)
             hide
         endif
     endif
+endfunction "}}}
+" DB_windowOpen {{{
+function! dbext#DB_windowOpen()
+    " Store current window number so we can return to it
+    " let cur_winnr      = winnr()
+    let res_buf_name   = s:DB_resBufName()
+    let conn_props     = s:DB_getTitle()
+    let dbi_orient     = s:DB_get('DBI_orientation')
+
+    " First close the history window if already open
+    call dbext#DB_windowClose(s:DB_get('history_bufname'))
+    call s:DB_saveSize(res_buf_name)
+
+    " Open buffer in required location
+    if s:DB_switchToBuffer(res_buf_name, res_buf_name, 'result_bufnr') == 1
+        nnoremap <buffer> <silent> R :DBRefreshResult<cr>
+        nnoremap <buffer> <silent> O :DBOrientationToggle<cr>
+    endif
+
+    setlocal modified
+    " Create a buffer mapping to clo this window
+    nnoremap <buffer> q :DBCloseResults<cr>
+    nnoremap <buffer> <silent> a             :call <SID>DB_set('autoclose', (s:DB_get('autoclose')==1?0:1))<CR>
 endfunction "}}}
 " saveSize {{{
 function! s:DB_saveSize(buf_name)
@@ -5506,6 +5678,22 @@ function! s:DB_saveSize(buf_name)
         " let s:dbext_buffer_lines = winheight(buf_win_nbr)
     endif
 endfunction "}}}
+" saveConnParameters {{{
+function! s:DB_saveConnParameters()
+    for param in s:conn_params_mv
+        " Iterate through all connection parameters
+        " and store them in script local variables
+        call s:DB_set( 'saved_'.param, s:DB_get(param) )
+    endfor
+endfunction "}}}
+" restoreConnParameters {{{
+function! s:DB_restoreConnParameters()
+    for param in s:conn_params_mv
+        " Iterate through all connection parameters
+        " and store them in script local variables
+        call s:DB_set( param, s:DB_get('saved_'.param) )
+    endfor
+endfunction "}}}
 " addToResultBuffer {{{
 function! s:DB_addToResultBuffer(output, do_clear)
     " Store current window number so we can return to it
@@ -5515,7 +5703,7 @@ function! s:DB_addToResultBuffer(output, do_clear)
     let dbi_orient     = s:DB_get('DBI_orientation')
 
     " First close the history window if already open
-    call dbext#DB_closeWindow(s:DB_get('history_bufname'))
+    call dbext#DB_windowClose(s:DB_get('history_bufname'))
     call s:DB_saveSize(res_buf_name)
 
     " Open buffer in required location
@@ -5527,10 +5715,18 @@ function! s:DB_addToResultBuffer(output, do_clear)
     setlocal modified
     " Create a buffer mapping to clo this window
     nnoremap <buffer> q :DBCloseResults<cr>
+    nnoremap <buffer> <silent> a             :call <SID>DB_set('autoclose', (s:DB_get('autoclose')==1?0:1))<CR>
     " Delete all the lines prior to this run
     if a:do_clear == "clear" 
         %d
-        silent! exec "normal! iConnection: " . conn_props . "\<Esc>0"
+        silent! exec "normal! iConnection: ".conn_props.' at '.strftime("%H:%M")."\<Esc>0"
+
+        " We only clear the results buffer at the start of a command
+        " this is a good time to restore the saved connection parameters
+        " to the Results buffer so that the user can issue commands
+        " within the Results buffer and act on the same database they
+        " were originally executing SQL against.
+        call s:DB_restoreConnParameters()
     endif
 
     if strlen(a:output) > 0
@@ -5559,6 +5755,8 @@ function! s:DB_addToResultBuffer(output, do_clear)
     setlocal nonumber
     " Go to top of output
     norm gg
+    " Store the line count of the result buffer
+    let s:dbext_result_count = line('$')
 
     " Return to original window
     " exec cur_winnr."wincmd w"
@@ -6308,6 +6506,7 @@ function! dbext#DB_historyList()
     nnoremap <buffer> <silent> <2-LeftMouse> :call <SID>DB_historyUse(line("."))<CR>
     nnoremap <buffer> <silent> <CR>          :call <SID>DB_historyUse(line("."))<CR>
     nnoremap <buffer> <silent> dd            :call <SID>DB_historyDel(line("."))<CR>
+    nnoremap <buffer> <silent> a             :call <SID>DB_set('autoclose', (s:DB_get('autoclose')==1?0:1))<CR>
     " Create a buffer mapping to clo this window
     nnoremap <buffer> q :DBCloseResults<cr>
     nnoremap <buffer> R :DBRefreshResult<cr>
@@ -6319,7 +6518,7 @@ endfunction
 function! s:DB_historyOpen()
     let res_buf_name   = s:DB_resBufName()
     " First close the result window if already open
-    call dbext#DB_closeWindow(res_buf_name)
+    call dbext#DB_windowClose(res_buf_name)
     call s:DB_saveSize(s:DB_get('history_bufname'))
 
     " Prevent the alternate buffer (<C-^>) from being set to this
@@ -6517,6 +6716,88 @@ function! dbext#DB_connect()
         return -1
     endif
 
+    let parmlist = split(driver_parms, ';')
+
+    " The driver parameters can be user defined.
+    " They must be semi-colon separated in this format:
+    "     AutoCommit=1;PrintError=0
+	for parm in parmlist
+        let var   = matchstr(parm, '^\w\+\ze\s*=.*')
+        let value = matchstr(parm, '^\w\+\s*=\s*\zs.*')
+
+        if var == ""
+            call s:DB_warningMsg("Invalid driver parameters, format expected is:AutoCommit=1;PrintWarn=0")
+            return -1
+        endif
+
+        let cmd = "perl db_set_connection_option('".var."', '".value."')"
+        exec cmd
+        if g:dbext_dbi_result == -1
+            call s:DB_runCmd("perl ".driver, cmd, g:dbext_dbi_msg)
+            return -1
+        endif
+	endfor
+
+    return 0
+endfunction 
+
+function! dbext#DB_connectOld()
+    " Only valid for DBI and ODBC (perl)
+    let type = s:DB_get('type')
+    if (type !~ '\<DBI\>\|\<ODBC\>') 
+        call s:DB_warningMsg(
+                    \ "dbext:Connect and Disconnect functionality only available ".
+                    \ "when using the DBI or ODBC interfaces"
+                    \ )
+        return -1
+    endif
+
+    if (type =~ '\<ODBC\>') 
+        let driver       = 'ODBC'
+        let conn_parms   = s:DB_get("dsnname")
+    else
+        let driver       = s:DB_get('driver')
+        let conn_parms   = s:DB_get("conn_parms")
+    endif
+    " Ensure the dbext_dbi plugin is loaded
+    if s:DB_DBI_Autoload() == -1
+        return -1
+    endif
+
+    let cmd = "perl db_is_connected()"
+    exec cmd
+    if g:dbext_dbi_result == -1
+        call s:DB_runCmd("perl ".driver, cmd, g:dbext_dbi_msg)
+        return -1
+    endif
+
+    " Each time we issue a connect, set the max rows, this
+    " will ensure it is updated each time the user 
+    " interacts with this layer.
+    let g:dbext_dbi_max_rows = s:DB_get('DBI_max_rows')
+
+    if g:dbext_dbi_result == 1
+        " call s:DB_warningMsg("DB_Connected: already connected")
+        return 0
+    endif
+
+    let user         = s:DB_get("user")
+    let passwd       = s:DB_get("passwd")
+    let driver_parms = s:DB_get("driver_parms")
+    if (type =~ '\<ODBC\>') 
+        let driver       = 'ODBC'
+        let conn_parms   = s:DB_get("dsnname")
+    else
+        let driver       = s:DB_get('driver')
+        let conn_parms   = s:DB_get("conn_parms")
+    endif
+    let cmd = "perl db_connect('".driver."', '".conn_parms."', '".user."', '".passwd."')"
+    exec cmd
+    if g:dbext_dbi_result == -1
+        call s:DB_runCmd("perl ".driver, cmd, g:dbext_dbi_msg)
+        return -1
+    endif
+
     " The driver parameters can be user defined.
     " They must be semi-colon separated in this format:
     "     AutoCommit=1;PrintError=0
@@ -6616,5 +6897,9 @@ endfunction
 
 "}}}
 call s:DB_buildLists()
+" function! dbext#DB_buildLists()
+"     call s:DB_buildLists()
+" endfunction 
+
 call s:DB_resetGlobalParameters()
 " vim:fdm=marker:nowrap:ts=4:expandtab:ff=unix:

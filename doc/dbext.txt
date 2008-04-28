@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 6.0.  Last change: Sat 15 Sep 2007 11:09:13 PM Eastern Daylight Time
+*dbext.txt*	For Vim version 7.0.  Last change: Wed 23 Apr 2008 03:02:18 PM Eastern Daylight Time
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki <petike1@dpg.hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 5.20
+	  	dbext.vim version 6.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -18,42 +18,108 @@ Homepage: http://vim.sourceforge.net/script.php?script_id=356
 *dbext* *dbext.vim* *db_ext* *db_ext.vim* *database-extension* *pgsql* *mysql*
 *asa* *ase* *ingres* *interbase* *sqlite* *sqlsrv* *ora* *db2* *DBI*
 
-1.  Overview				      |dbext-overview|
-2.  Installation                              |dbext-install|
-3.  Configuration		              |dbext-configure|
-    3.1 Displaying Results                    |dbext-configure-results|
-    3.2 Script Variables                      |dbext-configure-variables|
-    3.3 Database Specific Options             |dbext-configure-options|
-    3.4 DB2 Modes                             |dbext-configure-db2|
-    3.5 DBI Installation                      |dbext-configure-dbi|
-4.  Mappings and commands		      |dbext-mappings|
-5.  Adding new database types		      |dbext-newdb|
-6.  Prompting for input parameters	      |dbext-prompting|
-7.  Setting up connection information	      |dbext-connect|
-    7.1 Connection Parameters                 |dbext-connect-parameters|
-    7.2 Prompting for Parameters              |dbext-connect-prompting|
-    7.3 Connection profiles                   |dbext-connect-profiles|
-    7.4 Connection profile examples           |dbext-connect-profiles-examples|
-    7.5 Connection information in modelines   |dbext-connect-modelines|
-    7.6 Asking for connection parameters      |dbext-connect-ask|
-8.  Creating mappings using dbext commands    |dbext-in-mappings|
-9.  Object Completion                         |dbext-completion|
-10. Listing Objects in the Database           |dbext-list-objects|
-11. Plugin integration             	      |dbext-integration|
-    11.1 OMNI completion integration          |dbext-omni-completion|
-    11.2 Intellisense integration             |dbext-intellisense|
-12. Filetype support                          |dbext-filetypes|
-    12.1 Using filetype support               |dbext-filetypes-using|
-    12.2 Adding new filetypes                 |dbext-filetypes-adding|
-13. Using SQL History                         |dbext-history|
-14. Open Source                               |dbext-sourceforge|
-15. Tutorial                                  |dbext-tutorial|
-    15.1 DBI Tutorial                         |dbext-tutorial-dbi|
+1.  Getting Started			      |dbext-getting-started|
+2.  Whats New   			      |dbext-new|
+3.  Overview				      |dbext-overview|
+4.  Installation                              |dbext-install|
+5.  Configuration		              |dbext-configure|
+    5.1 Displaying Results                    |dbext-configure-results|
+    5.2 Script Variables                      |dbext-configure-variables|
+    5.3 Database Specific Options             |dbext-configure-options|
+    5.4 DB2 Modes                             |dbext-configure-db2|
+    5.5 DBI Installation                      |dbext-configure-dbi|
+6.  Mappings and commands		      |dbext-mappings|
+7.  Adding new database types		      |dbext-newdb|
+8.  Prompting for input parameters	      |dbext-prompting|
+9.  Setting up connection information	      |dbext-connect|
+    9.1 Connection Parameters                 |dbext-connect-parameters|
+    9.2 Prompting for Parameters              |dbext-connect-prompting|
+    9.3 Connection profiles                   |dbext-connect-profiles|
+    9.4 Connection profile examples           |dbext-connect-profiles-examples|
+    9.5 Connection information in modelines   |dbext-connect-modelines|
+    9.6 Asking for connection parameters      |dbext-connect-ask|
+10. Creating mappings using dbext commands    |dbext-in-mappings|
+11. Object Completion                         |dbext-completion|
+12. Listing Objects in the Database           |dbext-list-objects|
+13. Plugin integration             	      |dbext-integration|
+    13.1 OMNI completion integration          |dbext-omni-completion|
+    13.2 Intellisense integration             |dbext-intellisense|
+14. Filetype support                          |dbext-filetypes|
+    14.1 Using filetype support               |dbext-filetypes-using|
+    14.2 Adding new filetypes                 |dbext-filetypes-adding|
+15. Using SQL History                         |dbext-history|
+16. Open Source                               |dbext-sourceforge|
+17. Tutorial                                  |dbext-tutorial|
+    17.1 DBI Tutorial                         |dbext-tutorial-dbi|
 
 {Vi does not have any of this}
 
 ==============================================================================
-What's New						*dbext-new*
+1. Getting Started					*dbext-getting-started*
+
+If you are looking for a tutorial that will take you through the
+features and the "best way" to use this plugin start here |dbext-tutorial|.
+This tutorial is a must before beginning to use dbext.
+
+If you have used dbext for a bit and want to start using some more of it's
+advanced features you can read this entire document.
+
+dbext is also integrated with the OMNI SQL Completion script which is
+included in the Vim distribution.  See :h |omni-sql-completion|
+The sqlcomplete.vim plugin is occassionally updated before a new
+release of Vim and newer versions of this file can be found here:
+http://www.vim.org/scripts/script.php?script_id=1572
+
+You can also post questions to the Vim mailing list.  I routinely monitor
+the list.  Comments, feedback and suggestions are always welcome.
+
+David Fishburn
+
+==============================================================================
+2. What's New						*dbext-new*
+
+Version 6.00
+
+ New Features
+ ------------
+ - dbext now supports table and column names which can contain 
+   spaces (Antony Scriven).  There is a corresponding change
+   to sqlcomplete.vim to support this.
+ - Added an autoclose option.  If you execute SQL which does not 
+   return a result set you can choose to have the dbext results
+   window automatically close (unless of course there was an error).
+   See the autoclose option for more details.
+ - Added the map shortcuts to each of menu items under the dbext 
+   menu so that users can learn them more easily (Alexander Langer).
+ - Using the menu_mode option you can control if and where the
+   dbext menu is created (Marty Grenfell).  See the menu_mode option 
+   for more details.
+ - For MySQL, added -t as part of the default command line parameters setting.
+   This will properly format the data into tabs or spaces to make it more
+   readable (Luke Cordingley).
+ - A message is displayed indicating the time a SQL command began 
+   executing.  The result window also contains the time the SQL
+   finished executing.
+ - DBI or ODBC can now fetch BLOB columns from the database.  By 
+   default these are truncated at 500 characters, but that can
+   be changed by issuing: DBSetOption driver_parms=LongReadLen=4096
+
+ Bug Fixes
+ ---------
+ - If a database column had an emdedded double quote this would be 
+   displayed as \" in the dbext result window (Jean-Christophe Clavier).
+ - When loading the plugin, it will now check to ensure the map
+   does not already exist before attempting to create it.  This
+   will prevent errors when mappings clash (Antony Scriven).
+ - If you prompt for connection parameters using the DBI or
+   ODBC types we need to disconnect any existing connections
+   or the existing connection will continue to be used.
+ - In some cases when using DBI or ODBC an error was not reported
+   and only a blank result set was returned.  Now the database
+   error is reported back to the user.
+ - Data retrieved via DBI or ODBC which contained a backslash
+   were not escaped properly and could disappear.
+
 
 Version 5.20
 
@@ -359,10 +425,9 @@ Version 2.00
  - FileType Support Added                       |dbext-filetypes|
          Supported PHP, Java, JSP, JavaScript, jProperties, Perl, SQL, Vim
  - Intellisense Addin Support                   |dbext-intellisense|
-=======
 
 ==============================================================================
-1. Overview						*dbext-overview*
+3. Overview						*dbext-overview*
 
  This plugin contains functions/mappings/commands to enable Vim to access 
  several databases. Currently Mysql, PostgreSQL, Ingres, Oracle, 
@@ -412,7 +477,7 @@ Version 2.00
  help determine what is the cause of the problem might be.  
 
 ==============================================================================
-2. Installing the plugin				*dbext-install*
+4. Installing the plugin				*dbext-install*
 
  You can use this script as a plugin by copying it to your plugin directory. 
  See |add-global-plugin| for instructions.
@@ -425,7 +490,7 @@ Version 2.00
 	:helptags $VIM/.vim/doc     (Unix)
 
 ==============================================================================
-3. Configuration					*dbext-configure*
+5. Configuration					*dbext-configure*
 
  The behavior of dbext.vim are governed by several variables. These variables
  are used as the default database connection information.  These variables can
@@ -436,7 +501,7 @@ Version 2.00
 
  A menu has been added to gvim with available commands in all modes.
 
-3.1 Displaying Results                          *dbext-configure-results*
+5.1 Displaying Results                          *dbext-configure-results*
 
  When any command is run, by default a window is opened with a read-only 
  buffer.  By default, the window is called Result.  Each buffer will clear
@@ -476,7 +541,7 @@ Version 2.00
         endfunction
 <
 
-3.2 Script Variables                            *dbext-configure-variables* 
+5.2 Script Variables                            *dbext-configure-variables* 
 
  Global variables: >
     dbext_default_profile
@@ -788,6 +853,50 @@ Version 2.00
           desirable to tab delimit the columns.  You can specify whatever
           string you like by setting (NOTE: the use of the double quotes): >
             :let  g:dbext_default_DBI_column_delimiter = "\t"
+    dbext_default_autoclose
+<       - If you are executing a lot of statements without result sets
+          (for example running a script which creates your schema)
+          and you want to suppress the dbext result window from appearing
+          (unless there is an error) you can enable this using several methods.
+          Override this from within your vimrc file, or by pressing 'a' in 
+          the result window or using the DBSetOption command.
+          This option is disabled by default.
+          Each time you execute a statement and the results are 
+          automatically closed, a small reminder is displayed indicating
+          how to disable it.  This also allows you to determine
+          when the command has completed.
+          WARNING: If autoclose is enabled, it can only be disabled by
+          executing a DBSetOption command: >
+            :let  g:dbext_default_autoclose = 1
+            :DBSetOption autoclose=0
+            :DBSetOption autoclose=1
+    dbext_default_autoclose_min_lines
+<       - Due to the large number of databases and different output 
+          formats each of these support, dbext determines if the result
+          window can be closed based on the number of lines (when no
+          errors are detected) in the result window.  This option
+          defaults to a value of 2. >
+            :let  g:dbext_default_autoclose_min_lines = 2
+            :DBSetOption autoclose_min_lines=2
+    dbext_default_menu_mode
+<       - Menus are useful for a number of reasons:
+              See a list of available commands.
+              Remember what the shortcut maps are.
+              Have a floating menu when using the plugin a lot.
+              Quick reference guide.
+          There are four settings that will control the placement
+          of the menu: 
+              "0": Turns the menu off.
+              "1": Turns the 'dbext' menu on with no menu shortcut.
+              "2": Turns the 'dbext 'menu on with <alt>-d as the shortcut.
+              "3": Turns the 'Plugin -> dbext' menu on with <alt>-d as 
+                   the shortcut.
+          This option defaults to a value of 3 and can be changed
+          by adding the following to your vimrc: >
+            :let  g:dbext_default_menu_mode = 3
+
+    
+
 <
  Buffer variables
     You can check all options for the buffer without specifying an option name
@@ -911,10 +1020,17 @@ Version 2.00
 <       - If a user had a previous version version of dbext installed
           a warning message is displayed if some configuration parameters
           still exist.  This will prevent the message from begin 
-          displayed.
+          displayed. >
+    autoclose
+<       - See dbext_default_autoclose >
+              DBSetOption autoclose=0
+              DBSetOption autoclose=1
+    autoclose_min_lines
+<       - See dbext_default_autoclose_min_lines >
+              DBSetOption autoclose_min_close=2
 
 
-3.3 Database Specific Options                   *dbext-configure-options*
+5.3 Database Specific Options                   *dbext-configure-options*
     The command terminator is automatically added to a command before it is
     sent to the database.  The command options are also added to the command
     line used to execute the statement. >
@@ -978,7 +1094,7 @@ Version 2.00
             let g:dbext_default_MYSQL_version = '4'
 
 
-3.4 DB2 Modes                                           *dbext-configure-db2*
+5.4 DB2 Modes                                           *dbext-configure-db2*
     DB2 provides two different binaries to execute commands: db2batch, db2cmd.  
     The dbext plugin supports both.  To change modes for the current buffer
     you can execute this command: >
@@ -993,7 +1109,7 @@ Version 2.00
     try both to see which fits your needs.
 
 
-3.5 DBI Installation                                    *dbext-configure-dbi*
+5.5 DBI Installation                                    *dbext-configure-dbi*
     To use the DBI interface you must first have a Perl enabled Vim.
     You can test your installation by running this command: >
         :echo has('perl')
@@ -1077,7 +1193,7 @@ Version 2.00
             quit
 
 ==============================================================================
-4. Mappings and commands				*dbext-mappings*
+6. Mappings and commands				*dbext-mappings*
 
  Default visual/normal mode mappings (|:vmap|,|:nmap|):
  
@@ -1297,7 +1413,7 @@ Version 2.00
 
 
 ==============================================================================
-5. Adding new database types				*dbext-newdb*
+7. Adding new database types				*dbext-newdb*
 
  Select a unique name for your extension. Add it's uppercase name to 
  the list of other supported databases in the s:DB_buildLists() function.
@@ -1324,7 +1440,7 @@ Version 2.00
  examples.
 
 ==============================================================================
-6. Prompting for input parameters			*dbext-prompting*
+8. Prompting for input parameters			*dbext-prompting*
 
  This plugin has the ability to parse the statement being executed and
  prompt the user for input parameters.  The logic differs based on what type
@@ -1428,7 +1544,7 @@ Version 2.00
  For more information on specific filetype support see |dbext-filetypes|
 
 ==============================================================================
-7. Setting up connection information			*dbext-connect*
+9. Setting up connection information			*dbext-connect*
 
  Connection information is setup for each buffer.  This way you can have one
  buffer connected to an Oracle database and another buffer connected to a
@@ -1445,7 +1561,7 @@ Version 2.00
  profiles).
 
  
-7.1 Connection Parameters                         *dbext-connect-parameters*
+9.1 Connection Parameters                         *dbext-connect-parameters*
 
 To specify the type of database you connect to most often, you can place the
  following in your |.vimrc| file: >
@@ -1455,7 +1571,7 @@ To specify the type of database you connect to most often, you can place the
         let g:dbext_default_user   = 'DBA'
         let g:dbext_default_passwd = 'SQL'
 <
-7.2 Prompting for Parameters                      *dbext-connect-prompting*
+9.2 Prompting for Parameters                      *dbext-connect-prompting*
 
  If you want the plugin to prompt you for connection parameters for the
  particular buffer you are in, you can run the command: >
@@ -1463,7 +1579,7 @@ To specify the type of database you connect to most often, you can place the
 <
        or <Leader>sbp  (default mapping - mnemonic sql buffer prompt)
 
-7.3 Connection profiles                           *dbext-connect-profiles*
+9.3 Connection profiles                           *dbext-connect-profiles*
 
  In your |.vimrc| file, you can define global database profiles.  A profile is
  a series of settings for a given database.  This is the easiest and most
@@ -1474,7 +1590,7 @@ To specify the type of database you connect to most often, you can place the
  prompted with a number list, which allows you to choose which profile you
  would like to use.  This is convenient since it can be difficult to remember
  the names of your profiles.  This feature can also be used with the dbext
- modelines (see section 7.5).
+ modelines (see section 9.5).
 
  In your |.vimrc| you can define the following: >
      let g:dbext_default_profile_ASA_generic = 'type=ASA:user=DBA:passwd=SQL'
@@ -1497,7 +1613,7 @@ To specify the type of database you connect to most often, you can place the
  Profiles are always specified in this format in your |.vimrc| file: >
      let g:dbext_default_profile_[your_profile_name] = 'type=ORA:user=scott'
 <
-7.4 Connection profiles examples                *dbext-connect-profiles-examples*
+9.4 Connection profiles examples                *dbext-connect-profiles-examples*
 
  Here are some sample profiles I maintain.  These can help when trying to
  setup your own: >
@@ -1531,7 +1647,7 @@ To specify the type of database you connect to most often, you can place the
     " SQLite
     let g:dbext_default_profile_POPFile = 'type=SQLITE:SQLITE_bin=C:\Programs\POPFile\sqlite.exe:dbname=C:\Programs\POPFile\popfile.db'
 <
-7.5 Connection information in modelines           *dbext-connect-modelines*
+9.5 Connection information in modelines           *dbext-connect-modelines*
 
  See |modeline| for details on what are modelines.  dbext uses a similar
  format to vim modelines.  This feature is enabled if the vim option 'modeline'
@@ -1575,7 +1691,7 @@ To specify the type of database you connect to most often, you can place the
 <
 
 
-7.6 Ask for connection parameters	           *dbext-connect-ask*
+9.6 Ask for connection parameters	           *dbext-connect-ask*
 
  Modelines can also take three special values: @askg, @askb, @ask.
 
@@ -1593,7 +1709,7 @@ To specify the type of database you connect to most often, you can place the
  time dbext is used.
 
 ==============================================================================
-8. Creating mappings using dbext commands        	*dbext-in-mappings*
+10. Creating mappings using dbext commands        	*dbext-in-mappings*
 
  dbext's commands can be used within mappings.  Here is a simple example 
  that you can place in your |.vimrc|:
@@ -1618,7 +1734,7 @@ To specify the type of database you connect to most often, you can place the
            \ :exec sql_cmd<CR>
 <
 ==============================================================================
-9. Object Completion                                 	*dbext-completion*
+11. Object Completion                                 	*dbext-completion*
 
  Table/Procedure/View (Keyword) Completion
 
@@ -1640,7 +1756,7 @@ To specify the type of database you connect to most often, you can place the
  |dbext-integration|.
 
 ==============================================================================
-10. Listing Ojects in the Database                     	*dbext-list-objects*
+12. Listing Ojects in the Database                     	*dbext-list-objects*
 
  Many times you just want to see what is available in a given database.
  DBListTable, DBListProcedure, DBListView will display a list of objects
@@ -1670,7 +1786,7 @@ To specify the type of database you connect to most often, you can place the
  If no table name is supplied, the current word is chosen as the table name.
 
 ==============================================================================
-11. Plugin integration                     	        *dbext-integration*
+13. Plugin integration                     	        *dbext-integration*
 
  SQL code completion has an interface component which provides a popup window
  that allows the user to choose from a list of values.  The values include
@@ -1684,14 +1800,14 @@ To specify the type of database you connect to most often, you can place the
  profile (dbext_default_profile).  If you start editing a new file, dbext will
  automatically connect using the specified default profile.
 
-11.1 OMNI completion integration                     	*dbext-omni-completion*
+13.1 OMNI completion integration                     	*dbext-omni-completion*
 
  Vim 7 has natively included features provide an interface which allows plugin
  developers to provide code completion.  The SQL completion plugin is included
  with Vim 7.  It will detect if dbext.vim is already installed and take
  advantage of it.
 
-11.2 Intellisense integration                     	*dbext-intellisense*
+13.2 Intellisense integration                     	*dbext-intellisense*
 
  Intellisense.vim (http://www.vim.org/scripts/script.php?script_id=747) is a
  windows only solution.  It has support for a number of different languages
@@ -1700,7 +1816,7 @@ To specify the type of database you connect to most often, you can place the
  The first version of Intellisense to have the SQL plugin is 1.24.
 
 ==============================================================================
-12. Filetype support                         	        *dbext-filetypes*
+14. Filetype support                         	        *dbext-filetypes*
 
  SQL can be used from a variety of languages.  Each development language (PHP,
  Perl, Java, ...) language has different syntax for creating SQL statements
@@ -1710,7 +1826,7 @@ To specify the type of database you connect to most often, you can place the
  The current supported languages are:
         PHP, Java, JSP, JavaScript, JProperties, Perl, SQL, Vim
 
-12.1 Using filetype support                 	*dbext-filetypes-using*
+14.1 Using filetype support                 	*dbext-filetypes-using*
 
  For example assume you had the following Java code:
 >
@@ -1763,7 +1879,7 @@ To specify the type of database you connect to most often, you can place the
  database and allowed to you enter host variables.
  
 
-12.2 Adding new filetypes                   	*dbext-filetypes-adding*
+14.2 Adding new filetypes                   	*dbext-filetypes-adding*
 
  It is very easy to add a new language, as long as you know the rules
  for how strings are joined.  In dbext.vim, there are functions for
@@ -1781,7 +1897,7 @@ To specify the type of database you connect to most often, you can place the
  David Fishburn -and- Peter Bagyinszki for inclusion into future versions.
  
 ==============================================================================
-13. Using SQL History                         	        *dbext-history*
+15. Using SQL History                         	        *dbext-history*
 
  As of version 3.0, dbext maintains a history file which is shared between 
  multiple instances of Vim.  A statement added in one instance of Vim
@@ -1814,13 +1930,13 @@ To specify the type of database you connect to most often, you can place the
  for more details.
  
 ==============================================================================
-14. Open Source                         	        *dbext-sourceforge*
+16. Open Source                         	        *dbext-sourceforge*
 
  dbext is now an open source project found at: >
      https://sourceforge.net/projects/dbext/
 < 
 ==============================================================================
-15. Tutorial                            	        *dbext-tutorial*
+17. Tutorial                            	        *dbext-tutorial*
 
  This tutorial is designed to take you through the common features of dbext
  so that:
@@ -2359,7 +2475,7 @@ To specify the type of database you connect to most often, you can place the
  re-run the statement.  See |dbext-history| for more details.
 
 
-15.1 DBI Tutorial                            	        *dbext-tutorial-dbi*
+17.1 DBI Tutorial                            	        *dbext-tutorial-dbi*
 
  Assuming you have already followed the main tutorial, the DBI interface
  adds some additional commands and features not available when using the
