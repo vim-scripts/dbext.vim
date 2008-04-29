@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       6.00
+" Version:       6.01
 " Maintainer:    David Fishburn <fishburn@ianywhere.com>
 " Authors:       Peter Bagyinszki <petike1@dpg.hu>
 "                David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Thu 03 Apr 2008 09:55:59 PM Eastern Daylight Time
+" Last Modified: Tue 29 Apr 2008 05:50:14 PM Eastern Daylight Time
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -38,7 +38,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext = 600
+let g:loaded_dbext = 601
 
 if !exists('g:dbext_default_menu_mode')
     let g:dbext_default_menu_mode = 3
@@ -323,40 +323,40 @@ if has("gui_running") && has("menu") && g:dbext_default_menu_mode != 0
         let menuRoot = '&Plugin.&dbext'
     endif
 
-    exec 'vnoremenu <script> '.menuRoot.'.Execute\ SQL\ (Visual\ selection)<TAB>'.mapleader.'se :DBExecVisualSQL<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Execute\ SQL\ (Under\ cursor)<TAB>'.mapleader.'se  :DBExecSQLUnderCursor<CR>'
-    exec 'vnoremenu <script> '.menuRoot.'.Execute\ SQL\ TopX\ (Visual\ selection)<TAB>'.mapleader.'sE  :DBExecVisualSQLTopX<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Execute\ SQL\ TopX\ (Under\ cursor)<TAB>'.mapleader.'sE  :DBExecSQLUnderCursorTopX<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Select\ Table<TAB>'.mapleader.'st  :DBSelectFromTable<CR>'
-    exec 'inoremenu <script> '.menuRoot.'.Select\ Table<TAB>'.mapleader.'st  <C-O>:DBSelectFromTable<CR>'
-    exec 'vnoremenu <script> '.menuRoot.'.Select\ Table<TAB>'.mapleader.'st  :<C-U>exec ''DBSelectFromTable "''.DB_getVisualBlock().''"''<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Select\ Table\ TopX<TAB>'.mapleader.'sT  :DBSelectFromTableTopX<CR>'
-    exec 'inoremenu <script> '.menuRoot.'.Select\ Table\ TopX<TAB>'.mapleader.'sT  <C-O>:DBSelectFromTableTopX<CR>'
-    exec 'vnoremenu <script> '.menuRoot.'.Select\ Table\ TopX<TAB>'.mapleader.'sT  :<C-U>exec ''DBSelectFromTableTopX "''.DB_getVisualBlock().''"''<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Select\ Table\ Where<TAB>'.mapleader.'stw  :DBSelectFromTableWithWhere<CR>'
-    exec 'inoremenu <script> '.menuRoot.'.Select\ Table\ Where<TAB>'.mapleader.'stw  <C-O>:DBSelectFromTableWithWhere<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Select\ Table\ Ask<TAB>'.mapleader.'sta  :DBSelectFromTableAskName<CR>'
-    exec 'inoremenu <script> '.menuRoot.'.Select\ Table\ Ask<TAB>'.mapleader.'sta  <C-O>:DBSelectFromTableAskName<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Describe\ Table<TAB>'.mapleader.'sdt  :DBDescribeTable<CR>'
-    exec 'inoremenu <script> '.menuRoot.'.Describe\ Table<TAB>'.mapleader.'sdt  <C-O>:DBDescribeTable<CR>'
-    exec 'vnoremenu <script> '.menuRoot.'.Describe\ Table<TAB>'.mapleader.'sdt  :<C-U>exec ''DBDescribeTable "''.DB_getVisualBlock().''"''<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Describe\ Table\ Ask<TAB>'.mapleader.'stda  :DBDescribeTableAskName<CR>'
-    exec 'inoremenu <script> '.menuRoot.'.Describe\ Table\ Ask<TAB>'.mapleader.'stda  <C-O>:DBDescribeTableAskName<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Describe\ Procedure<TAB>'.mapleader.'sdp  :DBDescribeProcedure<CR>'
-    exec 'inoremenu <script> '.menuRoot.'.Describe\ Procedure<TAB>'.mapleader.'sdp  <C-O>:DBDescribeProcedure<CR>'
-    exec 'vnoremenu <script> '.menuRoot.'.Describe\ Procedure<TAB>'.mapleader.'sdp  :<C-U>exec ''DBDescribeProcedure "''.DB_getVisualBlock().''"''<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Describe\ Procedure\ Ask<TAB>'.mapleader.'sdpa  :DBDescribeProcedureAskName<CR>'
-    exec 'inoremenu <script> '.menuRoot.'.Describe\ Procedure\ Ask<TAB>'.mapleader.'sdpa  <C-O>:DBDescribeProcedureAskName<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Prompt\ Connect\ Info<TAB>'.mapleader.'sbp  :DBPromptForBufferParameters<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Column\ List<TAB>'.mapleader.'slc  :DBListColumn<CR>'
-    exec 'inoremenu <script> '.menuRoot.'.Column\ List<TAB>'.mapleader.'slc  <C-O>:DBListColumn<CR>'
-    exec 'vnoremenu <script> '.menuRoot.'.Column\ List<TAB>'.mapleader.'slc  :<C-U>exec ''DBListColumn "''.DB_getVisualBlock().''"''<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Table\ List<TAB>'.mapleader.'slt  :DBListTable<CR>'
-    exec 'inoremenu <script> '.menuRoot.'.Table\ List<TAB>'.mapleader.'slt  <C-O>:DBListTable<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.Procedure\ List<TAB>'.mapleader.'slp  :DBListProcedure<CR>'
-    exec 'inoremenu <script> '.menuRoot.'.Procedure\ List<TAB>'.mapleader.'slp  <C-O>:DBListProcedure<CR>'
-    exec 'noremenu  <script> '.menuRoot.'.View\ List<TAB>'.mapleader.'slv  :DBListView<CR>'
-    exec 'inoremenu <script> '.menuRoot.'.View\ List<TAB>'.mapleader.'slv  <C-O>:DBListView<CR>'
+    exec 'vnoremenu <script> '.menuRoot.'.Execute\ SQL\ (Visual\ selection)<TAB><Leader>se :DBExecVisualSQL<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Execute\ SQL\ (Under\ cursor)<TAB><Leader>se  :DBExecSQLUnderCursor<CR>'
+    exec 'vnoremenu <script> '.menuRoot.'.Execute\ SQL\ TopX\ (Visual\ selection)<TAB><Leader>sE  :DBExecVisualSQLTopX<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Execute\ SQL\ TopX\ (Under\ cursor)<TAB><Leader>sE  :DBExecSQLUnderCursorTopX<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Select\ Table<TAB><Leader>st  :DBSelectFromTable<CR>'
+    exec 'inoremenu <script> '.menuRoot.'.Select\ Table<TAB><Leader>st  <C-O>:DBSelectFromTable<CR>'
+    exec 'vnoremenu <script> '.menuRoot.'.Select\ Table<TAB><Leader>st  :<C-U>exec ''DBSelectFromTable "''.DB_getVisualBlock().''"''<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Select\ Table\ TopX<TAB><Leader>sT  :DBSelectFromTableTopX<CR>'
+    exec 'inoremenu <script> '.menuRoot.'.Select\ Table\ TopX<TAB><Leader>sT  <C-O>:DBSelectFromTableTopX<CR>'
+    exec 'vnoremenu <script> '.menuRoot.'.Select\ Table\ TopX<TAB><Leader>sT  :<C-U>exec ''DBSelectFromTableTopX "''.DB_getVisualBlock().''"''<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Select\ Table\ Where<TAB><Leader>stw  :DBSelectFromTableWithWhere<CR>'
+    exec 'inoremenu <script> '.menuRoot.'.Select\ Table\ Where<TAB><Leader>stw  <C-O>:DBSelectFromTableWithWhere<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Select\ Table\ Ask<TAB><Leader>sta  :DBSelectFromTableAskName<CR>'
+    exec 'inoremenu <script> '.menuRoot.'.Select\ Table\ Ask<TAB><Leader>sta  <C-O>:DBSelectFromTableAskName<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Describe\ Table<TAB><Leader>sdt  :DBDescribeTable<CR>'
+    exec 'inoremenu <script> '.menuRoot.'.Describe\ Table<TAB><Leader>sdt  <C-O>:DBDescribeTable<CR>'
+    exec 'vnoremenu <script> '.menuRoot.'.Describe\ Table<TAB><Leader>sdt  :<C-U>exec ''DBDescribeTable "''.DB_getVisualBlock().''"''<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Describe\ Table\ Ask<TAB><Leader>stda  :DBDescribeTableAskName<CR>'
+    exec 'inoremenu <script> '.menuRoot.'.Describe\ Table\ Ask<TAB><Leader>stda  <C-O>:DBDescribeTableAskName<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Describe\ Procedure<TAB><Leader>sdp  :DBDescribeProcedure<CR>'
+    exec 'inoremenu <script> '.menuRoot.'.Describe\ Procedure<TAB><Leader>sdp  <C-O>:DBDescribeProcedure<CR>'
+    exec 'vnoremenu <script> '.menuRoot.'.Describe\ Procedure<TAB><Leader>sdp  :<C-U>exec ''DBDescribeProcedure "''.DB_getVisualBlock().''"''<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Describe\ Procedure\ Ask<TAB><Leader>sdpa  :DBDescribeProcedureAskName<CR>'
+    exec 'inoremenu <script> '.menuRoot.'.Describe\ Procedure\ Ask<TAB><Leader>sdpa  <C-O>:DBDescribeProcedureAskName<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Prompt\ Connect\ Info<TAB><Leader>sbp  :DBPromptForBufferParameters<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Column\ List<TAB><Leader>slc  :DBListColumn<CR>'
+    exec 'inoremenu <script> '.menuRoot.'.Column\ List<TAB><Leader>slc  <C-O>:DBListColumn<CR>'
+    exec 'vnoremenu <script> '.menuRoot.'.Column\ List<TAB><Leader>slc  :<C-U>exec ''DBListColumn "''.DB_getVisualBlock().''"''<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Table\ List<TAB><Leader>slt  :DBListTable<CR>'
+    exec 'inoremenu <script> '.menuRoot.'.Table\ List<TAB><Leader>slt  <C-O>:DBListTable<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Procedure\ List<TAB><Leader>slp  :DBListProcedure<CR>'
+    exec 'inoremenu <script> '.menuRoot.'.Procedure\ List<TAB><Leader>slp  <C-O>:DBListProcedure<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.View\ List<TAB><Leader>slv  :DBListView<CR>'
+    exec 'inoremenu <script> '.menuRoot.'.View\ List<TAB><Leader>slv  <C-O>:DBListView<CR>'
     exec 'noremenu  <script> '.menuRoot.'.Complete\ Tables :DBCompleteTables<CR>'
     exec 'noremenu  <script> '.menuRoot.'.Complete\ Procedures :DBCompleteProcedures<CR>'
     exec 'noremenu  <script> '.menuRoot.'.Complete\ Views :DBCompleteViews<CR>'

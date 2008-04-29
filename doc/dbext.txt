@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: Wed 23 Apr 2008 03:02:18 PM Eastern Daylight Time
+*dbext.txt*	For Vim version 7.0.  Last change: Tue 29 Apr 2008 06:01:14 PM Eastern Daylight Time
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki <petike1@dpg.hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 6.00
+	  	dbext.vim version 6.01
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -77,6 +77,14 @@ David Fishburn
 
 ==============================================================================
 2. What's New						*dbext-new*
+
+Version 6.01
+
+ Bug Fixes
+ ---------
+ - On dbext startup an error was reported indicating mapleader was not defined
+   (Matt).
+
 
 Version 6.00
 
