@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       6.01
+" Version:       6.10
 " Maintainer:    David Fishburn <fishburn@ianywhere.com>
 " Authors:       Peter Bagyinszki <petike1@dpg.hu>
 "                David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Tue 29 Apr 2008 05:52:29 PM Eastern Daylight Time
+" Last Modified: Sun 08 Jun 2008 10:31:10 PM Eastern Daylight Time
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -37,7 +37,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 601
+let g:loaded_dbext_auto = 610
 
 " call confirm("Loaded dbext autoload", "&Ok")
 " Script variable defaults, these are used internal and are never displayed
@@ -168,6 +168,11 @@ function! s:DB_buildLists()
     call add(s:script_params_mv, 'buffers_with_dict_files')
     call add(s:script_params_mv, 'use_win32_filenames')
     call add(s:script_params_mv, 'temp_file')
+    call add(s:script_params_mv, 'window_use_horiz')
+    call add(s:script_params_mv, 'window_use_bottom')
+    call add(s:script_params_mv, 'window_use_right')
+    call add(s:script_params_mv, 'window_width')
+    call add(s:script_params_mv, 'window_increment')
 
     " DB server specific params
     " See below for 3 additional DB2 items
@@ -613,7 +618,11 @@ function! dbext#DB_listOption(...)
                         \ "----------------------\n"
         endif
         let opt_name    = param_mv
-        let opt_value   = opt_name . ' = ' . s:DB_get(opt_name)
+        try
+            let opt_value   = opt_name . ' = ' . s:DB_get(opt_name)
+        catch
+            call s:DB_errorMsg('Failed to get:'.opt_name)
+        endtry
         let option_list = option_list . opt_value . "\n"
         let option_cnt  = option_cnt + 1
     endfor
@@ -671,6 +680,16 @@ function! dbext#DB_listOption(...)
         let index = match(l:global_vars, dbext_default_prefix, index)
     endwhile
 
+    let option_list = option_list .
+                \ "-------------------------------\n" .
+                \ "** Vim Version Information   **\n" .
+                \ "-------------------------------\n"
+    " Check if the user has any profiles defined in his vimrc
+    redir => vim_version_info
+    silent! version
+    redir END
+    let option_list = option_list . vim_version_info . "\n"
+
     call s:DB_addToResultBuffer(option_list, "clear")
 
     return ""
@@ -695,7 +714,11 @@ function! s:DB_get(name, ...)
     endif
 
     if exists(prefix.a:name)
-        let retval = {prefix}{a:name} . '' "force string
+        try
+            let retval = {prefix}{a:name} . '' "force string
+        catch
+            let retval = join({prefix}{a:name}, ',') . '' "force string
+        endtry
     elseif use_defaults == 1
         let retval = s:DB_getDefault(a:name)
     else
@@ -760,6 +783,11 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "delete_temp_file"        |return (exists("g:dbext_default_delete_temp_file")?g:dbext_default_delete_temp_file.'':'1')
     elseif a:name ==# "buffers_with_dict_files" |return s:dbext_buffers_with_dict_files
     elseif a:name ==# "temp_file"               |return s:dbext_tempfile
+    elseif a:name ==# "window_use_horiz"        |return (exists("g:dbext_default_window_use_horiz")?g:dbext_default_window_use_horiz.'':'1')
+    elseif a:name ==# "window_width"            |return (exists("g:dbext_default_window_width")?g:dbext_default_window_width.'':'1')
+    elseif a:name ==# "window_use_bottom"       |return (exists("g:dbext_default_window_use_bottom")?g:dbext_default_window_use_bottom.'':'1')
+    elseif a:name ==# "window_use_right"        |return (exists("g:dbext_default_window_use_right")?g:dbext_default_window_use_right.'':'1')
+    elseif a:name ==# "window_increment"        |return (exists("g:dbext_default_window_increment")?g:dbext_default_window_increment.'':'1')
     elseif a:name ==# "use_win32_filenames"     |return (exists("g:dbext_default_use_win32_filenames")?g:dbext_default_use_win32_filenames.'':'0')
     elseif a:name ==# "dbext_version"           |return (g:loaded_dbext)
     elseif a:name ==# "history_file"            |return (exists("g:dbext_default_history_file")?g:dbext_default_history_file.'':(has('win32')?$VIM.'/dbext_sql_history.txt':$HOME.'/dbext_sql_history.txt'))
@@ -3285,6 +3313,8 @@ function! s:DB_DBI_execSql(str)
             let results = []
             for sql in statements
                 if sql !~ '^[ \t\n]*$'
+                    " Strip leading and trailing newlines
+                    let sql =  substitute(sql, '^\n*\(.\{-}\)\n*$', '\1', 'g')
                     let result = s:DB_DBI_execStr(sql)
                     let results = add( results, result )
                     if result == -1
@@ -4454,8 +4484,6 @@ function! dbext#DB_execSql(query)
         let query = dbext#DB_parseQuery(query)
     endif
     
-    echon 'dbext: Executing SQL at '.strftime("%H:%M")
-
     if query != ""
         return dbext#DB_execFuncTypeWCheck('execSql', query)
     endif
@@ -4802,7 +4830,7 @@ function! dbext#DB_getQueryUnderCursor()
     "        from T1
     " This would have stopped at the INSERT word.  It is not perfect
     " but it is better with the check.
-    let sql_commands = '\c^\s*\<\('.dbext_query_statements.'\)\>'
+    let sql_commands = '\c^\s*\zs\<\('.dbext_query_statements.'\)\>'
 
     " Advance the cursor by 1 character incase the cursor is at the
     " beginning of one of the query statements
@@ -4830,7 +4858,16 @@ function! dbext#DB_getQueryUnderCursor()
         "      from T1
         " In the above case, we would stop even though the ; was
         " not the command terminator.
+
+        " Start visual mode, find the terminator (should be at end of line)
         exe 'silent! norm! v/'.dbext_cmd_terminator."\\s*$/e\n".'"zy``'
+
+        if line("'<") == line("'>") &&
+                    \ col("'<") == col("'>")
+            " No command terminator was found, so just use
+            " the current lines content
+            let @z = matchstr(getline("'<"), '.\{'.col("'<").'}\zs.*')
+        endif
     endif
 
     " Return to previous location
@@ -5562,12 +5599,18 @@ function! s:DB_switchToBuffer(buf_name, buf_file, get_buf_nr_name)
     " commands from are in different directories.
 
     " Get the previously stored buffer number
+    let res_buf_nr_str  = s:DB_get('result_bufnr')
+    let his_buf_nr_str  = s:DB_get('history_bufnr')
+
+    " Get the previously stored buffer number
     let buf_nr_str  = s:DB_get(a:get_buf_nr_name)
     " The buffer number may not have been initialized, so we must
     " handle this case.
     " bufexists takes a numeric argument, so we must add 0 to it
     " to convince Vim we are passing a numeric argument, if not
     " bufexists returns an unexpected value
+    let res_buf_nr  = (res_buf_nr_str==''?-1:(res_buf_nr_str+0))
+    let his_buf_nr  = (his_buf_nr_str==''?-1:(his_buf_nr_str+0))
     let buf_nr      = (buf_nr_str==''?-1:(buf_nr_str+0))
     let buf_exists  = bufexists(buf_nr)
 
@@ -5576,12 +5619,77 @@ function! s:DB_switchToBuffer(buf_name, buf_file, get_buf_nr_name)
     endif
 
     if bufwinnr(buf_nr) == -1
-        " if the buffer is not visible, wipe it out and recreate it,
-        " this will position us in the new buffer
-        " exec 'bwipeout! ' . res_buf_nbr
-        " silent exec 'bot ' . l:buffer_lines . 'new ' . res_buf_name
-        silent exec 'bot ' . l:buffer_lines . 'split '
+        " if the buffer is not visible, check to see if either
+        " the history or result buffer is already open.
+        " It if is, simply re-use that window instead of
+        " closing and re-opening the split.
+        " For some reason there is a visual bell each time
+        " this happens.
+
+        let open_new_split = 1
+        if bufwinnr(res_buf_nr) > 0
+            let open_new_split = 0
+            " If the buffer is visible, switch to it
+            exec bufwinnr(res_buf_nr) . "wincmd w"
+        elseif bufwinnr(his_buf_nr) > 0
+            let open_new_split = 0
+            exec bufwinnr(his_buf_nr) . "wincmd w"
+        endif
+
+        if open_new_split == 1
+            if s:DB_getDefault('window_use_horiz') == 1
+                if s:DB_getDefault('window_use_bottom') == 1
+                    let location = 'botright'
+                else
+                    let location = 'topleft'
+                    " Creating the new window will offset all other
+                    " window numbers.  Account for that so we switch
+                    " back to the correct window.
+                    let s:dbext_prev_winnr = s:dbext_prev_winnr + 1
+                endif
+                let win_size = l:buffer_lines
+            else
+                " Open a horizontally split window. Increase the window size, if
+                " needed, to accomodate the new window
+                if s:DB_getDefault('window_width') &&
+                            \ &columns < (80 + s:DB_getDefault('window_width'))
+                    " one extra column is needed to include the vertical split
+                    let &columns             = &columns + s:DB_getDefault('window_width') + 1
+                endif
+
+                if s:DB_getDefault('window_use_right') == 1
+                    " Open the window at the rightmost place
+                    let location = 'botright vertical'
+                else
+                    " Open the window at the leftmost place
+                    let location = 'topleft vertical'
+                    " Creating the new window will offset all other
+                    " window numbers.  Account for that so we switch
+                    " back to the correct window.
+                    let s:dbext_prev_winnr = s:dbext_prev_winnr + 1
+                endif
+                let win_size = s:DB_getDefault('window_width')
+            endif
+
+            " Special consideration was involved with these sequence
+            " of commands.  
+            "     First, split the current buffer.
+            "     Second, edit a new file.
+            "     Third record the buffer number.
+            " If a different sequence is followed when the yankring
+            " buffer is closed, Vim's alternate buffer is the yanking
+            " instead of the original buffer before the yankring 
+            " was shown.
+            let cmd_mod = ''
+            if v:version >= 700
+                let cmd_mod = 'keepalt '
+            endif
+            exec 'silent! ' . cmd_mod . location . ' ' . win_size . 'split ' 
+        endif
+        " Using :e and hide prevents the alternate buffer
+        " from being changed.
         exec ":silent! e " . escape(a:buf_file, ' ')
+        " Save buffer id
         call s:DB_set(a:get_buf_nr_name, bufnr('%'))
     else
         " If the buffer is visible, switch to it
@@ -5604,33 +5712,63 @@ function! dbext#DB_windowClose(buf_name)
         
         " Hide it 
         hide
-    else
-        let res_buf_name   = s:DB_resBufName()
 
-        " Get the previously stored buffer number
-        let buf_nr_str  = s:DB_get('result_bufnr')
-        let res_buf_nbr = bufnr(res_buf_name)
-        let buf_win_nbr = bufwinnr(res_buf_nbr)
-        " The buffer number may not have been initialized, so we must
-        " handle this case.
-        " bufexists takes a numeric argument, so we must add 0 to it
-        " to convince Vim we are passing a numeric argument, if not
-        " bufexists returns an unexpected value
-        let buf_nr      = (buf_nr_str==''?-1:(buf_nr_str+0))
-        let buf_exists  = bufexists(buf_nr)
+        return
+    endif
 
-        if bufwinnr(buf_nr) != -1
-            " Update the local buffer variables with the current size
-            " of the window, when we open it again we will use it's
-            " size instead of the default
-            call s:DB_set('buffer_lines', winheight(bufwinnr(buf_nr)))
+    " If the command executed was DBCloseResults this must handle both 
+    " cases, Results window and the History window
+    
+    " Results Window
+    let res_buf_name   = s:DB_resBufName()
 
-            " If the buffer is visible, switch to it
-            exec bufwinnr(res_buf_nbr) . "wincmd w"
+    " Get the previously stored buffer number
+    let buf_nr_str  = s:DB_get('result_bufnr')
+    let res_buf_nbr = bufnr(res_buf_name)
+    let buf_win_nbr = bufwinnr(res_buf_nbr)
+    " The buffer number may not have been initialized, so we must
+    " handle this case.
+    " bufexists takes a numeric argument, so we must add 0 to it
+    " to convince Vim we are passing a numeric argument, if not
+    " bufexists returns an unexpected value
+    let buf_nr      = (buf_nr_str==''?-1:(buf_nr_str+0))
+    let buf_exists  = bufexists(buf_nr)
 
-            " Hide it 
-            hide
-        endif
+    if bufwinnr(buf_nr) != -1
+        " Update the local buffer variables with the current size
+        " of the window, when we open it again we will use it's
+        " size instead of the default
+        call s:DB_set('buffer_lines', winheight(bufwinnr(buf_nr)))
+
+        " If the buffer is visible, switch to it
+        exec bufwinnr(buf_nr) . "wincmd w"
+
+        " Hide it 
+        hide
+        return
+    endif
+
+    " History Window
+    " Get the previously stored buffer number
+    let buf_nr_str  = s:DB_get('history_bufnr')
+    " The buffer number may not have been initialized, so we must
+    " handle this case.
+    " bufexists takes a numeric argument, so we must add 0 to it
+    " to convince Vim we are passing a numeric argument, if not
+    " bufexists returns an unexpected value
+    let buf_nr      = (buf_nr_str==''?-1:(buf_nr_str+0))
+
+    if bufwinnr(buf_nr) != -1
+        " Update the local buffer variables with the current size
+        " of the window, when we open it again we will use it's
+        " size instead of the default
+        call s:DB_set('buffer_lines', winheight(bufwinnr(buf_nr)))
+
+        " If the buffer is visible, switch to it
+        exec bufwinnr(buf_nr) . "wincmd w"
+
+        " Hide it 
+        hide
     endif
 endfunction "}}}
 " DB_windowOpen {{{
@@ -5641,8 +5779,6 @@ function! dbext#DB_windowOpen()
     let conn_props     = s:DB_getTitle()
     let dbi_orient     = s:DB_get('DBI_orientation')
 
-    " First close the history window if already open
-    call dbext#DB_windowClose(s:DB_get('history_bufname'))
     call s:DB_saveSize(res_buf_name)
 
     " Open buffer in required location
@@ -5655,6 +5791,28 @@ function! dbext#DB_windowOpen()
     " Create a buffer mapping to clo this window
     nnoremap <buffer> q :DBCloseResults<cr>
     nnoremap <buffer> <silent> a             :call <SID>DB_set('autoclose', (s:DB_get('autoclose')==1?0:1))<CR>
+    if hasmapto('DB_historyDel')
+        try
+            silent! unmap <buffer> dd
+        catch
+        endtry
+    endif
+    if hasmapto('DB_historyUse')
+        try
+            silent! unmap <buffer> <2-LeftMouse>
+            silent! unmap <buffer> <CR>
+        catch
+        endtry
+    endif
+endfunction "}}}
+" DB_windowResize {{{
+function! dbext#DB_windowResize()
+    silent! exec 'vertical resize '.
+                \ (
+                \ s:DB_getDefault('window_use_horiz') !=1 && winwidth('.') > s:DB_getDefault('window_width')
+                \ ?(s:DB_getDefault('window_width'))
+                \ :(winwidth('.') + s:DB_getDefault('window_increment'))
+                \ )
 endfunction "}}}
 " saveSize {{{
 function! s:DB_saveSize(buf_name)
@@ -5702,8 +5860,6 @@ function! s:DB_addToResultBuffer(output, do_clear)
     let conn_props     = s:DB_getTitle()
     let dbi_orient     = s:DB_get('DBI_orientation')
 
-    " First close the history window if already open
-    call dbext#DB_windowClose(s:DB_get('history_bufname'))
     call s:DB_saveSize(res_buf_name)
 
     " Open buffer in required location
@@ -5715,7 +5871,21 @@ function! s:DB_addToResultBuffer(output, do_clear)
     setlocal modified
     " Create a buffer mapping to clo this window
     nnoremap <buffer> q :DBCloseResults<cr>
-    nnoremap <buffer> <silent> a             :call <SID>DB_set('autoclose', (s:DB_get('autoclose')==1?0:1))<CR>
+    nnoremap <buffer> <silent> a       :call <SID>DB_set('autoclose', (s:DB_get('autoclose')==1?0:1))<CR>
+    nnoremap <buffer> <silent> <space> :DBToggleResultsResize<cr>
+    if hasmapto('DB_historyDel')
+        try
+            silent! unmap <buffer> dd
+        catch
+        endtry
+    endif
+    if hasmapto('DB_historyUse')
+        try
+            silent! unmap <buffer> <2-LeftMouse>
+            silent! unmap <buffer> <CR>
+        catch
+        endtry
+    endif
     " Delete all the lines prior to this run
     if a:do_clear == "clear" 
         %d
@@ -6445,6 +6615,8 @@ function! s:DB_historyAdd(sql)
     endif
 
     let sql = substitute(a:sql, "\n", '@@@', 'g')
+    " Strip leading and trailing markers
+    let sql = substitute (sql, '^\(@@@\)*\(.\{-}\)\(@@@\)*$', '\2', 'g')
     call s:DB_historyOpen()
 
     " Go to top of file and search the the same string
@@ -6509,16 +6681,26 @@ function! dbext#DB_historyList()
     nnoremap <buffer> <silent> a             :call <SID>DB_set('autoclose', (s:DB_get('autoclose')==1?0:1))<CR>
     " Create a buffer mapping to clo this window
     nnoremap <buffer> q :DBCloseResults<cr>
-    nnoremap <buffer> R :DBRefreshResult<cr>
+    nnoremap <buffer> <silent> <space> :DBToggleResultsResize<cr>
     
+    if hasmapto('DBRefreshResult')
+        try
+            silent! unmap <buffer> R
+        catch
+        endtry
+    endif
+    if hasmapto('DBOrientationToggle')
+        try
+            silent! unmap <buffer> O
+        catch
+        endtry
+    endif
     " Go to top of output
     norm 2gg
 endfunction 
 
 function! s:DB_historyOpen()
     let res_buf_name   = s:DB_resBufName()
-    " First close the result window if already open
-    call dbext#DB_windowClose(res_buf_name)
     call s:DB_saveSize(s:DB_get('history_bufname'))
 
     " Prevent the alternate buffer (<C-^>) from being set to this
@@ -6579,9 +6761,10 @@ function! s:DB_historySave(auto_hide)
 
     setlocal readonly
 
-    if a:auto_hide == 1
-        silent! hide
-    endif
+    " Test REMOVE
+    " if a:auto_hide == 1
+    "     silent! hide
+    " endif
 
 endfunction 
 
