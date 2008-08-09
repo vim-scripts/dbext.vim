@@ -1,13 +1,13 @@
-*dbext.txt*	For Vim version 7.0.  Last change: Sun 08 Jun 2008 10:39:26 PM Eastern Daylight Time
+*dbext.txt*	For Vim version 7.0.  Last change: 2008 Aug 09
 
 
                 	  VIM REFERENCE MANUAL 
                                 by 
-                     David Fishburn <fishburn@ianywhere.com>
-                     Peter Bagyinszki <petike1@dpg.hu>
+                     David Fishburn <dfishburn dot vim at gmail dot com>
+                     Peter Bagyinszki <petike1 at dpg dot hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 6.10
+	  	dbext.vim version 6.20
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -78,6 +78,21 @@ David Fishburn
 
 ==============================================================================
 2. What's New						*dbext-new*
+
+Version 6.20
+
+ New Features
+ ------------
+ - None
+
+ Bug Fixes
+ ---------
+ - Changed the DB2 TOP X syntax (DBExecSQLTopX).
+ - Changed the query used to retrieve the current line for
+   DBExecSQLUnderCursor when no text is selected (Sergey Alekhin).
+ - When parsing a SQL statement for host variables it was possible
+   to miss excluding the INTO clause correctly (Sergey Alekhin).
+
 
 Version 6.10
 

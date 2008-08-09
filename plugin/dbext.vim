@@ -1,16 +1,16 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       6.10
-" Maintainer:    David Fishburn <fishburn@ianywhere.com>
-" Authors:       Peter Bagyinszki <petike1@dpg.hu>
-"                David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Wed 28 May 2008 11:22:28 PM Eastern Daylight Time
+" Version:       6.20
+" Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
+" Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
+"                David Fishburn <dfishburn dot vim at gmail dot com>
+" Last Modified: 2008 Jul 04
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
-" Contributors:  Joerg Schoppet <joerg.schoppet@web.de>
-"                Hari Krishna Dara <hari_vim@yahoo.com>
+" Contributors:  Joerg Schoppet <joerg dot schoppet at web dot de>
+"                Hari Krishna Dara <hari_vim at yahoo dot com>
 "                Ron Aaron
 "
 " SourceForge:  $Revision: 1.38 $
@@ -38,7 +38,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext = 610
+let g:loaded_dbext = 620
 
 if !exists('g:dbext_default_menu_mode')
     let g:dbext_default_menu_mode = 3

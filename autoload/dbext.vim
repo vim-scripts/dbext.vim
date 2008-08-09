@@ -1,16 +1,16 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       6.10
-" Maintainer:    David Fishburn <fishburn@ianywhere.com>
-" Authors:       Peter Bagyinszki <petike1@dpg.hu>
-"                David Fishburn <fishburn@ianywhere.com>
-" Last Modified: Sun 08 Jun 2008 10:31:10 PM Eastern Daylight Time
+" Version:       6.20
+" Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
+" Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
+"                David Fishburn <dfishburn dot vim at gmail dot com>
+" Last Modified: 2008 Aug 09
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
-" Contributors:  Joerg Schoppet <joerg.schoppet@web.de>
-"                Hari Krishna Dara <hari_vim@yahoo.com>
+" Contributors:  Joerg Schoppet <joerg dot schoppet at web dot de>
+"                Hari Krishna Dara <hari_vim at yahoo dot com>
 "                Ron Aaron
 "                Andi Stern
 "
@@ -37,7 +37,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 610
+let g:loaded_dbext_auto = 620
 
 " call confirm("Loaded dbext autoload", "&Ok")
 " Script variable defaults, these are used internal and are never displayed
@@ -813,8 +813,8 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "DB2_db2cmd_bin"          |return (exists("g:dbext_default_DB2_db2cmd_bin")?g:dbext_default_DB2_db2cmd_bin.'':'db2cmd')
     elseif a:name ==# "DB2_db2cmd_cmd_options"  |return (exists("g:dbext_default_DB2_db2cmd_cmd_options")?g:dbext_default_DB2_db2cmd_cmd_options.'':'-c -w -i -t db2 -s')
     elseif a:name ==# "DB2_cmd_terminator"      |return (exists("g:dbext_default_DB2_cmd_terminator")?g:dbext_default_DB2_cmd_terminator.'':';')
-    elseif a:name ==# "DB2_SQL_Top_pat"         |return (exists("g:dbext_default_DB2_SQL_Top_pat")?g:dbext_default_DB2_SQL_Top_pat.'':'\(\cselect\)')
-    elseif a:name ==# "DB2_SQL_Top_sub"         |return (exists("g:dbext_default_DB2_SQL_Top_sub")?g:dbext_default_DB2_SQL_Top_sub.'':'\1 TOP @dbext_topX ')
+    elseif a:name ==# "DB2_SQL_Top_pat"         |return (exists("g:dbext_default_DB2_SQL_Top_pat")?g:dbext_default_DB2_SQL_Top_pat.'':'\(.*\)')
+    elseif a:name ==# "DB2_SQL_Top_sub"         |return (exists("g:dbext_default_DB2_SQL_Top_sub")?g:dbext_default_DB2_SQL_Top_sub.'':'\1 FETCH FIRST @dbext_topX ROWS ONLY')
     elseif a:name ==# "INGRES_bin"              |return (exists("g:dbext_default_INGRES_bin")?g:dbext_default_INGRES_bin.'':'sql')
     elseif a:name ==# "INGRES_cmd_options"      |return (exists("g:dbext_default_INGRES_cmd_options")?g:dbext_default_INGRES_cmd_options.'':'')
     elseif a:name ==# "INGRES_cmd_terminator"   |return (exists("g:dbext_default_INGRES_cmd_terminator")?g:dbext_default_INGRES_cmd_terminator.'':'\p\g')
@@ -4866,7 +4866,7 @@ function! dbext#DB_getQueryUnderCursor()
                     \ col("'<") == col("'>")
             " No command terminator was found, so just use
             " the current lines content
-            let @z = matchstr(getline("'<"), '.\{'.col("'<").'}\zs.*')
+            let @z = strpart(getline("'<"), (col("'<")-1))
         endif
     endif
 
@@ -6062,7 +6062,7 @@ function! s:DB_parseHostVariables(query)
     " For some reason [\n\s]* does not work
     if query =~? '^[\n \t]*select'
         let query = substitute(query, 
-                    \ '\c\%(\<\%(insert\|merge\)\s\+\)\@<!INTO.\{-}FROM', 
+                    \ '\c\%(\<\%(insert\|merge\)\s\+\)\@<!\<INTO\>.\{-}\<FROM\>', 
                     \ 'FROM', 'g')
     endif
 
