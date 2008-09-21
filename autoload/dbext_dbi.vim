@@ -4,10 +4,10 @@
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       6.20
+" Version:       7.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2008 Jul 04
+" Last Modified: 2008 Sep 03
 " Created:       2007-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 "
@@ -114,7 +114,7 @@ if !has('perl')
     let g:loaded_dbext_dbi_msg = 'Vim does not have perl support enabled'
     finish
 endif
-let g:loaded_dbext_dbi = 620
+let g:loaded_dbext_dbi = 700
 
 if !exists("dbext_dbi_debug")
    let g:dbext_dbi_debug = 0
@@ -164,7 +164,6 @@ EOVersionTest
     let g:loaded_dbext_dbi_msg = 'creating Perl subroutines'
     perl << EOCore
 
-VIM::DoCommand('let g:loaded_dbext_dbi_msg=\'after EOCore\'');
 BEGIN {(*STDERR = *STDOUT) || die;} 
 
 use diagnostics;
@@ -173,37 +172,39 @@ use strict;
 use Data::Dumper qw( Dumper );
 use DBI;
 
-VIM::DoCommand('let g:loaded_dbext_dbi_msg=\'after warnings\'');
-my $conn;
 my %connections;
 my @result_headers;
 my @result_set;
 my @result_col_length;
 my $result_max_col_width;
-my $result_msg    = "";
 my $max_rows      = 300;
 my $min_col_width = 4;   # First NULL
 my $test_inc      = 0;
 my $conn_inc      = 0;
 my $dbext_dbi_sql = "";
 my $col_sep_vert  = "  ";
-my $debug         = db_is_debug();
+my $debug         = 0;
+my $inside_vim    = 0;
+my $native_err    = 0;
 
 
-VIM::DoCommand('let g:loaded_dbext_dbi_msg=\'db_set_vim_var\'');
 sub db_set_vim_var
 {
     my $var_name = shift;
     my $string   = shift;
-    VIM::DoCommand('let g:loaded_dbext_dbi_'.$var_name.'='.$string);
+    # my $let      = ('let '.$var_name.'="'.$string.'"');
+    my $let      = ('let '.$var_name.'="'.db_escape($string).'"');
+    if( $inside_vim ) {
+        # db_echo('db_set_vim_var:'.$let);
+        VIM::DoCommand($let);
+        # db_echo('db_set_vim_var finished');
+    } else {
+        print('let '.$var_name.'="'.$string."\"\n");
+    }
 }
 
 
-# db_set_vim_var('msg', 'one');
-# db_set_vim_var('msg', "two");
-# db_set_vim_var('msg', "'three'");
-# db_set_vim_var('msg', '"four"');
-db_set_vim_var('msg', '"db_trim_white_space"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_trim_white_space');
 sub db_trim_white_space($)
 {
     my $string = shift;
@@ -213,43 +214,135 @@ sub db_trim_white_space($)
 }
 
 
-db_set_vim_var('msg', '"db_echo"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_echo');
 sub db_echo 
 {
     my $msg = shift;
 
-    VIM::Msg('DBI:'.$msg, 'WarningMsg');
-    # VIM::DoCommand('echohl WarningMsg'); 
-    # VIM::DoCommand("echomsg 'DBI:$msg'");
-    # VIM::DoCommand('echohl None');
+    # VIM::Msg('DBI:'.$msg, 'WarningMsg');
+    db_vim_op( "Msg", 'DBI:'.$msg );
     return 0;
 }
 
-db_set_vim_var('msg', '"db_debug"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_debug');
 sub db_debug 
 {
     my $msg = shift;
     $debug and db_echo($msg);
 }
 
-db_set_vim_var('msg', '"db_is_debug"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_is_debug');
 sub db_is_debug 
 {
     return db_vim_eval('g:dbext_dbi_debug');
 }
 
-db_set_vim_var('msg', '"db_vim_eval"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_vim_check_inside');
+sub db_vim_check_inside 
+{
+    eval {
+        VIM::Eval(1);
+    };
+    if ($@) {
+        db_debug("Not inside Vim:".$@);
+        $inside_vim = 0;
+    } else {
+        db_debug("Inside Vim:".$@);
+        $inside_vim = 1;
+    }
+    return;
+}
+
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_vim_eval');
 sub db_vim_eval 
 {
     my $cmd = shift;
+    my $rc;
+    my $val;
 
+    if( ! $inside_vim ) {
+        if( $cmd eq "bufnr('%')" ) {
+            return 1;
+        }
+        if( $cmd eq "g:dbext_dbi_max_rows" ) {
+            return 10;
+        }
+        if( $cmd eq "g:dbext_default_dbi_column_delimiter" ) {
+            return "\t";
+        }
+    }
     if( defined($cmd) ) {
-        return VIM::Eval($cmd);
+        if( $inside_vim ) {
+            # return VIM::Eval($cmd);
+            ($rc, $val) = VIM::Eval($cmd);
+            # db_echo("db_vim_eval:$cmd:$rc:$val");
+            if( $rc == 1 ) {
+                return $val;
+            } else {
+                return -1;
+            }
+        } else {
+            return ($cmd);
+        }
     }
     return "";
 }
 
-db_set_vim_var('msg', '"db_vim_print"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_vim_op');
+sub db_vim_op 
+{
+    my $op            = shift;
+
+    if( ! defined($op) ) {
+        return;
+    }
+
+    if( $op eq "Count" ) {
+        if( $inside_vim ) {
+            return $main::curbuf->Count();
+        } else {
+            return 1;
+        }
+    } elsif ( $op eq "Append" ) {
+        my $line_nbr      = shift;
+        my $line_txt      = shift;
+        if( ! defined($line_nbr) ) {
+            $line_nbr = "";
+        }
+        if( ! defined($line_txt) ) {
+            $line_txt = "";
+        }
+        if( $inside_vim ) {
+            $main::curbuf->Append($line_nbr, $line_txt);
+        } else {
+            print "$line_txt\n";
+        }
+    } elsif ( $op eq "call" ) {
+        my $cmd      = shift;
+        if( ! defined($cmd) ) {
+            $cmd = "";
+        }
+        if( $inside_vim ) {
+            VIM::DoCommand($cmd);
+        } else {
+            print "Vim:DoCommand:$cmd\n";
+        }
+    } else {
+        # Msg
+        my $msg      = shift;
+        if( ! defined($msg) ) {
+            $msg = "";
+        }
+        if( $inside_vim ) {
+            VIM::Msg('DBI:'.$msg, 'WarningMsg');
+        } else {
+            print "$msg\n";
+        }
+    }
+    return "";
+}
+
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_vim_print');
 sub db_vim_print 
 {
     my $line_nbr      = shift;
@@ -277,32 +370,34 @@ sub db_vim_print
             # blanks to line up the text with the data above.
             $line = (' ' x $max_col_width).$line;
         }
-        $main::curbuf->Append($line_nbr, $line);
+        # $main::curbuf->Append($line_nbr, $line);
+        db_vim_op("Append", $line_nbr, $line);
         $line_nbr++;
         $printed_lines++;
     }
     return $printed_lines;
 }
 
-db_set_vim_var('msg', '"db_get_defaults"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_get_defaults');
 sub db_get_defaults 
 {
     $col_sep_vert = db_vim_eval('g:dbext_default_dbi_column_delimiter');
 }
 
-db_set_vim_var('msg', '"db_escape"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_escape');
 sub db_escape 
 {
     my $escaped = shift;
     if( defined($escaped) ) {
         $escaped =~ s/"/\\"/g;
         $escaped =~ s/\\/\\\\/g;
+        $escaped =~ s/\n/\\n/g;
     }
 
     return $escaped;
 }
 
-db_set_vim_var('msg', '"db_remove_newlines"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_remove_newlines');
 sub db_remove_newlines 
 {
     my $escaped = shift;
@@ -311,7 +406,7 @@ sub db_remove_newlines
     return $escaped;
 }
 
-db_set_vim_var('msg', '"db_get_available_drivers"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_get_available_drivers');
 sub db_get_available_drivers 
 {
     my @ary = DBI->available_drivers;
@@ -319,7 +414,7 @@ sub db_get_available_drivers
     return 0;
 }
 
-db_set_vim_var('msg', '"db_list_connections"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_list_connections');
 sub db_list_connections
 {
     db_debug('db_list_connections:'.Dumper(%connections));
@@ -330,6 +425,7 @@ sub db_list_connections
     my $i = 0;
     my @headers = [ ("Buffer", "Driver", "AutoCommit", "CommitOnDisconnect", "Connection Parameters") ];
     
+    db_set_vim_var("g:dbext_dbi_msg", '');
     foreach my $row2 ( @headers ) {
         db_debug('db_list_connections:R'.Dumper($row2));
         foreach my $col2 ( @{$row2} ) {
@@ -377,23 +473,25 @@ sub db_list_connections
     db_debug('db_list_connections:final:'.Dumper(@result_set));
     # TODO 
     # This should define an array so db_print_results can be used
-    VIM::DoCommand("let g:dbext_dbi_result='DBI:'");
-    VIM::DoCommand("let g:dbext_dbi_msg=''");
+    db_set_vim_var("g:dbext_dbi_result", 'DBI:');
+    db_set_vim_var("g:dbext_dbi_msg", '');
     return 0;
 }
 
-db_set_vim_var('msg', '"db_get_info"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_get_info');
 sub db_get_info
 {
     my $option = shift;
 
     my $conn_local;
+    my $driver;
+
     if ( ! db_is_connected() ) {
         db_echo("db_get_info:You must connect first");
         return -1;
     }
 
-    $conn_local = db_get_connection();
+    ($conn_local, $driver) = db_get_connection();
 
     my $result = "";
 
@@ -405,48 +503,51 @@ sub db_get_info
     }
 
     db_debug('db_get_info:'.$result);
-    VIM::DoCommand("let g:dbext_dbi_result='".$result."'");
+    db_set_vim_var("g:dbext_dbi_result", $result);
     return 0;
 }
 
-db_set_vim_var('msg', '"db_commit"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_commit');
 sub db_commit 
 {
     my $conn_local;
+    my $driver;
+
     db_debug("Committing connection");
     if ( ! db_is_connected() ) {
-        VIM::DoCommand("let g:dbext_dbi_result=-1");
-        VIM::DoCommand("let g:dbext_dbi_msg='You are not connected to a database'");
+        db_set_vim_var("g:dbext_dbi_result", -1);
+        db_set_vim_var("g:dbext_dbi_msg", 'You are not connected to a database');
         return -1;
     }
 
-    $conn_local = db_get_connection();
+    ($conn_local, $driver) = db_get_connection();
 
     my $rc = $conn_local->commit;
-    VIM::DoCommand("let g:dbext_dbi_result='".$rc."'");
+    db_set_vim_var("g:dbext_dbi_result", $rc);
     return $rc;
 }
 
-db_set_vim_var('msg', '"db_rollback"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_rollback');
 sub db_rollback 
 {
     my $conn_local;
+    my $driver;
     
     db_debug("Rolling back connection");
     if ( ! db_is_connected() ) {
-        VIM::DoCommand("let g:dbext_dbi_result=-1");
-        VIM::DoCommand("let g:dbext_dbi_msg='You are not connected to a database'");
+        db_set_vim_var("g:dbext_dbi_result", -1);
+        db_set_vim_var("g:dbext_dbi_msg", 'You are not connected to a database');
         return -1;
     }
 
-    $conn_local = db_get_connection();
+    ($conn_local, $driver) = db_get_connection();
         
     my $rc = $conn_local->rollback;
-    VIM::DoCommand("let g:dbext_dbi_result='".$rc."'");
+    db_set_vim_var("g:dbext_dbi_result", $rc);
     return $rc;
 }
 
-db_set_vim_var('msg', '"db_is_connected"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_is_connected');
 sub db_is_connected 
 {
     my $bufnr        = shift;
@@ -456,8 +557,9 @@ sub db_is_connected
     db_debug('db_is_connected:test_inc:'.$test_inc);
     
     if( ! defined($bufnr) ) {
-        db_debug('db_is_connected:looking up $bufnr');
+        db_debug('db_is_connected:$bufnr undefined');
         $bufnr        = db_vim_eval("bufnr('%')");
+        db_debug("db_is_connected:looking up $bufnr");
     }
     if( %connections ) {
         if( ! exists($connections{$bufnr}) ) {
@@ -478,19 +580,21 @@ sub db_is_connected
     } else {
         db_debug('db_is_connected:NO conn');
     }
-    VIM::DoCommand("let g:dbext_dbi_result='".$is_connected."'");
+    db_set_vim_var("g:dbext_dbi_result", $is_connected);
     return $is_connected;
 }
 
-db_set_vim_var('msg', '"db_get_connection"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_get_connection');
 sub db_get_connection 
 {
     my $bufnr        = shift;
+    my $driver       = '';
     my $conn_local;
     
     if( ! defined($bufnr) ) {
-        db_debug('db_get_connection:looking up $bufnr');
+        db_debug('db_get_connected:$bufnr undefined');
         $bufnr        = db_vim_eval("bufnr('%')");
+        db_debug("db_get_connection:looking up $bufnr");
     }
     if ( ! db_is_connected($bufnr) ) {
         db_debug('db_get_connection:connection not found:'.$bufnr);
@@ -499,10 +603,77 @@ sub db_get_connection
 
     db_debug('db_get_connection:returning:'.$bufnr);
     $conn_local = $connections{$bufnr}->{'conn'};
-    return $conn_local;
+    $driver     = $connections{$bufnr}->{'driver'};
+    return ($conn_local, $driver);
 }
 
-db_set_vim_var('msg', '"db_connect"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_check_error');
+sub db_check_error 
+{
+    my $err    = 0;
+    my $level  = '';
+    my $msg    = '';
+    my $state  = '';
+    my $bufnr  = '';
+    my $driver = shift;
+    my $conn_local;
+
+    if ( defined($DBI::err) && defined($DBI::errstr) && defined($DBI::state) ) {
+
+        if( ! defined($driver) ) {
+            ($conn_local, $driver) = db_get_connection();
+        }
+        db_debug("db_check_error:$bufnr:$driver");
+
+        $err   = $DBI::err;
+        $msg   = $DBI::errstr;
+        $state = $DBI::state;
+
+        # db_echo("db_check_error: initial values:$level:$err:$state:$msg");
+        if( $driver eq "ODBC" ) {
+            if ( $err eq "" && ! $msg eq "" ) {
+                # Informational message
+                $level = "I";
+            } elsif ( $err eq "0" && ! $msg eq "" ) {
+                # Warning message
+                $level = "W";
+            } elsif ( $err eq "1" && ! $msg eq "" ) {
+                # Error message
+                $level = "E";
+            }
+            if( defined($native_err) ) {
+                $err = $native_err;
+            }
+        } else {
+            if ( ($err eq "" || $err eq "0") && ! $msg eq "" ) {
+                # Informational message
+                $level = "I";
+            } elsif ( $err gt "0" && ! $msg eq "" ) {
+                # Warning message
+                $level = "W";
+            } elsif ( $err lt "0" && ! $msg eq "" ) {
+                # Error message
+                $level = "E";
+            }
+        }
+    }
+
+    db_debug("db_check_error: returning:$level:$err:$state:$msg");
+    return ($level, $err, $msg, $state);
+}
+
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_odbc_err_handler');
+sub db_odbc_err_handler 
+{
+   my ($state, $msg, $native) = @_;
+   $native_err = $native;
+   # db_echo("db_odbc_err_handler: native error:$native_err");
+
+   # Do not ignore the error
+   return 1;
+}
+
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_connect');
 sub db_connect 
 {
     my $driver     = shift;
@@ -522,26 +693,25 @@ sub db_connect
 
     if ( ! defined($driver) ) {
         # db_echo("Invalid driver:$driver");
-        VIM::DoCommand("let g:dbext_dbi_msg='Invalid driver:".$driver."'");
-        VIM::DoCommand("let g:dbext_dbi_result=-1");
+        db_set_vim_var("g:dbext_dbi_msg", 'E. Invalid driver:'.$driver);
+        db_set_vim_var("g:dbext_dbi_result", -1);
         return -1;
     }
     if ( ! defined($uid) ) {
         # db_echo("Invalid userid:$uid");
-        VIM::DoCommand("let g:dbext_dbi_msg='Invalid userid:".$uid."'");
-        VIM::DoCommand("let g:dbext_dbi_result=-1");
+        db_set_vim_var("g:dbext_dbi_msg", 'E. Invalid userid:'.$uid);
+        db_set_vim_var("g:dbext_dbi_result", -1);
         return -1;
     }
     if ( ! defined($pwd) ) {
         # db_echo("Invalid password:$pwd");
-        VIM::DoCommand("let g:dbext_dbi_msg='Invalid password:".$pwd."'");
-        VIM::DoCommand("let g:dbext_dbi_result=-1");
+        db_set_vim_var("g:dbext_dbi_msg", 'E. Invalid password:'.$pwd);
+        db_set_vim_var("g:dbext_dbi_result", -1);
         return -1;
     }
 
     my $DATA_SOURCE = "DBI:$driver:$conn_parms";
 
-    VIM::DoCommand("let g:dbext_dbi_msg='".$DATA_SOURCE."'");
     db_debug('db_connected:connecting to:'.$DATA_SOURCE);
     # Use global connection object
     eval {
@@ -565,14 +735,24 @@ sub db_connect
     };
 
     if ($@) {
-        VIM::DoCommand('let g:dbext_dbi_msg="Cannot connect to data source:\\n'.$DATA_SOURCE." using:".$uid."\n".$@.'"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_set_vim_var('g:dbext_dbi_msg', "Cannot connect to data source:".$DATA_SOURCE." using:".$uid." E:".$@);
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
-    if ( ! $DBI::errstr eq "" ) {
-        VIM::DoCommand('let g:dbext_dbi_msg="Cannot connect to data source:\\n'.$DATA_SOURCE." using:".$uid." SQLCode:".$DBI::err."\n".db_escape($DBI::errstr).'"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
-        return -1;
+    my( $level, $err, $msg, $state ) = db_check_error($driver);
+    if ( ! $msg eq "" ) {
+        $msg = "$level. DBC:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"").":\nConnection details:$DATA_SOURCE";
+        db_set_vim_var('g:dbext_dbi_msg', $msg);
+        if ( $level eq "E" ) {
+            db_set_vim_var('g:dbext_dbi_result', -1);
+            db_debug("db_connect:$msg - exiting");
+            return -1;
+        }
+    }
+
+    if ( $driver eq "ODBC" ) {
+        db_debug("db_connect: Enabling odbc_err_handler");
+        $conn_local->{odbc_err_handler} = \&db_odbc_err_handler;
     }
 
     $connections{$bufnr} = {'conn'               => $conn_local
@@ -582,15 +762,12 @@ sub db_connect
                            ,'AutoCommit'         => 1
                            ,'CommitOnDisconnect' => 1
                            };
-    db_debug('db_connected:checking if successful');
-    if ( ! db_is_connected() ) {
-        # db_debug("conn:3");
-        # db_echo("Cannot connect to data source:$DATA_SOURCE:$DBI::errstr");
-        # db_debug("conn:4");
-        VIM::DoCommand('let g:dbext_dbi_msg="Cannot connect to data source:\\n'.$DATA_SOURCE." using:".$uid." SQLCode:".$DBI::err."\n".db_escape($DBI::errstr).'"');
-        VIM::DoCommand("let g:dbext_dbi_result=-1");
-        return -1;
-    }
+    # db_debug('db_connected:checking if successful');
+    # if ( ! db_is_connected() ) {
+    #     db_set_vim_var('g:dbext_dbi_msg', "Cannot connect to data source:$DATA_SOURCE using:$uid SQLCode:".$DBI::err.":".db_escape($DBI::errstr));
+    #     db_set_vim_var("g:dbext_dbi_result", -1);
+    #     return -1;
+    # }
 
     my $trace_level = db_vim_eval("g:dbext_dbi_trace_level");
     if ( ! $trace_level eq "0" ) {
@@ -600,27 +777,31 @@ sub db_connect
     return 0;
 }
 
-db_set_vim_var('msg', '"db_disconnect"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_disconnect');
 sub db_disconnect
 {
     my $bufnr        = shift;
     my $conn_local;
+    my $driver;
 
-    VIM::DoCommand("let g:dbext_dbi_result='-1'");
+    db_set_vim_var('g:dbext_dbi_result', 0);
 
     if( ! defined($bufnr) ) {
-        db_debug('db_disconnect:looking up $bufnr');
+        db_debug('db_disconnect:$bufnr is undefined');
         $bufnr        = db_vim_eval("bufnr('%')");
+        db_debug("db_disconnect:looking up $bufnr");
     }
     db_debug('db_disconnect:checking for existing connection:'.$bufnr);
     if ( ! db_is_connected($bufnr) ) {
         return 0;
     }
 
-    $conn_local = db_get_connection($bufnr);
+    ($conn_local, $driver) = db_get_connection();
 
     if( ! defined($conn_local) ) {
         db_debug('db_disconnect:This should not have happened since this buffer was connected:'.$bufnr);
+        db_set_vim_var('g:dbext_dbi_result', -1);
+        db_set_vim_var('g:loaded_dbext_dbi_msg', "db_disconnect:This should not have happened since this buffer was connected:$bufnr");
         return -1;
     }
 
@@ -638,11 +819,11 @@ sub db_disconnect
     delete $connections{$bufnr};
     db_debug('db_disconnect:'.Dumper(%connections));
 
-    VIM::DoCommand("let g:dbext_dbi_result='1'");
+    db_set_vim_var('g:dbext_dbi_result', 1);
     return 0;
 }
 
-db_set_vim_var('msg', '"db_disconnect_all"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_disconnect_all');
 sub db_disconnect_all
 {
     my $conn_local;
@@ -660,44 +841,45 @@ sub db_disconnect_all
 }
 
 
-db_set_vim_var('msg', '"db_get_connection_option"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_get_connection_option');
 sub db_get_connection_option
 {
     my $option = shift;
     my $conn_local;
+    my $driver;
 
     $debug         = db_is_debug();
     if ( ! defined($option) ) {
         db_debug("An option and value must be specified");
-        VIM::DoCommand('let g:dbext_dbi_msg="An option must be specified"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_set_vim_var('g:dbext_dbi_msg', "An option must be specified");
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
 
     if ( ! db_is_connected() ) {
         db_debug("You are not connected to a database");
-        VIM::DoCommand('let g:dbext_dbi_msg="You are not connected to a database"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_set_vim_var('g:dbext_dbi_msg', "You are not connected to a database");
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
 
-    $conn_local = db_get_connection();
+    ($conn_local, $driver) = db_get_connection();
     if ( ! defined($conn_local->{$option}) ) {
         db_debug("Option[$option] does not exist");
-        VIM::DoCommand('let g:dbext_dbi_msg="Option['.$option.'] does not exist"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_set_vim_var('g:dbext_dbi_msg', "Option[".$option."] does not exist");
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
 
     # Use global connection object
     # This expecting a boolean value (ie AutoCommit)
-    VIM::DoCommand('let g:dbext_dbi_msg=""');
-    VIM::DoCommand('let g:dbext_dbi_result="'.$conn_local->{$option}.'"');
+    db_set_vim_var('g:dbext_dbi_msg', "");
+    db_set_vim_var('g:dbext_dbi_result', $conn_local->{$option});
     #    or die $DBI::errstr;
     return 0;
 }
 
-db_set_vim_var('msg', '"db_set_connection_option"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_set_connection_option');
 sub db_set_connection_option
 {
     my $option = shift;
@@ -708,25 +890,17 @@ sub db_set_connection_option
     $debug         = db_is_debug();
     if ( ! defined($option) || ! defined($value) ) {
         db_debug("Option and value must be specified");
-        VIM::DoCommand('let g:dbext_dbi_msg="Option and value must be specified"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_set_vim_var('g:dbext_dbi_msg', "Option and value must be specified");
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
 
     if ( ! db_is_connected() ) {
         db_debug("You are not connected to a database");
-        VIM::DoCommand('let g:dbext_dbi_msg="You are not connected to a database"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_set_vim_var('g:dbext_dbi_msg', "You are not connected to a database");
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
-
-    $conn_local = db_get_connection();
-    # if ( ! defined($conn_local->{$option}) ) {
-    #     db_debug("Option[$option] does not exist");
-    #     VIM::DoCommand('let g:dbext_dbi_msg="Option['.$option.'] does not exist"');
-    #     VIM::DoCommand('let g:dbext_dbi_result="-1"');
-    #     return -1;
-    # }
 
     # Use global connection object
     # This expecting a boolean value (ie AutoCommit)
@@ -734,14 +908,24 @@ sub db_set_connection_option
     #    or die $DBI::errstr;
 
     my $last_error_msg = '';
-    if ( defined($DBI::errstr) ) {
-        $last_error_msg = "Failed to set option[".$option."] Code[".$DBI::err."]  Error[".$DBI::errstr."]";
-        db_debug("db_set_connection_option:$last_error_msg");
-        VIM::DoCommand('let g:dbext_dbi_msg="'.$last_error_msg.'"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
-        return -1;
-    }
-    db_debug("ConnOpt: $option set to:".$conn_local->{$option}.$last_error_msg);
+    # db_echo( "db_set_connection_option:55:".DBI::err.":".DBI::errstr );
+    # if ( defined($DBI::err) && defined($DBI::errstr) ) {
+    #     if ( $DBI::err eq "" && ! $DBI::errstr eq "" ) {
+    #         # Informational message
+    #         db_set_vim_var('g:dbext_dbi_msg', "I. DBSCO:Setting option[".$option."] Info[".db_escape($DBI::errstr)."]");
+    #         db_set_vim_var('g:dbext_dbi_result', 1);
+    #     } elsif ( $DBI::err gt 0 && ! $DBI::errstr eq "" ) {
+    #         # Warning message
+    #         db_set_vim_var('g:dbext_dbi_msg', "W. DBSCO:Setting option[".$option."] Code[".$DBI::err."]  Warning[".db_escape($DBI::errstr)."]");
+    #         db_set_vim_var('g:dbext_dbi_result', 1);
+    #     } elsif ( ! $DBI::errstr eq "" ) {
+    #         # Error message
+    #         db_set_vim_var('g:dbext_dbi_msg', "E. DBSCO:Setting option[".$option."] Code[".$DBI::err."]  Error[".db_escape($DBI::errstr)."]");
+    #         db_set_vim_var('g:dbext_dbi_result', -1);
+    #         return -1;
+    #     }
+    # }
+    # db_debug("ConnOpt: $option set to:".$conn_local->{$option}.$last_error_msg);
 
     if ( $option eq 'AutoCommit' ) {
         $connections{$bufnr}->{AutoCommit} = $value;
@@ -751,65 +935,106 @@ sub db_set_connection_option
         $connections{$bufnr}->{'CommitOnDisconnect'} = $value;
     }
 
-    VIM::DoCommand('let g:dbext_dbi_msg=""');
-    VIM::DoCommand('let g:dbext_dbi_result="1"');
+    db_set_vim_var('g:dbext_dbi_msg', "");
+    db_set_vim_var('g:dbext_dbi_result', "1");
     return 0;
 }
 
-db_set_vim_var('msg', '"db_query"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_query');
 sub db_query 
 {
     my $sql = shift;
     my $conn_local;
+    my $driver = '';
     if ( ! defined($sql) ) {
         $sql = '';
     }
 
     $debug         = db_is_debug();
-    db_debug("db_query:SQL:".$sql);
+    # db_debug("db_query:SQL:".$sql);
     if ( length($sql) == 0 ) {
         $sql       = db_vim_eval('g:dbext_dbi_sql');
         db_debug("db_query:SQL after eval:".$sql);
     }
     if ( length($sql) == 0 ) {
-        VIM::DoCommand("let g:dbext_dbi_result=-1");
-        VIM::DoCommand("let g:dbext_dbi_msg='No statement to exeucte'");
+        db_set_vim_var("g:dbext_dbi_result", -1);
+        db_set_vim_var("g:dbext_dbi_msg", 'No statement to exeucte');
         return -1;
     }
     if ( ! db_is_connected() ) {
         db_debug("db_query:You must connect first");
-        VIM::DoCommand("let g:dbext_dbi_result=-1");
-        VIM::DoCommand("let g:dbext_dbi_msg='You must connect first'");
+        db_set_vim_var("g:dbext_dbi_result", -1);
+        db_set_vim_var("g:dbext_dbi_msg", 'You must connect first');
         return -1;
     }
  
-    $conn_local = db_get_connection();
+    ($conn_local, $driver) = db_get_connection();
     my $sth = undef;
-    my $sel = $sql;
-    $sth = $conn_local->prepare( $sel );
-    db_debug("db_query:prepared:".$sql);
-    if ( ! $DBI::errstr eq "" ) {
-        $result_msg='SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr);
-        VIM::DoCommand('let g:dbext_dbi_msg="'.$result_msg.'"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
-        return -1;
+    $sth = $conn_local->prepare( $sql );
+    # db_echo( "db_query:25".DBI::errstr );
+    # db_debug("db_query:prepared:".$sql);
+    # It is possible for an error to occur only when fetching data.
+    # This will capture the error and report it.
+    # if ( defined($DBI::err) && defined($DBI::errstr) ) {
+    #     if ( $DBI::err eq "" && ! $DBI::errstr eq "" ) {
+    #         # Informational message
+    #         db_set_vim_var('g:dbext_dbi_msg', 'I. DBQp:'.db_escape($DBI::errstr));
+    #     } elsif ( $DBI::err gt 0 && ! $DBI::errstr eq "" ) {
+    #         # Warning message
+    #         db_set_vim_var('g:dbext_dbi_msg', 'W. DBQp:SQLCode:'.$DBI::err.":".db_escape($DBI::errstr).":".db_escape($DBI::state));
+    #         db_debug("db_query:$result_msg");
+    #     } elsif ( ! $DBI::errstr eq "" ) {
+    #         # Error message
+    #         db_set_vim_var('g:dbext_dbi_msg', 'E. DBQp:SQLCode:'.$DBI::err.":".db_escape($DBI::errstr).":".db_escape($DBI::state));
+    #         db_set_vim_var('g:dbext_dbi_result', -1);
+    #         db_debug("db_query:$result_msg - exiting");
+    #         return -1;
+    #     }
+    # }
+
+    my( $level, $err, $msg, $state ) = db_check_error($driver);
+    if ( ! $msg eq "" ) {
+        $msg = "$level. DBQp:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"");
+        db_set_vim_var('g:dbext_dbi_msg', $msg);
+        if ( $level eq "E" ) {
+            db_set_vim_var('g:dbext_dbi_result', -1);
+            db_debug("db_query:$msg - exiting");
+            return -1;
+        }
     }
+
 
     $sth->execute;
     db_debug("db_query:executed:".$sql);
-    if ( ! $DBI::errstr eq "" ) {
-        $result_msg='SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr);
-        db_debug("db_query:$result_msg");
-        VIM::DoCommand('let g:dbext_dbi_msg="'.$result_msg.'"');
+    ( $level, $err, $msg, $state ) = db_check_error($driver);
+    if ( ! $msg eq "" ) {
+        $msg = "$level. DBQe:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"");
+        db_set_vim_var('g:dbext_dbi_msg', $msg);
+        if ( $level eq "E" ) {
+            db_set_vim_var('g:dbext_dbi_result', -1);
+            db_debug("db_query:$msg - exiting");
+            return -1;
+        }
     }
-    # Allow warnings to continue execution
-    if ( $DBI::err < 0 ) {
-        $result_msg='SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr);
-        db_debug("db_query:$result_msg - exiting");
-        VIM::DoCommand('let g:dbext_dbi_msg="'.$result_msg.'"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
-        return -1;
-    }
+
+    # It is possible for an error to occur only when fetching data.
+    # This will capture the error and report it.
+    # if ( defined($DBI::err) && defined($DBI::errstr) ) {
+    #     if ( $DBI::err eq "" && ! $DBI::errstr eq "" ) {
+    #         # Informational message
+    #         db_set_vim_var('g:dbext_dbi_msg', 'I. DBQe:'.db_escape($DBI::errstr));
+    #     } elsif ( $DBI::err gt 0 && ! $DBI::errstr eq "" ) {
+    #         # Warning message
+    #         db_set_vim_var('g:dbext_dbi_msg', 'W. DBQe:SQLCode:'.$DBI::err.":".db_escape($DBI::errstr).":".db_escape($DBI::state));
+    #         db_debug("db_query:$result_msg");
+    #     } elsif ( ! $DBI::errstr eq "" ) {
+    #         # Error message
+    #         db_set_vim_var('g:dbext_dbi_msg', 'E. DBQe:SQLCode:'.$DBI::err.":".db_escape($DBI::errstr).":".db_escape($DBI::state));
+    #         db_set_vim_var('g:dbext_dbi_result', -1);
+    #         db_debug("db_query:$result_msg - exiting");
+    #         return -1;
+    #     }
+    # }
 
     db_format_results( $sth );
 
@@ -818,25 +1043,23 @@ sub db_query
     return 0;
 }
 
-db_set_vim_var('msg', '"db_format_results"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_format_results');
 sub db_format_results 
 {
     my $sth = shift;
-
-    # if ( ! $DBI::errstr eq "" ) {
-    #     VIM::DoCommand('let g:dbext_dbi_msg="SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr).'"');
-    #     VIM::DoCommand('let g:dbext_dbi_result="-1"');
-    #     return -1;
-    # }
 
     my $i = 0;
     my $row_count = 0;
     my $max_col_width = 0;
     my $temp_length = 0;
     my $more_results;
+    my $conn_local;
+    my $driver;
     my @col_length;
     my @table;
     my @headers;
+
+    ($conn_local, $driver) = db_get_connection();
 
     # Check if the NUM_OF_FIELDS is > 0.
     # In mysql a COMMIT does not provide a result set.
@@ -873,29 +1096,46 @@ sub db_format_results
                 last;
             }
         }
-        # It is possible for an error to occur only when fetching data.
-        # This will capture the error and report it.
-        if ( ! $DBI::errstr eq "" ) {
-            $result_msg='SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr);
-            VIM::DoCommand('let g:dbext_dbi_msg="'.$result_msg.'"');
-            db_debug("db_format_array:$result_msg");
-        }
         # Allow warnings to continue execution
-        if ( $DBI::err < 0 ) {
-            $result_msg='SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr);
-            VIM::DoCommand('let g:dbext_dbi_msg="'.$result_msg.'"');
-            db_debug("db_format_array:$result_msg - exiting");
-            VIM::DoCommand('let g:dbext_dbi_result="-1"');
-            return -1;
+        # if ( defined($DBI::err) && defined($DBI::errstr) ) {
+        #     if ( $DBI::err eq "" && ! $DBI::errstr eq "" ) {
+        #         $result_msg='SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr);
+        #         db_set_vim_var('g:dbext_dbi_msg', $result_msg);
+        #         db_debug("db_format_results:$result_msg");
+        #     } elsif ( $DBI::err gt 0 && ! $DBI::errstr eq "" ) {
+        #         $result_msg='SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr);
+        #         db_set_vim_var('g:dbext_dbi_msg', $result_msg);
+        #         db_debug("db_format_results:$result_msg - warnings");
+        #     } elsif ( ! $DBI::errstr eq "" ) {
+        #         $result_msg='SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr);
+        #         db_set_vim_var('g:dbext_dbi_msg', $result_msg);
+        #         db_debug("db_format_results:$result_msg - exiting");
+        #         db_set_vim_var('g:dbext_dbi_result', -1);
+        #         return -1;
+        #     }
+        # }
+        my( $level, $err, $msg, $state ) = db_check_error($driver);
+        if ( ! $msg eq "" ) {
+            $msg = "$level. DBfr:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"");
+            db_set_vim_var('g:dbext_dbi_msg', $msg);
+            if ( $level eq "E" ) {
+                db_set_vim_var('g:dbext_dbi_result', -1);
+                db_debug("db_format_results:$msg - exiting");
+                return -1;
+            }
         }
 
-        $more_results = $sth->{more_results};
-
-        db_debug("sqlanywhere_more_results:".(defined($sth->{sqlanywhere_more_results})?$sth->{sqlanywhere_more_results}:''));
-        if ( $more_results ) {
-            db_debug("more_results:true");
+        if( $driver eq "ODBC" ) {
+            $more_results = $sth->{odbc_more_results};
         } else {
-            db_debug("more_results:false");
+            $more_results = $sth->{more_results};
+        }
+
+        db_debug("more_results:".(defined($more_results)?$more_results:''));
+        if ( $more_results ) {
+            db_debug("db_format_results: more_results:true");
+        } else {
+            db_debug("db_format_results: more_results:false");
         }
     }
 
@@ -907,9 +1147,9 @@ sub db_format_results
     @result_col_length    = @col_length;
     $result_max_col_width = $max_col_width;
 
-    db_debug("H:".Dumper(@result_headers));
-    db_debug("R:".Dumper(@result_set));
-    db_debug('db_format_results:result_set:'.Dumper(@result_set));
+    db_debug("db_format_results H:".Dumper(@result_headers));
+    db_debug('db_format_results:R count:'.length(@result_set));
+    db_debug("db_format_results R:".Dumper(@result_set));
     db_format_array();
 
     # Setting the dbext_dbi_result variable to DBI: instructs
@@ -918,48 +1158,67 @@ sub db_format_results
     my $result   = "DBI:";
     if ( defined($result) ) {
         db_debug("db_format_results:Setting result to:$result");
-        VIM::DoCommand('let g:dbext_dbi_result="'.$result.'"');
+        db_set_vim_var('g:dbext_dbi_result', $result);
     } else {
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_debug("db_format_results:returning -1");
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
 
+    db_debug("db_format_results:returning 0");
     return 0;
 }
 
-db_set_vim_var('msg', '"db_format_array"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_format_array');
 sub db_format_array()
 {
     # For each row returned concatenate the columns together
     my $result   = "DBI:";
     my $fragment = "";
     my $i;
+    my $val;
+    db_debug( "db_format_array:".$result );
+    $result = $result . db_vim_eval('g:dbext_dbi_msg');
+    db_debug( "db_format_array: Finished with dbext_dbi_msg:".length($result) );
     # print Dumper( @result_set);
-    db_debug( "db_format_results:".$result );
+    db_debug( "db_format_array: printing result" );
+    db_debug( "db_format_array:".$result );
+    db_debug( "db_format_array: finished result" );
     foreach my $row2 ( @result_set ) {
         $i = 0;
+        db_debug( "db_format_array: i:$i" );
         $fragment = "";
         # Ensure each column is the maximum width for the column by
         # blank padding each string.
         # Add an additional 3 spaces between columns.
         foreach my $col2 ( @{$row2} ) {
-            $fragment = substr ((defined($col2)?$col2:"NULL").(' ' x $result_col_length[$i]), 0, $result_col_length[$i]);
+            $val = (defined($col2)?$col2:"NULL");
+            # Remove any unprintable characters 
+            $val =~ tr/\x80-\xFF/ /d;
+            # Remove the NULL character since Vim will treat this as 
+            # the end of the line
+            # For more of these see:
+            #    http://www.asciitable.com/
+            $val =~ tr/\x00/ /d;
+            $fragment = substr ($val.(' ' x $result_col_length[$i]), 0, $result_col_length[$i]);
             $col2 = $fragment;
             $i++;
         }
         # Finally, escape any double quotes with a preceeding slash
-        $result = db_escape($result) . "\n";
+        # $result = db_escape($result) . "\n";
+        # RIGHT HERE, SOMETHING WITHT THE ESCAPE
+        $result = $result . "\n";
     }
     db_debug('db_format_array:result_set:'.Dumper(@result_set));
 
     return 0;
 }
 
-db_set_vim_var('msg', '"db_print_results"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_print_results');
 sub db_print_results 
 {
     my $format = shift;
-    my $last_line = $main::curbuf->Count();
+    my $last_line = db_vim_op("Count");
     my $row_count = 0;
     my $i = 0;
     my $line = "";
@@ -969,13 +1228,18 @@ sub db_print_results
     if ( ! defined($format) ) {
         $format = "horizontal";
     }
-    # db_echo("db_print_results: $format");
+    db_debug("db_print_results: $format");
 
-    if ( ! $result_msg eq "" ) {
-        db_vim_print($last_line, $result_msg);
-        $result_msg    = "";
-        $last_line++;
+    my $msg = db_vim_eval('g:dbext_dbi_msg');
+    if ( ! $msg eq "" ) {
+        db_debug("db_print_results: Adding msg to output: $msg");
+        db_vim_print($last_line, $msg);
+        $msg    = "";
+        $last_line = db_vim_op("Count");
     }
+    db_set_vim_var('g:dbext_dbi_msg', '');
+
+    db_debug("db_print_results: Using format: $format");
     if ( $format eq "horizontal" ) {
         # Print column names
         foreach my $row2 ( @result_headers ) {
@@ -998,6 +1262,7 @@ sub db_print_results
         # largest column value
         $i = 0;
         $line = "";
+        db_debug("db_print_results: Horizontal, looping for col_length");
         while ($i < scalar(@result_col_length) ) {
             $line .= '-' x $result_col_length[$i].$col_sep_vert;
             $i++;
@@ -1021,6 +1286,7 @@ sub db_print_results
         my $col_nbr = 0;
         my $max_col_width = $result_max_col_width + 1;
         $i = 0;
+        db_debug("db_print_results: Vertical, looping for col_length");
         while ($i < scalar(@result_col_length) ) {
             $fragment = "";
             $col_name = (defined($result_headers[0][$i])?$result_headers[0][$i]:"");
@@ -1052,10 +1318,11 @@ sub db_print_results
         }
     }
     db_vim_print($last_line, "(".scalar(@result_set)." rows)");
+    db_debug("db_print_results: returning 0");
     return 0;
 }
 
-db_set_vim_var('msg', '"db_results_variable"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_results_variable');
 sub db_results_variable
 {
     my $format = shift;
@@ -1071,10 +1338,12 @@ sub db_results_variable
     }
     # db_echo("db_print_results: $format");
 
-    if ( ! $result_msg eq "" ) {
-        $result .= db_escape($result_msg)."\n";
-        $result_msg    = "";
+    my $msg = db_vim_eval('g:dbext_dbi_msg');
+    if ( ! $msg eq "" ) {
+        $result .= db_escape($msg)."\n";
     }
+    db_set_vim_var('g:dbext_dbi_msg', '');
+
     if ( $format eq "horizontal" ) {
         # Print column names
         foreach my $row2 ( @result_headers ) {
@@ -1147,16 +1416,16 @@ sub db_results_variable
 
     if ( defined($result) ) {
         db_debug("db_format_results:Setting result to:$result");
-        VIM::DoCommand('let g:dbext_dbi_result="'.$result.'"');
+        db_set_vim_var('g:dbext_dbi_result', $result);
     } else {
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
 
     return 0;
 }
 
-db_set_vim_var('msg', '"db_results_list"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_results_list');
 sub db_results_list
 {
     my $show_headers = shift;
@@ -1176,7 +1445,7 @@ sub db_results_list
     }
     # db_echo("db_print_results: $format");
 
-    VIM::DoCommand('let g:dbext_dbi_result=[]');
+    db_set_vim_var('g:dbext_dbi_result', '[]');
     if ( $format eq "horizontal" ) {
         # Print column names
         if ( $show_headers == 1 ) {
@@ -1188,7 +1457,8 @@ sub db_results_list
                 $line = 'call add(g:dbext_dbi_result, ['.$line.']';
                 # Escape any double quotes with a preceeding slash
                 $line = db_escape($line)."\n";
-                VIM::DoCommand($line);;
+                # VIM::DoCommand($line);
+                db_vim_op("call", $line);
             }
         }
 
@@ -1201,7 +1471,8 @@ sub db_results_list
             $line = 'call add(g:dbext_dbi_result, ['.$line.']';
             # Escape any double quotes with a preceeding slash
             $line = db_escape($line)."\n";
-            VIM::DoCommand($line);;
+            # VIM::DoCommand($line);
+            db_vim_op("call", $line);
         }
     } else {
         my @formatted_headers;
@@ -1238,7 +1509,7 @@ sub db_results_list
     return 0;
 }
 
-db_set_vim_var('msg', '"db_catalogue"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_catalogue');
 sub db_catalogue 
 {
     my $request_type = shift;
@@ -1248,22 +1519,27 @@ sub db_catalogue
     my $schema       = undef;
     my $table        = undef;
     my $column       = '%';
+    my $level;
+    my $err;
+    my $msg;
+    my $state;
     my $conn_local;
+    my $driver;
 
     # $debug         = db_is_debug();
     if ( length($request_type) == 0 ) {
-        VIM::DoCommand('let g:dbext_dbi_msg="A request_type must be specified"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_set_vim_var('g:dbext_dbi_msg', 'A request_type must be specified');
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
     if ( ! db_is_connected() ) {
         db_debug("You must connect first");
-        VIM::DoCommand('let g:dbext_dbi_msg="You are not connected to a database"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_set_vim_var('g:dbext_dbi_msg', 'You are not connected to a database');
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
 
-    $conn_local = db_get_connection();
+    ($conn_local, $driver) = db_get_connection();
     my $sth = undef;
 
     if ( $request_type eq 'TABLE' || $request_type eq 'VIEW' ) {
@@ -1296,29 +1572,44 @@ sub db_catalogue
     
     if ($@) {
         db_debug("db_catalogue statement error for request type:$request_type\n".db_escape($@));
-        VIM::DoCommand('let g:dbext_dbi_msg="Invalid statement for request type:'.$request_type."\n".db_escape($@).'"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_set_vim_var('g:dbext_dbi_msg', 'Invalid statement for request type:'.$request_type.":".db_escape($@));
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
     if ( defined($sth) ) {
         db_debug("db_catalogue statement is defined");
         $sth->execute;
+        ( $level, $err, $msg, $state ) = db_check_error($driver);
+        if ( ! $msg eq "" ) {
+            $msg = "$level. DBcate:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"");
+            db_set_vim_var('g:dbext_dbi_msg', $msg);
+            if ( $level eq "E" ) {
+                db_set_vim_var('g:dbext_dbi_result', -1);
+                db_debug("db_catalogue:$msg - exiting");
+                return -1;
+            }
+        }
         db_format_results( $sth );
     } else {
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
-        if ( ! $DBI::errstr eq "" ) {
-            VIM::DoCommand('let g:dbext_dbi_msg="SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr).'"');
-        } else {
-            VIM::DoCommand('let g:dbext_dbi_msg="Statement failed, request_type:'.$request_type.'"');
+        db_set_vim_var('g:dbext_dbi_result', -1);
+        ( $level, $err, $msg, $state ) = db_check_error($driver);
+        if ( ! $msg eq "" ) {
+            $msg = "$level. DBcats:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"");
+            db_set_vim_var('g:dbext_dbi_msg', $msg);
+            if ( $level eq "E" ) {
+                db_set_vim_var('g:dbext_dbi_result', -1);
+                db_debug("db_catalogue:$msg - exiting");
+                return -1;
+            }
         }
-        db_debug("db_catalogue statement failed:".$DBI::err.":".$DBI::errstr);
+        db_debug("db_catalogue statement failed:".$DBI::err.":".db_escape($DBI::errstr));
         return -1;
     }
 
     return 0;
 }
 
-db_set_vim_var('msg', '"db_odbc_catalogue"');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_odbc_catalogue');
 sub db_odbc_catalogue 
 {
     # A reference page for some of the function available can be found here:
@@ -1332,22 +1623,23 @@ sub db_odbc_catalogue
     my $table        = undef;
     my $column       = '%';
     my $conn_local;
+    my $driver;
 
     # $debug         = db_is_debug();
     if ( length($request_type) == 0 ) {
         db_debug("db_odbc_catalogue: A request type must be specified");
-        VIM::DoCommand('let g:dbext_dbi_msg="A request_type must be specified"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_set_vim_var('g:dbext_dbi_msg', 'A request_type must be specified');
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
     if ( ! db_is_connected() ) {
         db_debug("db_odbc_catalogue: You are not connected to a database");
-        VIM::DoCommand('let g:dbext_dbi_msg="You are not connected to a database"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_set_vim_var('g:dbext_dbi_msg', 'You are not connected to a database');
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
 
-    $conn_local = db_get_connection();
+    ($conn_local, $driver) = db_get_connection();
     my $sth = undef;
 
     if ( $request_type eq 'TABLE' || $request_type eq 'VIEW' ) {
@@ -1387,8 +1679,8 @@ sub db_odbc_catalogue
     
     if ($@) {
         db_debug("db_odbc_catalogue statement error for request type:$request_type\n".db_escape($@));
-        VIM::DoCommand('let g:dbext_dbi_msg="Invalid statement for request type:'.$request_type."\n".db_escape($@).'"');
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
+        db_set_vim_var('g:dbext_dbi_msg', 'Invalid statement for request type:'.$request_type.":".db_escape($@));
+        db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
     if ( defined($sth) ) {
@@ -1398,13 +1690,17 @@ sub db_odbc_catalogue
         # $sth->execute;
         db_format_results( $sth );
     } else {
-        VIM::DoCommand('let g:dbext_dbi_result="-1"');
-        if ( ! $DBI::errstr eq "" ) {
-            VIM::DoCommand('let g:dbext_dbi_msg="SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr).'"');
-        } else {
-            VIM::DoCommand('let g:dbext_dbi_msg="Statement failed, request_type:'.$request_type.'"');
+        db_set_vim_var('g:dbext_dbi_result', -1);
+        my ( $level, $err, $msg, $state ) = db_check_error($driver);
+        if ( ! $msg eq "" ) {
+            $msg = "$level. DBOcat:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"");
+            db_set_vim_var('g:dbext_dbi_msg', $msg);
+            if ( $level eq "E" ) {
+                db_set_vim_var('g:dbext_dbi_result', -1);
+                db_debug("db_odbc_catalogue:$msg - exiting");
+                return -1;
+            }
         }
-        db_debug("db_odbc_catalogue statement failed:".$DBI::err.":".$DBI::errstr);
         return -1;
     }
 
@@ -1412,8 +1708,10 @@ sub db_odbc_catalogue
     return 0;
 }
 db_get_defaults();
-db_set_vim_var('msg', '"Perl subroutines ready"');
-db_set_vim_var('result', '""');
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'Perl subroutines ready');
+db_set_vim_var('result', '');
+db_vim_check_inside();
+db_set_vim_var('g:dbext_dbi_inside', $inside_vim);
 
 EOCore
 

@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2008 Aug 09
+*dbext.txt*	For Vim version 7.0.  Last change: 2008 Sep 20
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki <petike1 at dpg dot hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 6.20
+	  	dbext.vim version 7.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -78,6 +78,25 @@ David Fishburn
 
 ==============================================================================
 2. What's New						*dbext-new*
+
+Version 7.00
+
+ New Features
+ ------------
+ - Large change between how the error handling between DBI and ODBC 
+   connections were reported and displayed.
+ - Non-printable characters are now dealt with for DBI and ODBC
+   connections.
+
+ Bug Fixes
+ ---------
+ - Using ODBC to connect to SQL Server did not handle informational
+   messages appropriately, leading to "not connected" messages
+   (Albie Janse van Rensburg).
+ - When executing SQL if you were prompted for a variable replacement 
+   and cancelled the query the dbext history window was displayed 
+   instead of returning to the buffer.
+
 
 Version 6.20
 
@@ -1084,8 +1103,12 @@ Version 2.00
           automatically committed by the DBI layer.  If you wish to be
           able to rollback any changes, you can add the AutoCommit=0
           to your driver line.  The commands :DBCommit and :DBRollback 
-          can be used to control the transaction. >
+          can be used to control the transaction.
+        - By default the DBI and ODBC interface will only retrieve the
+          first 500 characters of a BLOB.  You can increase this value
+          by specifying the LongReadLen on the connection string: >
               DBSetOption driver_parms=AutoCommit=0
+              DBSetOption driver_parms=AutoCommit=0;LongReadLen=1000
     bin_path
 <       - If tools provided by the database are not in the path, you can 
           optionally supply full path to the binaries.  This is also useful

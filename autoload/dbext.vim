@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       6.20
+" Version:       7.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2008 Aug 09
+" Last Modified: 2008 Sep 16
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -37,7 +37,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 620
+let g:loaded_dbext_auto = 700
 
 " call confirm("Loaded dbext autoload", "&Ok")
 " Script variable defaults, these are used internal and are never displayed
@@ -3468,7 +3468,7 @@ function! s:DB_DBI_getListColumn(table_name)
 
     perl db_results_variable()
 
-    let col_names  = matchstr(g:dbext_dbi_result,'DBI:\zsTABLE_CAT.\{-}\ze\n')
+    let col_names  = matchstr(g:dbext_dbi_result,'DBI:.\{-}\zsTABLE_CAT.\{-}\ze\n')
     let col_values = matchstr(g:dbext_dbi_result,'\n-[ -]*\zs\n.*')
     " Strip off query statistics
     let col_values = substitute( col_values, '(\d\+ rows\_.*', '', '' )
@@ -3646,7 +3646,7 @@ function! s:DB_DBI_getDictionaryTable() "{{{
         return -1
     endif
 
-    let col_names  = matchstr(g:dbext_dbi_result,'DBI:\zsTABLE_CAT.\{-}\ze\n')
+    let col_names  = matchstr(g:dbext_dbi_result,'DBI:.\{-}\zsTABLE_CAT.\{-}\ze\n')
     let col_values = matchstr(g:dbext_dbi_result,'\n-[ -]*\zs\n.*')
     " Strip off query statistics
     let col_values = substitute( col_values, '(\d\+ rows\_.*', '', '' )
@@ -3782,7 +3782,7 @@ function! s:DB_DBI_getDictionaryView() "{{{
     " Populate the results variable
     perl db_results_variable()
 
-    let col_names  = matchstr(g:dbext_dbi_result,'DBI:\zsTABLE_CAT.\{-}\ze\n')
+    let col_names  = matchstr(g:dbext_dbi_result,'DBI:.\{-}\zsTABLE_CAT.\{-}\ze\n')
     let col_values = matchstr(g:dbext_dbi_result,'\n-[ -]*\zs\n.*')
     " Strip off query statistics
     let col_values = substitute( col_values, '(\d\+ rows\_.*', '', '' )
@@ -4035,7 +4035,7 @@ function! s:DB_ODBC_getListColumn(table_name)
 
     perl db_results_variable()
 
-    let col_names  = matchstr(g:dbext_dbi_result,'DBI:\zsTABLE_CAT.\{-}\ze\n')
+    let col_names  = matchstr(g:dbext_dbi_result,'DBI:.\{-}\zsTABLE_CAT.\{-}\ze\n')
     let col_values = matchstr(g:dbext_dbi_result,'\n-[ -]*\zs\n.*')
     " Strip off query statistics
     let col_values = substitute( col_values, '(\d\+ rows\_.*', '', '' )
@@ -4222,7 +4222,7 @@ function! s:DB_ODBC_getDictionaryTable() "{{{
 
     perl db_results_variable()
 
-    let col_names  = matchstr(g:dbext_dbi_result,'DBI:\zsTABLE_CAT.\{-}\ze\n')
+    let col_names  = matchstr(g:dbext_dbi_result,'DBI:.\{-}\zsTABLE_CAT.\{-}\ze\n')
     let col_values = matchstr(g:dbext_dbi_result,'\n-[ -]*\zs\n.*')
     " Strip off query statistics
     let col_values = substitute( col_values, '(\d\+ rows\_.*', '', '' )
@@ -4375,7 +4375,7 @@ function! s:DB_ODBC_getDictionaryView() "{{{
 
     perl db_results_variable()
 
-    let col_names  = matchstr(g:dbext_dbi_result,'DBI:\zsTABLE_CAT.\{-}\ze\n')
+    let col_names  = matchstr(g:dbext_dbi_result,'DBI:.\{-}\zsTABLE_CAT.\{-}\ze\n')
     let col_values = matchstr(g:dbext_dbi_result,'\n-[ -]*\zs\n.*')
     " Strip off query statistics
     let col_values = substitute( col_values, '(\d\+ rows\_.*', '', '' )
@@ -4486,6 +4486,11 @@ function! dbext#DB_execSql(query)
     
     if query != ""
         return dbext#DB_execFuncTypeWCheck('execSql', query)
+    else
+       " If the query was cancelled, close the history 
+       " window which was opened when we added the 
+       " query above.
+        call dbext#DB_windowClose(s:DB_resBufName())
     endif
 endfunction
 
@@ -6894,9 +6899,12 @@ function! dbext#DB_connect()
     endif
     let cmd = "perl db_connect('".driver."', '".conn_parms."', '".user."', '".passwd."')"
     exec cmd
-    if g:dbext_dbi_result == -1
+    if g:dbext_dbi_result == -1 
         call s:DB_runCmd("perl ".driver, cmd, g:dbext_dbi_msg)
         return -1
+    endif
+    if g:dbext_dbi_msg != ''
+        call s:DB_runCmd("perl ".driver, cmd, g:dbext_dbi_msg)
     endif
 
     let parmlist = split(driver_parms, ';')
@@ -6920,119 +6928,6 @@ function! dbext#DB_connect()
             return -1
         endif
 	endfor
-
-    return 0
-endfunction 
-
-function! dbext#DB_connectOld()
-    " Only valid for DBI and ODBC (perl)
-    let type = s:DB_get('type')
-    if (type !~ '\<DBI\>\|\<ODBC\>') 
-        call s:DB_warningMsg(
-                    \ "dbext:Connect and Disconnect functionality only available ".
-                    \ "when using the DBI or ODBC interfaces"
-                    \ )
-        return -1
-    endif
-
-    if (type =~ '\<ODBC\>') 
-        let driver       = 'ODBC'
-        let conn_parms   = s:DB_get("dsnname")
-    else
-        let driver       = s:DB_get('driver')
-        let conn_parms   = s:DB_get("conn_parms")
-    endif
-    " Ensure the dbext_dbi plugin is loaded
-    if s:DB_DBI_Autoload() == -1
-        return -1
-    endif
-
-    let cmd = "perl db_is_connected()"
-    exec cmd
-    if g:dbext_dbi_result == -1
-        call s:DB_runCmd("perl ".driver, cmd, g:dbext_dbi_msg)
-        return -1
-    endif
-
-    " Each time we issue a connect, set the max rows, this
-    " will ensure it is updated each time the user 
-    " interacts with this layer.
-    let g:dbext_dbi_max_rows = s:DB_get('DBI_max_rows')
-
-    if g:dbext_dbi_result == 1
-        " call s:DB_warningMsg("DB_Connected: already connected")
-        return 0
-    endif
-
-    let user         = s:DB_get("user")
-    let passwd       = s:DB_get("passwd")
-    let driver_parms = s:DB_get("driver_parms")
-    if (type =~ '\<ODBC\>') 
-        let driver       = 'ODBC'
-        let conn_parms   = s:DB_get("dsnname")
-    else
-        let driver       = s:DB_get('driver')
-        let conn_parms   = s:DB_get("conn_parms")
-    endif
-    let cmd = "perl db_connect('".driver."', '".conn_parms."', '".user."', '".passwd."')"
-    exec cmd
-    if g:dbext_dbi_result == -1
-        call s:DB_runCmd("perl ".driver, cmd, g:dbext_dbi_msg)
-        return -1
-    endif
-
-    " The driver parameters can be user defined.
-    " They must be semi-colon separated in this format:
-    "     AutoCommit=1;PrintError=0
-    let str = driver_parms
-    let exp_find_str = ';'
-    if str != ""
-        " Find the string index position of the first match
-        let index = match(str, exp_find_str)
-        while index > -1
-            " First loop through pulling each item prior to
-            " a semi-colon off and then set the option.
-            " (var, value) = substitute ('Autocommit=1;p=2', '^\(\w\+\)\s*=\s*\(\w\+\).*', '\1\2', '')
-            " Retrieve the name of what we found
-            let var   = matchstr(str, '^\w\+\ze\s*=.*\%'.(index+1).'c')
-            let value = matchstr(str, '^\w\+\s*=\s*\zs.*\%'.(index+1).'c')
-
-            if var == ""
-                call s:DB_warningMsg("Invalid driver parameters, format expected is:AutoCommit=1;PrintWarn=0")
-                return -1
-            endif
-
-            let cmd = "perl db_set_connection_option('".var."', '".value."')"
-            exec cmd
-            if g:dbext_dbi_result == -1
-                call s:DB_runCmd("perl ".driver, cmd, g:dbext_dbi_msg)
-                return -1
-            endif
-
-            let str   = strpart(str, index+1)
-            let index = match(str, exp_find_str)
-        endwhile
-
-        " Next deal with the remainder of the string that does not
-        " end in a semi-colon.
-        if str != ""
-            " Retrieve the name of what we found
-            let var   = matchstr(str, '^\w\+\ze\s*=')
-            let value = matchstr(str, '^\w\+\s*=\s*\zs.*')
-
-            if var == ""
-                call s:DB_warningMsg("Invalid driver parameters, format expected is:AutoCommit=1;PrintWarn=0")
-                return -1
-            endif
-
-            let cmd = "perl db_set_connection_option('".var."', '".value."')"
-            exec cmd
-            if g:dbext_dbi_result == -1
-                call s:DB_runCmd("perl ".driver, cmd, g:dbext_dbi_msg)
-                return -1
-            endif
-        endif
-    endif
 
     return 0
 endfunction 
@@ -7070,10 +6965,6 @@ function! dbext#DB_disconnect()
     endif
 
     perl db_disconnect()
-    if g:dbext_dbi_result == -1
-        call s:DB_runCmd("perl ".driver, "DISCONNECT", g:dbext_dbi_msg)
-        return -1
-    endif
 
     return 0
 endfunction 
