@@ -4,10 +4,10 @@
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       7.00
+" Version:       8.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2008 Sep 03
+" Last Modified: 2008 Oct 23
 " Created:       2007-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 "
@@ -114,7 +114,7 @@ if !has('perl')
     let g:loaded_dbext_dbi_msg = 'Vim does not have perl support enabled'
     finish
 endif
-let g:loaded_dbext_dbi = 700
+let g:loaded_dbext_dbi = 800
 
 if !exists("dbext_dbi_debug")
    let g:dbext_dbi_debug = 0
@@ -192,7 +192,6 @@ sub db_set_vim_var
 {
     my $var_name = shift;
     my $string   = shift;
-    # my $let      = ('let '.$var_name.'="'.$string.'"');
     my $let      = ('let '.$var_name.'="'.db_escape($string).'"');
     if( $inside_vim ) {
         # db_echo('db_set_vim_var:'.$let);
@@ -423,7 +422,7 @@ sub db_list_connections
     my @col_length;
     my $max_col_width = 0;
     my $i = 0;
-    my @headers = [ ("Buffer", "Driver", "AutoCommit", "CommitOnDisconnect", "Connection Parameters") ];
+    my @headers = [ ("Buffer", "Driver", "AutoCommit", "CommitOnDisconnect", "Connection Parameters", "LongReadLen") ];
     
     db_set_vim_var("g:dbext_dbi_msg", '');
     foreach my $row2 ( @headers ) {
@@ -445,9 +444,10 @@ sub db_list_connections
         foreach my $bufnr ( keys %connections ) {
             @row = ($bufnr
                     , $connections{$bufnr}->{'driver'}
-                    , $connections{$bufnr}->{'AutoCommit'}
+                    , $connections{$bufnr}->{'conn'}->{'AutoCommit'}
                     , $connections{$bufnr}->{'CommitOnDisconnect'}
                     , $connections{$bufnr}->{'params'}
+                    , $connections{$bufnr}->{'conn'}->{'LongReadLen'}
                     );
             push @table, [ @row ]; 
             $i = 0;
@@ -468,7 +468,7 @@ sub db_list_connections
 
     if ( keys(%connections) == 0 )
     {
-        push @result_set, [ ("There are no active DBI connections", "", "", "", "") ];
+        push @result_set, [ ("There are no active DBI connections", "", "", "", "", "") ];
     } 
     db_debug('db_list_connections:final:'.Dumper(@result_set));
     # TODO 
@@ -761,6 +761,7 @@ sub db_connect
                            ,'params'             => $conn_parms
                            ,'AutoCommit'         => 1
                            ,'CommitOnDisconnect' => 1
+                           ,'LastRequest'        => localtime
                            };
     # db_debug('db_connected:checking if successful');
     # if ( ! db_is_connected() ) {
@@ -886,6 +887,7 @@ sub db_set_connection_option
     my $value  = shift;
     my $bufnr  = db_vim_eval("bufnr('%')");
     my $conn_local;
+    my $driver = '';
 
     $debug         = db_is_debug();
     if ( ! defined($option) || ! defined($value) ) {
@@ -902,37 +904,26 @@ sub db_set_connection_option
         return -1;
     }
 
-    # Use global connection object
-    # This expecting a boolean value (ie AutoCommit)
-    $conn_local->{$option} = $value;
-    #    or die $DBI::errstr;
-
-    my $last_error_msg = '';
-    # db_echo( "db_set_connection_option:55:".DBI::err.":".DBI::errstr );
-    # if ( defined($DBI::err) && defined($DBI::errstr) ) {
-    #     if ( $DBI::err eq "" && ! $DBI::errstr eq "" ) {
-    #         # Informational message
-    #         db_set_vim_var('g:dbext_dbi_msg', "I. DBSCO:Setting option[".$option."] Info[".db_escape($DBI::errstr)."]");
-    #         db_set_vim_var('g:dbext_dbi_result', 1);
-    #     } elsif ( $DBI::err gt 0 && ! $DBI::errstr eq "" ) {
-    #         # Warning message
-    #         db_set_vim_var('g:dbext_dbi_msg', "W. DBSCO:Setting option[".$option."] Code[".$DBI::err."]  Warning[".db_escape($DBI::errstr)."]");
-    #         db_set_vim_var('g:dbext_dbi_result', 1);
-    #     } elsif ( ! $DBI::errstr eq "" ) {
-    #         # Error message
-    #         db_set_vim_var('g:dbext_dbi_msg', "E. DBSCO:Setting option[".$option."] Code[".$DBI::err."]  Error[".db_escape($DBI::errstr)."]");
-    #         db_set_vim_var('g:dbext_dbi_result', -1);
-    #         return -1;
-    #     }
-    # }
-    # db_debug("ConnOpt: $option set to:".$conn_local->{$option}.$last_error_msg);
-
-    if ( $option eq 'AutoCommit' ) {
-        $connections{$bufnr}->{AutoCommit} = $value;
-    }
-
     if ( $option eq 'DBI_commit_on_disconnect' ) {
         $connections{$bufnr}->{'CommitOnDisconnect'} = $value;
+        db_debug("db_set_connection_option Opt[$option] Val:[".$connections{$bufnr}->{'CommitOnDisconnect'}."]");
+    } else {
+        # Use global connection object
+        # This expecting a boolean value (ie AutoCommit)
+        $conn_local->{$option} = $value;
+        #    or die $DBI::errstr;
+        db_debug("db_set_connection_option Opt[$option] Val:[".$conn_local->{$option}."]");
+
+        my( $level, $err, $msg, $state ) = db_check_error($driver);
+        if ( ! $msg eq "" ) {
+            $msg = "$level. DBSO:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"");
+            db_set_vim_var('g:dbext_dbi_msg', $msg);
+            if ( $level eq "E" ) {
+                db_set_vim_var('g:dbext_dbi_result', -1);
+                db_debug("db_query:$msg - exiting");
+                return -1;
+            }
+        }
     }
 
     db_set_vim_var('g:dbext_dbi_msg', "");
@@ -970,6 +961,8 @@ sub db_query
  
     ($conn_local, $driver) = db_get_connection();
     my $sth = undef;
+    $conn_local->{LastRequest} = localtime;
+
     $sth = $conn_local->prepare( $sql );
     # db_echo( "db_query:25".DBI::errstr );
     # db_debug("db_query:prepared:".$sql);
@@ -1016,25 +1009,6 @@ sub db_query
             return -1;
         }
     }
-
-    # It is possible for an error to occur only when fetching data.
-    # This will capture the error and report it.
-    # if ( defined($DBI::err) && defined($DBI::errstr) ) {
-    #     if ( $DBI::err eq "" && ! $DBI::errstr eq "" ) {
-    #         # Informational message
-    #         db_set_vim_var('g:dbext_dbi_msg', 'I. DBQe:'.db_escape($DBI::errstr));
-    #     } elsif ( $DBI::err gt 0 && ! $DBI::errstr eq "" ) {
-    #         # Warning message
-    #         db_set_vim_var('g:dbext_dbi_msg', 'W. DBQe:SQLCode:'.$DBI::err.":".db_escape($DBI::errstr).":".db_escape($DBI::state));
-    #         db_debug("db_query:$result_msg");
-    #     } elsif ( ! $DBI::errstr eq "" ) {
-    #         # Error message
-    #         db_set_vim_var('g:dbext_dbi_msg', 'E. DBQe:SQLCode:'.$DBI::err.":".db_escape($DBI::errstr).":".db_escape($DBI::state));
-    #         db_set_vim_var('g:dbext_dbi_result', -1);
-    #         db_debug("db_query:$result_msg - exiting");
-    #         return -1;
-    #     }
-    # }
 
     db_format_results( $sth );
 
@@ -1096,24 +1070,6 @@ sub db_format_results
                 last;
             }
         }
-        # Allow warnings to continue execution
-        # if ( defined($DBI::err) && defined($DBI::errstr) ) {
-        #     if ( $DBI::err eq "" && ! $DBI::errstr eq "" ) {
-        #         $result_msg='SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr);
-        #         db_set_vim_var('g:dbext_dbi_msg', $result_msg);
-        #         db_debug("db_format_results:$result_msg");
-        #     } elsif ( $DBI::err gt 0 && ! $DBI::errstr eq "" ) {
-        #         $result_msg='SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr);
-        #         db_set_vim_var('g:dbext_dbi_msg', $result_msg);
-        #         db_debug("db_format_results:$result_msg - warnings");
-        #     } elsif ( ! $DBI::errstr eq "" ) {
-        #         $result_msg='SQLCode:'.$DBI::err.' Msg:'.db_escape($DBI::errstr);
-        #         db_set_vim_var('g:dbext_dbi_msg', $result_msg);
-        #         db_debug("db_format_results:$result_msg - exiting");
-        #         db_set_vim_var('g:dbext_dbi_result', -1);
-        #         return -1;
-        #     }
-        # }
         my( $level, $err, $msg, $state ) = db_check_error($driver);
         if ( ! $msg eq "" ) {
             $msg = "$level. DBfr:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"");

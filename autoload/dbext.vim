@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       7.00
+" Version:       8.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2008 Sep 16
+" Last Modified: 2008 Oct 29
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -37,7 +37,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 700
+let g:loaded_dbext_auto = 800
 
 " call confirm("Loaded dbext autoload", "&Ok")
 " Script variable defaults, these are used internal and are never displayed
@@ -109,6 +109,7 @@ function! s:DB_buildLists()
     call add(s:conn_params_mv, 'port')
     call add(s:conn_params_mv, 'extra')
     call add(s:conn_params_mv, 'bin_path')
+    call add(s:conn_params_mv, 'login_script')
     call add(s:conn_params_mv, 'driver')
     call add(s:conn_params_mv, 'conn_parms')
     call add(s:conn_params_mv, 'driver_parms')
@@ -127,6 +128,7 @@ function! s:DB_buildLists()
     call add(s:saved_conn_params_mv, 'saved_port')
     call add(s:saved_conn_params_mv, 'saved_extra')
     call add(s:saved_conn_params_mv, 'saved_bin_path')
+    call add(s:saved_conn_params_mv, 'saved_login_script')
     call add(s:saved_conn_params_mv, 'saved_driver')
     call add(s:saved_conn_params_mv, 'saved_conn_parms')
     call add(s:saved_conn_params_mv, 'saved_driver_parms')
@@ -173,6 +175,7 @@ function! s:DB_buildLists()
     call add(s:script_params_mv, 'window_use_right')
     call add(s:script_params_mv, 'window_width')
     call add(s:script_params_mv, 'window_increment')
+    call add(s:script_params_mv, 'login_script_dir')
 
     " DB server specific params
     " See below for 3 additional DB2 items
@@ -788,6 +791,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "window_use_bottom"       |return (exists("g:dbext_default_window_use_bottom")?g:dbext_default_window_use_bottom.'':'1')
     elseif a:name ==# "window_use_right"        |return (exists("g:dbext_default_window_use_right")?g:dbext_default_window_use_right.'':'1')
     elseif a:name ==# "window_increment"        |return (exists("g:dbext_default_window_increment")?g:dbext_default_window_increment.'':'1')
+    elseif a:name ==# "login_script_dir"        |return (exists("g:dbext_default_login_script_dir")?g:dbext_default_login_script_dir.'':'')
     elseif a:name ==# "use_win32_filenames"     |return (exists("g:dbext_default_use_win32_filenames")?g:dbext_default_use_win32_filenames.'':'0')
     elseif a:name ==# "dbext_version"           |return (g:loaded_dbext)
     elseif a:name ==# "history_file"            |return (exists("g:dbext_default_history_file")?g:dbext_default_history_file.'':(has('win32')?$VIM.'/dbext_sql_history.txt':$HOME.'/dbext_sql_history.txt'))
@@ -880,6 +884,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "prompt_port"             |return (exists("g:dbext_default_prompt_port")?g:dbext_default_prompt_port.'':'[O] Port name: ')
     elseif a:name ==# "prompt_extra"            |return (exists("g:dbext_default_prompt_extra")?g:dbext_default_prompt_extra.'':'[O] Extra parameters: ')
     elseif a:name ==# "prompt_bin_path"         |return (exists("g:dbext_default_prompt_bin_path")?g:dbext_default_prompt_bin_path.'':'[O] Directory for database tools: ')
+    elseif a:name ==# "prompt_login_script"       |return (exists("g:dbext_default_prompt_login_script")?g:dbext_default_prompt_login_script.'':'[O] Login Script: ')
     elseif a:name ==# "prompt_driver"           |return (exists("g:dbext_default_prompt_driver")?g:dbext_default_prompt_driver.'':'[O] DBI driver: ')
     elseif a:name ==# "prompt_driver_parms"     |return (exists("g:dbext_default_prompt_driver_parms")?g:dbext_default_prompt_driver_parms.'':'[O] DBI driver parameters: ')
     elseif a:name ==# "prompt_conn_parms"       |return (exists("g:dbext_default_prompt_conn_parms")?g:dbext_default_prompt_conn_parms.'':'[O] DBI connection parameters: ')
@@ -999,6 +1004,10 @@ function! s:DB_resetBufferParameters(use_defaults)
     for param in s:config_params_mv
         call s:DB_set(param, s:DB_get(param))
     endfor
+
+    " Allow the user to define an autocmd to dynamically
+    " setup their connection information.
+    silent! doautocmd User dbextPreConnection
 
     " Reset connection parameters to either blanks or defaults
     " depending on what was passed into this function
@@ -1449,12 +1458,17 @@ endfunction
 function! s:DB_ASA_execSql(str)
     " All defaults are specified in the DB_getDefault function.
     " This contains the defaults settings for all database types
-    let output = dbext#DB_getWType("cmd_header") . a:str
+    let terminator = dbext#DB_getWType("cmd_terminator")
+
+    let output = dbext#DB_getWType("cmd_header") 
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_escapeStr(dbext#DB_getWType("cmd_terminator")) . 
+    if output !~ s:DB_escapeStr(terminator) . 
                 \ '['."\n".' \t]*$'
-        let output = output . dbext#DB_getWType("cmd_terminator")
+        let output = output . terminator
     endif
 
     exe 'redir! > ' . s:dbext_tempfile
@@ -1686,12 +1700,17 @@ endfunction
 function! s:DB_ASE_execSql(str)
     " All defaults are specified in the DB_getDefault function.
     " This contains the defaults settings for all database types
-    let output = dbext#DB_getWType("cmd_header") . a:str
+    let terminator = dbext#DB_getWType("cmd_terminator")
+
+    let output = dbext#DB_getWType("cmd_header") 
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_escapeStr(dbext#DB_getWType("cmd_terminator")) . 
+    if output !~ s:DB_escapeStr(terminator) . 
                 \ '['."\n".' \t]*$'
-        let output = output . dbext#DB_getWType("cmd_terminator")
+        let output = output . terminator
     endif
 
     exe 'redir! > ' . s:dbext_tempfile
@@ -1879,12 +1898,17 @@ function! s:DB_DB2_execSql(str)
     if dbext#DB_getWType("use_db2batch") == '1'
         " All defaults are specified in the DB_getDefault function.
         " This contains the defaults settings for all database types
-        let output = dbext#DB_getWType("cmd_header") . a:str
+        let terminator = dbext#DB_getWType("cmd_terminator")
+
+        let output = dbext#DB_getWType("cmd_header") 
+        " Check if a login_script has been specified
+        let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+        let output = output.a:str
         " Only include a command terminator if one has not already
         " been added
-        if output !~ s:DB_escapeStr(dbext#DB_getWType("cmd_terminator")) . 
+        if output !~ s:DB_escapeStr(terminator) . 
                     \ '['."\n".' \t]*$'
-            let output = output . dbext#DB_getWType("cmd_terminator")
+            let output = output . terminator
         endif
 
         exe 'redir! > ' . s:dbext_tempfile
@@ -1916,12 +1940,17 @@ function! s:DB_DB2_execSql(str)
 
         " All defaults are specified in the DB_getDefault function.
         " This contains the defaults settings for all database types
-        let output = dbext#DB_getWType("db2cmd_cmd_header") . connect_str . a:str
+        let terminator = dbext#DB_getWType("cmd_terminator")
+
+        let output = dbext#DB_getWType("db2cmd_cmd_header") . connect_str 
+        " Check if a login_script has been specified
+        let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+        let output = output.a:str
         " Only include a command terminator if one has not already
         " been added
-        if output !~ s:DB_escapeStr(dbext#DB_getWType("cmd_terminator")) . 
+        if output !~ s:DB_escapeStr(terminator) . 
                     \ '['."\n".' \t]*$'
-            let output = output . dbext#DB_getWType("cmd_terminator")
+            let output = output . terminator
         endif
 
         exe 'redir! > ' . s:dbext_tempfile
@@ -2096,12 +2125,17 @@ endfunction
 function! s:DB_INGRES_execSql(str)
     " All defaults are specified in the DB_getDefault function.
     " This contains the defaults settings for all database types
-    let output = dbext#DB_getWType("cmd_header") . a:str
+    let terminator = dbext#DB_getWType("cmd_terminator")
+
+    let output = dbext#DB_getWType("cmd_header") 
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_escapeStr(dbext#DB_getWType("cmd_terminator")) . 
+    if output !~ s:DB_escapeStr(terminator) . 
                 \ '['."\n".' \t]*$'
-        let output = output . dbext#DB_getWType("cmd_terminator")
+        let output = output . terminator
     endif
 
     exe 'redir! > ' . s:dbext_tempfile
@@ -2173,12 +2207,17 @@ endfunction
 function! s:DB_INTERBASE_execSql(str)
     " All defaults are specified in the DB_getDefault function.
     " This contains the defaults settings for all database types
-    let output = dbext#DB_getWType("cmd_header") . a:str
+    let terminator = dbext#DB_getWType("cmd_terminator")
+
+    let output = dbext#DB_getWType("cmd_header") 
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_escapeStr(dbext#DB_getWType("cmd_terminator")) . 
+    if output !~ s:DB_escapeStr(terminator) . 
                 \ '['."\n".' \t]*$'
-        let output = output . dbext#DB_getWType("cmd_terminator")
+        let output = output . terminator
     endif
 
     exe 'redir! > ' . s:dbext_tempfile
@@ -2252,12 +2291,17 @@ endfunction
 function! s:DB_MYSQL_execSql(str)
     " All defaults are specified in the DB_getDefault function.
     " This contains the defaults settings for all database types
-    let output = dbext#DB_getWType("cmd_header") . a:str
+    let terminator = dbext#DB_getWType("cmd_terminator")
+
+    let output = dbext#DB_getWType("cmd_header") 
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_escapeStr(dbext#DB_getWType("cmd_terminator")) . 
+    if output !~ s:DB_escapeStr(terminator) . 
                 \ '['."\n".' \t]*$'
-        let output = output . dbext#DB_getWType("cmd_terminator")
+        let output = output . terminator
     endif
 
     exe 'redir! > ' . s:dbext_tempfile
@@ -2405,7 +2449,12 @@ function! s:DB_SQLITE_execSql(str)
 
     " All defaults are specified in the DB_getDefault function.
     " This contains the defaults settings for all database types
-    let output = dbext#DB_getWType("cmd_header") . a:str
+    let terminator = dbext#DB_getWType("cmd_terminator")
+
+    let output = dbext#DB_getWType("cmd_header") 
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
     " Only include a command terminator if one has not already
     " been added, since builtin commands beginning with a "."
     " cannot be ended with a ;, check the last line in the command
@@ -2420,8 +2469,8 @@ function! s:DB_SQLITE_execSql(str)
     " If it does not start with a .
     " and it does not end with a ;
     if last_line !~ '^\.' && 
-                \ last_line !~ dbext#DB_getWType("cmd_terminator") . '['."\n".' \t]*$'
-        let output = output . dbext#DB_getWType("cmd_terminator")
+                \ last_line !~ terminator . '['."\n".' \t]*$'
+        let output = output . terminator
     endif
 
     exe 'redir! > ' . s:dbext_tempfile
@@ -2535,17 +2584,18 @@ endfunction
 function! s:DB_ORA_execSql(str)
     " All defaults are specified in the DB_getDefault function.
     " This contains the defaults settings for all database types
-    let output = dbext#DB_getWType("cmd_header") . a:str
+    let terminator = dbext#DB_getWType("cmd_terminator")
+
+    let output = dbext#DB_getWType("cmd_header") 
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_escapeStr(dbext#DB_getWType("cmd_terminator")) . 
-                \ '['."\n".' \t]*$'
-        let output = output . dbext#DB_getWType("cmd_terminator")
-    endif
     " Added quit to the end of the command to exit SQLPLUS
-    if output !~ s:DB_escapeStr("\nquit".dbext#DB_getWType("cmd_terminator")) . 
+    if output !~ s:DB_escapeStr(terminator) . 
                 \ '['."\n".' \t]*$'
-        let output = output . "\nquit".dbext#DB_getWType("cmd_terminator")
+        let output = output . "\nquit".terminator
     endif
 
     exe 'redir! > ' . s:dbext_tempfile
@@ -2682,12 +2732,17 @@ endfunction "}}}
 function! s:DB_PGSQL_execSql(str)
     " All defaults are specified in the DB_getDefault function.
     " This contains the defaults settings for all database types
-    let output = dbext#DB_getWType("cmd_header") . a:str
+    let terminator = dbext#DB_getWType("cmd_terminator")
+
+    let output = dbext#DB_getWType("cmd_header") 
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_escapeStr(dbext#DB_getWType("cmd_terminator")) . 
+    if output !~ s:DB_escapeStr(terminator) . 
                 \ '['."\n".' \t]*$'
-        let output = output . dbext#DB_getWType("cmd_terminator")
+        let output = output . terminator
     endif
 
     exe 'redir! > ' . s:dbext_tempfile
@@ -2863,24 +2918,24 @@ function! s:DB_RDB_execSql(str) "{{{
                 
     " All defaults are specified in the DB_getDefault function.
     " This contains the defaults settings for all database types
+    let terminator = dbext#DB_getWType("cmd_terminator")
+
     let output = s:DB_option( 
                 \     'attach ''filename ', 
                 \     sup . s:DB_get("dbname"), 
                 \     '''' 
                 \ )  . 
-                \ dbext#DB_getWType("cmd_terminator") .
-                \ dbext#DB_getWType("cmd_header") . 
-                \ a:str
+                \ terminator .
+                \ dbext#DB_getWType("cmd_header")
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_escapeStr(dbext#DB_getWType("cmd_terminator")) . 
-                \ '['."\n".' \t]*$'
-        let output = output . dbext#DB_getWType("cmd_terminator")
-    endif
     " Added quit to the end of the command to exit SQLPLUS
-    if output !~ s:DB_escapeStr("\nquit".dbext#DB_getWType("cmd_terminator")) . 
+    if output !~ s:DB_escapeStr(terminator) . 
                 \ '['."\n".' \t]*$'
-        let output = output . "\nquit".dbext#DB_getWType("cmd_terminator")
+        let output = output . "\nquit".terminator
     endif
 
     exe 'redir! > ' . s:dbext_tempfile
@@ -3034,12 +3089,17 @@ endfunction "}}}
 "}}}
 " SQLSRV exec {{{
 function! s:DB_SQLSRV_execSql(str)
-    let output = dbext#DB_getWType("cmd_header") . a:str
+    let terminator = dbext#DB_getWType("cmd_terminator")
+
+    let output = dbext#DB_getWType("cmd_header") 
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
     " Only include a command terminator if one has not already
     " been added
-    if output !~ s:DB_escapeStr(dbext#DB_getWType("cmd_terminator")) . 
+    if output !~ s:DB_escapeStr(terminator) . 
                 \ '['."\n".' \t]*$'
-        let output = output . dbext#DB_getWType("cmd_terminator")
+        let output = output . terminator
     endif
 
     exe 'redir! > ' . s:dbext_tempfile
@@ -3233,7 +3293,7 @@ function! s:DB_DBI_execSql(str)
 
     " First iterate through the SQL looking for a read_file_cmd.
     " If found, check if the following text specifies a filename.
-    " If so, replace the read_file_cmd and filename witht the
+    " If so, replace the read_file_cmd and filename with the
     " contents of the file.  
     " Continue on looking for additional read_file_cmd statements.
     if read_file_cmd != ""
@@ -3318,7 +3378,10 @@ function! s:DB_DBI_execSql(str)
                     let result = s:DB_DBI_execStr(sql)
                     let results = add( results, result )
                     if result == -1
-                        break
+                        " Do not break, and continue executing.
+                        " break
+                        " If there was an error, stop and report it.
+                        return -1
                     endif
                 endif
             endfor
@@ -4474,7 +4537,7 @@ function! dbext#DB_execSql(query)
 
     if strlen(query) == 0
         call s:DB_warningMsg("dbext:No statement to execute!")
-        return
+        return -1
     endif
 
    " Add query to internal history
@@ -4492,6 +4555,8 @@ function! dbext#DB_execSql(query)
        " query above.
         call dbext#DB_windowClose(s:DB_resBufName())
     endif
+
+    return -1
 endfunction
 
 function! dbext#DB_execSqlWithDefault(...)
@@ -4584,6 +4649,67 @@ function! dbext#DB_execRangeSql() range
     endif
 
     return dbext#DB_execSql(query)
+endfunction
+
+function! s:DB_getLoginScript(filename)
+    let sql = ''
+    if a:filename != ''
+        let sqlf = []
+        " Use the isfname option to lookup what might be a filename
+        let filename = matchstr(a:filename, '\f\+')
+
+        " Check if the user has overridden the location where the login 
+        " scripts will be saved
+        let custom_login_script_dir = expand(s:DB_get('login_script_dir'))
+
+        if custom_login_script_dir != ''
+            if isdirectory(custom_login_script_dir)
+                let filename = custom_login_script_dir.'/'.filename
+                " Check if the filename is readable
+                if filereadable(filename)
+                    let sqlf = readfile(filename)
+                else
+                    " Since the filename was unreadable, report it to the user
+                    call s:DB_warningMsg( 'dbext:Could not find login_script ['.a:filename.
+                                \ '] in ['.custom_login_script_dir.']'
+                                \ )
+                    return sql
+                endif
+            else
+                " Since the directory was unreadable, report it to the user
+                call s:DB_warningMsg( 'dbext:Custom login_script_dir ['.custom_login_script_dir.
+                            \ '] could not be found'
+                            \ )
+                return sql
+            endif
+        endif
+
+        if custom_login_script_dir == ''
+            let filename = expand('$VIM').'/'.filename
+            " Check if the filename is readable
+            if filereadable(filename)
+                let sqlf = readfile(filename)
+            else
+                let filename = expand('$HOME').'/'.filename
+                if filereadable(filename)
+                    let sqlf = readfile(filename)
+                else
+                    " Since the filename was unreadable, report it to the user
+                    call s:DB_warningMsg( 'dbext:Could not find login_script ['.a:filename.
+                                \ '] in ['.expand('$VIM').'] or ['.
+                                \ expand('$HOME').']'
+                                \ )
+                    return sql
+                endif
+            endif
+        endif
+
+        if len(sqlf) > 0 
+            let sql = join(sqlf, "\n")."\n"
+        endif
+    endif
+
+    return sql
 endfunction
 
 function! dbext#DB_describeTable(...)
@@ -6917,7 +7043,7 @@ function! dbext#DB_connect()
         let value = matchstr(parm, '^\w\+\s*=\s*\zs.*')
 
         if var == ""
-            call s:DB_warningMsg("Invalid driver parameters, format expected is:AutoCommit=1;PrintWarn=0")
+            call s:DB_warningMsg("Invalid driver parameters, format expected is:AutoCommit=1;LongReadLen=4096")
             return -1
         endif
 
@@ -6928,6 +7054,19 @@ function! dbext#DB_connect()
             return -1
         endif
 	endfor
+
+    " If a login_script has been specified, execute it.
+    " This must be done here for DBI or ODBC connections since the user
+    " can Connect and Disconnect manually.  This is different from the
+    " other types of databases which shell out and execute each command.
+    " Check if a login_script has been specified
+    let login_script = s:DB_getLoginScript(s:DB_get("login_script"))
+    if login_script != ''
+        let result = dbext#DB_execSql(login_script)
+        if result == -1 
+            return -1 
+        endif
+    endif
 
     return 0
 endfunction 

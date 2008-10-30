@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2008 Sep 20
+*dbext.txt*	For Vim version 7.0.  Last change: 2008 Oct 29
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki <petike1 at dpg dot hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 7.00
+	  	dbext.vim version 8.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -39,6 +39,7 @@ Homepage: http://vim.sourceforge.net/script.php?script_id=356
     9.4 Connection profile examples           |dbext-connect-profiles-examples|
     9.5 Connection information in modelines   |dbext-connect-modelines|
     9.6 Asking for connection parameters      |dbext-connect-ask|
+    9.7 Using autocmds to setup parameters    |dbext-connect-autocmd|
 10. Creating mappings using dbext commands    |dbext-in-mappings|
 11. Object Completion                         |dbext-completion|
 12. Listing Objects in the Database           |dbext-list-objects|
@@ -79,6 +80,27 @@ David Fishburn
 ==============================================================================
 2. What's New						*dbext-new*
 
+Version 8.00
+
+ New Features
+ ------------
+ - When defining a profile or running DBPromptForBufferParameters, 
+   you can now optionally specify a file containing commands you want to
+   execute against the database when you first connect (James Horine).
+ - A new global variable, g:dbext_default_login_script_dir allows you 
+   to override the 2 default directories which are searched for these 
+   files.
+ - The dbext tutorial has been updated to demonstrate the login_script.
+ - Doc update demonstrating the use of integrated logins (Daren Thomas).
+ - Added a new user defined autocommand dbextPreConnection which is 
+   triggered prior to dbext connecting to the database.  This allows you 
+   to customize settings based on your buffer and environment (Tim Pope).
+
+ Bug Fixes
+ ---------
+ - Setting LongReadLen for DBI and ODBC connections did not work.
+
+
 Version 7.00
 
  New Features
@@ -90,12 +112,12 @@ Version 7.00
 
  Bug Fixes
  ---------
- - Using ODBC to connect to SQL Server did not handle informational
-   messages appropriately, leading to "not connected" messages
+ - Using ODBC to connect to SQL Server, dbext did not handle informational
+   messages appropriately leading to "not connected" messages
    (Albie Janse van Rensburg).
  - When executing SQL if you were prompted for a variable replacement 
    and cancelled the query the dbext history window was displayed 
-   instead of returning to the buffer.
+   instead of returning to the buffer you were editing.
 
 
 Version 6.20
@@ -1015,8 +1037,22 @@ Version 2.00
         increase the size of the window by this number of columns.  Pressing
         [<space>] again will toggle it back to the original size.  >
             let g:dbext_default_window_increment = 50
+    dbext_default_login_script_dir
+<       Default: ''
+        Through a connection profile or the DBPromptForBufferParameters 
+        command you can specify a filename containing commands to be 
+        executed each time you connect to the database.  By default 
+        the following directories are searched for these files: >
+            :echo expand('$VIM')
+            :echo expand('$HOME')
+<       You can also customize where these files should be found by
+        specifying the directory via a global variable in your |.vimrc|.
+        You can include environment variables in the string as they 
+        will be expanded automatically.  See the |dbext-tutorial| for 
+        an example. >
+            let g:dbext_default_login_script_dir = 'C:\MyScripts'
+            let g:dbext_default_login_script_dir = '$HOME\MyScripts'
 
-    
 
 <
  Buffer variables
@@ -1054,6 +1090,7 @@ Version 2.00
 <       - Relational database to connect to >
     integratedlogin
 <       - On win32, whether integrated logins are used >
+              let g:dbext_default_profile_mySQLServer  = 'type=SQLSRV:integratedlogin=1:dbname=myDB'
     user
 <       - User id >
     passwd
@@ -1719,6 +1756,7 @@ To specify the type of database you connect to most often, you can place the
 
  In your |.vimrc| you can define the following: >
      let g:dbext_default_profile_ASA_generic = 'type=ASA:user=DBA:passwd=SQL'
+     let g:dbext_default_profile_mySQLServer = 'type=SQLSRV:integratedlogin=1:dbname=myDB'
 <
  If you created a dbext modeline in your file (using a comment that is suitable
  to the filetype you are editing): >
@@ -1737,6 +1775,11 @@ To specify the type of database you connect to most often, you can place the
 
  Profiles are always specified in this format in your |.vimrc| file: >
      let g:dbext_default_profile_[your_profile_name] = 'type=ORA:user=scott'
+<
+ To create a default profile which will be used for all buffers that have not
+ defined their own connection parameters you can add the following to your
+ |.vimrc| to reference one of the profiles you have already created: >
+     let g:dbext_default_profile = 'ASA_generic'
 <
 9.4 Connection profiles examples                *dbext-connect-profiles-examples*
 
@@ -1767,7 +1810,8 @@ To specify the type of database you connect to most often, you can place the
     let g:dbext_default_profile_PG = 'type=PGSQL:user=postgres'
     
     " Microsoft SQL Server
-    let g:dbext_default_profile_SQLSRV = 'type=SQLSRV:user=sa:passwd=whatever:host=localhost:replace_title=1'
+    let g:dbext_default_profile_SQLSRV        = 'type=SQLSRV:user=sa:passwd=whatever:host=localhost:replace_title=1'
+     let g:dbext_default_profile_mySQLServer  = 'type=SQLSRV:integratedlogin=1:dbname=myDB'
     
     " SQLite
     let g:dbext_default_profile_POPFile = 'type=SQLITE:SQLITE_bin=C:\Programs\POPFile\sqlite.exe:dbname=C:\Programs\POPFile\popfile.db'
@@ -1832,6 +1876,35 @@ To specify the type of database you connect to most often, you can place the
  to and use this value for all buffers.  It will prompt you once for your
  userid for each buffer.  You will also be prompted for your password each
  time dbext is used.
+
+
+
+9.7 Using autocmds to setup parameters	           *dbext-connect-autocmd*
+
+ If you wish to programmatically setup connection parameters based on your
+ environment or buffer information you can define an autocmd in your 
+ |.vimrc| which will be triggered automatically by dbext when appropriate.
+
+ Example, create the following in your |.vimrc|: >
+    augroup dbextExtras
+        autocmd!
+        autocmd User dbextPreConnection :echo 'dbextPreConnection fired'
+        autocmd User dbextPreConnection :DBSetOption 'dbname=bob'
+        autocmd User dbextPreConnection :DBSetOption 'host=jim'
+        autocmd User dbextPreConnection :DBSetOption 'type=ASA:dsnname=myDSN:user=DBA:passwd=sql'
+    augroup END
+
+<Obviously, the echo line is just for debugging, you should be able to see
+ that it was called by using the |:messages| command.
+
+ The example demonstrates you can call DBSetOption multiple times setting one
+ option at a time or once passing multiple options as you would with a
+ modeline.  After this autocmd fires, dbname, host, type, dsnname, user 
+ and passwd are all set.  
+
+ If you simply created a new file and ran :DBListTable the autocmd would setup
+ your connection information and query the database without prompting you for 
+ connection parameters.
 
 ==============================================================================
 10. Creating mappings using dbext commands        	*dbext-in-mappings*
@@ -2403,8 +2476,9 @@ To specify the type of database you connect to most often, you can place the
  The most efficient way to setup connection information is to create
  connection profiles in your |.vimrc|.  If you work with multiple databases,
  or a different database per project then you can add the following: >
-     let g:dbext_default_profile_usual = 'type=ASA:user=DBA:passwd=SQL'
-     let g:dbext_default_profile_ORA   = 'type=ORA:user=scott:passwd=tiger'
+     let g:dbext_default_profile_usual        = 'type=ASA:user=DBA:passwd=SQL'
+     let g:dbext_default_profile_ORA          = 'type=ORA:user=scott:passwd=tiger'
+     let g:dbext_default_profile_mySQLServer  = 'type=SQLSRV:integratedlogin=1:dbname=myDB'
 <
  Then in your SQL files, you can add the following line where "//" is simply 
  a comment line marker for SQL files.  Comment indicators change by 
@@ -2426,7 +2500,30 @@ To specify the type of database you connect to most often, you can place the
  vimrc (using the profile created above): >
      let g:dbext_default_profile = 'usual'
 < 
- 
+
+
+ Login Script
+ ------------
+ For each profile, you can also specify a file of SQL commands to be 
+ executed each time a connection is made to the database.  This can be
+ useful if you want to set connection level properties within
+ the database.  By default dbext will look for these files in the
+ $VIM or $HOME directory, but it can also be overridden via your 
+ .vimrc, see g:dbext_default_login_script_dir.
+
+ In a SQL Anywhere database I can create a file with the following: >
+    SET TEMPORARY OPTION debug_messages = 'On'; 
+    SET TEMPORARY OPTION date_order = 'YMD'; 
+<
+ Then create my connection profile as: >
+     let g:dbext_default_profile_usual = 'type=ASA:user=DBA:passwd=SQL:login_script=ASA_defaults.sql'
+<
+ Each time I connect to this datasource the above 2 options will 
+ be set.  The syntax of this file (including command terminators is 
+ expected to be syntactically correct for you database.
+
+
+
  Listing objects
  ---------------
  Often, you do not know the name of your table, but just need to browse
