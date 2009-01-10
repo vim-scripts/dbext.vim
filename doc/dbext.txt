@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2008 Oct 29
+*dbext.txt*	For Vim version 7.0.  Last change: 2009 Jan 09
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki <petike1 at dpg dot hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 8.00
+	  	dbext.vim version 9.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -52,7 +52,19 @@ Homepage: http://vim.sourceforge.net/script.php?script_id=356
 15. Using SQL History                         |dbext-history|
 16. Open Source                               |dbext-sourceforge|
 17. Tutorial                                  |dbext-tutorial|
-    17.1 DBI Tutorial                         |dbext-tutorial-dbi|
+    17.1  Creating the connection             |dbext-tutorial-connection|
+    17.2  The result buffer                   |dbext-tutorial-results|
+    17.3  Executing commands                  |dbext-tutorial-execute|
+    17.4  Selecting from tables               |dbext-tutorial-select|
+    17.5  Describing objects                  |dbext-tutorial-describe|
+    17.6  Connection Profiles                 |dbext-tutorial-profile|
+    17.7  Login Script                        |dbext-tutorial-login|
+    17.8  Listing object                      |dbext-tutorial-objects|
+    17.9  Object Completion                   |dbext-tutorial-completion|
+    17.10 Host variable replacement           |dbext-tutorial-variables|
+    17.11 Filetype support                    |dbext-tutorial-filetype|
+    17.12 History                             |dbext-tutorial-history|
+    17.13 DBI Tutorial                        |dbext-tutorial-dbi|
 
 {Vi does not have any of this}
 
@@ -80,6 +92,51 @@ David Fishburn
 ==============================================================================
 2. What's New						*dbext-new*
 
+Version 9.00
+
+ New Features
+ ------------
+ - Added the ability to set and store SQL variables for each buffer.  
+   This will reduce prompting for statements which are often 
+   re-used.  Added support for listing and deleting SQL variables.
+   Initial prototype by Garrison Yu.
+ - Added option, g:dbext_default_variable_remember, to control whether 
+   SQL variables should be stored when prompted.
+ - Improved the parsing of SQL statements to account for procedural 
+   language.  If a IN, OUT, INOUT or DECLARE statement is found prior
+   to the use of the variable, it is stored for later use.  When the 
+   variable is encountered, if the declaration was found we skip 
+   prompting for it's value.  This should reduce the number of prompts
+   you receive when executing SQL (i.e. Functions, Procedures, Events,
+   Packages and so on depending on the naming convention you use for
+   your variables.
+ - Updated the tutorial and added more links to different sections
+   see |dbext-tutorial-variable|
+ - Added VB filetype support (Garrison Yu).
+ - Added escaping to allow specifying an new Oracle URL syntax for 
+   server connection parameters (Anton Sharonov).
+ - Renamed DBCloseResults, DBOpenResults, DBRefreshResult, 
+   DBToggleResultsResize to DBResultsClose, DBResultsOpen, 
+   DBResultsRefresh, DBResultsToggleResize to be more consistent.
+
+ Bug Fixes
+ ---------
+ - DBextPostResult was passed in a string for the buf_nr which required
+   conversion if passed to Vim's builtin functions like getbuflines
+   (Ying Chen).
+ - If g:dbext_default_menu_mode was set to an invalid value an error
+   would occur when starting Vim.
+ - Renamed some of the <Plug> names so a delay of timeoutlen is avoided
+   when using the mappings (DBExecVisualTopXSQL, DBExecSQLUnderTopXCursor,
+   DBSelectFromTopXTable).
+ - The dbext menu item "List Connections (DBI)" did not work.
+ - You are often repeatedly prompted for connection information.  
+   This change reduces the number and allows you to cancel out
+   of the prompt dialogs.
+ - Added an unconditional quit command to exit out of Oracle's 
+   SQLPlus (Anton Sharonov).
+
+
 Version 8.00
 
  New Features
@@ -90,15 +147,27 @@ Version 8.00
  - A new global variable, g:dbext_default_login_script_dir allows you 
    to override the 2 default directories which are searched for these 
    files.
- - The dbext tutorial has been updated to demonstrate the login_script.
+ - The dbext tutorial has been updated to demonstrate the login_script
+   see |dbext-tutorial-login|
  - Doc update demonstrating the use of integrated logins (Daren Thomas).
  - Added a new user defined autocommand dbextPreConnection which is 
    triggered prior to dbext connecting to the database.  This allows you 
    to customize settings based on your buffer and environment (Tim Pope).
+ - Added escaping to allow specifying an new Oracle URL syntax for 
+   server connection parameters (Anton Sharonov).
 
  Bug Fixes
  ---------
  - Setting LongReadLen for DBI and ODBC connections did not work.
+ - DBextPostResult was passed in a string for the buf_nr which required
+   conversion if passed to Vim's builtin functions like getbuflines
+   (Ying Chen).
+ - If g:dbext_default_menu_mode was set to an invalid value an error
+   would occur when starting Vim.
+ - Renamed some of the <Plug> names so a delay of timeoutlen is avoided
+   when using the mappings (DBExecVisualTopXSQL, DBExecSQLUnderTopXCursor,
+   DBSelectFromTopXTable).
+ - The dbext menu item "List Connections (DBI)" did not work.
 
 
 Version 7.00
@@ -608,7 +677,7 @@ Version 2.00
         let g:dbext_default_use_sep_result_buffer = 1 (default=0)
 <
  There are a few local buffer mapping created in the Results buffer:
-    R       - Pressing 'R' calls the DBRefreshResult command.  This will
+    R       - Pressing 'R' calls the DBResultsRefresh command.  This will
               to re-run the statement which populated the result window.  
 
     q       - Quick way to close the window if you have finished with
@@ -1052,6 +1121,13 @@ Version 2.00
         an example. >
             let g:dbext_default_login_script_dir = 'C:\MyScripts'
             let g:dbext_default_login_script_dir = '$HOME\MyScripts'
+    dbext_default_variable_remember
+<       Default: 1
+        New feature to version 9.0.  SQL variables can now be stored
+        for the buffer to save repeated prompting.  By default, when
+        prompted, the value will be stored for later use.  To turn
+        this feature off, add the following to your .vimrc: >
+            let g:dbext_default_variable_remember = '0'
 
 
 <
@@ -1432,6 +1508,10 @@ Version 2.00
     " sql - execute - line
     nnoremap <unique> <Leader>sel :.,.DBExecRangeSQL
 
+    " Execute the previous range
+    " sql - execute - previous
+    nnoremap <unique> <Leader>sep :'<,'>DBExecRangeSQL
+
     " select * from the table under the cursor
     " sql - table
     nnoremap <unique> <Leader>st <Plug>DBSelectFromTable
@@ -1494,6 +1574,32 @@ Version 2.00
     nnoremap <unique> <Leader>slc <Plug>DBListColumn
     :DBListColumn
     
+    " Display a list of all buffer specific SQL variables
+    " sql - list - vaRiables
+    nnoremap <unique> <Leader>svr <Plug>DBListVar
+    :DBListVar
+    
+    " Assigns a buffer SQL variable
+    :DBSetVar set @var1 = '3'
+    " Removes a buffer SQL variable
+    :DBSetVar set @var1 =
+    " Executes a SQL statement to assign a SQL variable using 
+    " the current line
+    " sal - assign - line
+    nmap <unique> <silent> <Leader>sal :.,.DBVarRangeAssign<CR>
+    " Executes a SQL statement to assign a SQL variable using 
+    " the entire buffer
+    " saa - assign - all
+    nmap <unique> <silent> <Leader>saa :1,$DBVarRangeAssign<CR>
+    " Executes a SQL statement to assign a SQL variable using 
+    " the previous range
+    " sap - assign - previous
+    nmap <unique> <silent> <Leader>sap :'<,'>DBVarRangeAssign<CR>
+    " Executes a SQL statement to assign a SQL variable using 
+    " the current visual range
+    " sa - assign
+    xmap <unique> <silent> <Leader>sa :DBVarRangeAssign<CR>
+    
     " Opens the result window and displays a numbered list of 
     " previous SQL statements.  Pressing <enter> or double clicking 
     " on a SQL statement will execute the SQL.
@@ -1530,48 +1636,52 @@ Version 2.00
 <    
  Commands
     (In addition to the above mappings)
-    DBExecSQL           - Enter any command you want sent to the database
-    DBExecSQLTopX       - Enter any command you want sent to the database
-                          and limit the result set to X rows
-    DBExecRangeSQL      - Enter any command you want sent to the database
-    Select              - Enter the remainder of a select (ie :Select from
-                          customer)
-    Update              - Enter the remainder of an update
-    Insert              - Enter the remainder of an insert
-    Delete              - Enter the remainder of an delete
-    Call                - Enter the remainder of a call/exec statement
-    Drop                - Enter the remainder of a drop
-    Alter               - Enter the remainder of an alter
-    Create              - Enter the remainder of a create
-    DBSetOption         - Allow you to set options from the command line.
-                          This is useful in functions and mappings, see
-                          |dbext-in-mappings|.
-    DBGetOption         - Retrieves current setting
-    DBCheckModeline     - Checks the file for a dbext modeline, and sets the
-                          connection information
-    DBRefreshResult     - Re-runs the statement currently displayed in the 
-                          result window
-    DBCompleteTable     - Sets up table name completion for the buffer
-    DBCompleteProcedure - Sets up table name completion for the buffer
-    DBCompleteView      - Sets up table name completion for the buffer
-    DBListTable         - Lists all tables (optional wildcard)
-    DBListProcedure     - Lists all procedures (optional wildcard)
-    DBListView          - Lists all views (optional wildcard)
-    DBListColumn        - Comma separated list of columns for the given table
-    DBListConnections   - Lists all active DBI connections
-    DBCommit            - When using the DBI or ODBC layer and in your
-                          connection profile you have specified AutoCommit=1,
-                          you have the ability to commit any changes on the
-                          connection.
-    DBRollback          - When using the DBI or ODBC layer and in your
-                          connection profile you have specified AutoCommit=1,
-                          you have the ability to rollback any changes on the
-                          connection.
-    DBOrientation       - When using the DBI or DBI::ODBC interface you have
-                          the option of displaying the results in the standard
-                          horizontal layout or in a vertical layout which is
-                          especially useful for one or two rows of output.
-                          This will toggle the current display.
+    DBExecSQL             - Enter any command you want sent to the database
+    DBExecSQLTopX         - Enter any command you want sent to the database
+                            and limit the result set to X rows
+    DBExecRangeSQL        - Enter any command you want sent to the database
+    Select                - Enter the remainder of a select (ie :Select from
+                            customer)
+    Update                - Enter the remainder of an update
+    Insert                - Enter the remainder of an insert
+    Delete                - Enter the remainder of an delete
+    Call                  - Enter the remainder of a call/exec statement
+    Drop                  - Enter the remainder of a drop
+    Alter                 - Enter the remainder of an alter
+    Create                - Enter the remainder of a create
+    DBSetOption           - Allow you to set options from the command line.
+                            This is useful in functions and mappings, see
+                            |dbext-in-mappings|
+    DBGetOption           - Retrieves current setting
+    DBCheckModeline       - Checks the file for a dbext modeline, and sets 
+                            the connection information
+    DBResultsOpen         - Re-opens the result window if it was closed
+    DBResultsClose        - Closes the result window
+    DBResultsToggleResize - Toggles the size of the result window
+    DBResultsRefresh      - Re-runs the statement currently displayed in the 
+                            result window
+    DBCompleteTable       - Sets up table name completion for the buffer
+    DBCompleteProcedure   - Sets up table name completion for the buffer
+    DBCompleteView        - Sets up table name completion for the buffer
+    DBListTable           - Lists all tables (optional wildcard)
+    DBListProcedure       - Lists all procedures (optional wildcard)
+    DBListView            - Lists all views (optional wildcard)
+    DBListColumn          - Comma separated list of columns for the given table
+    DBListConnections     - Lists all active DBI connections
+    DBCommit              - When using the DBI or ODBC layer and in your
+                            connection profile you have specified AutoCommit=1,
+                            you have the ability to commit any changes on the
+                            connection.
+    DBRollback            - When using the DBI or ODBC layer and in your
+                            connection profile you have specified
+                            AutoCommit=1, you have the ability to rollback any
+                            changes on the connection.
+    DBOrientation         - When using the DBI or DBI::ODBC interface you have
+                            the option of displaying the results in the
+                            standard horizontal layout or in a vertical layout
+                            which is especially useful for one or two rows of
+                            output.
+                            This will toggle the current display.
 
 
 ==============================================================================
@@ -1805,6 +1915,8 @@ To specify the type of database you connect to most often, you can place the
     
     " Oracle
     let g:dbext_default_profile_ORA = 'type=ORA:srvname=ffs42ga:user=john:passwd=whatever'
+    " Oracle SQL Connect URL string (notice the : is escaped for the port option)
+    let g:dbext_default_profile_ORA_URL = 'type=ORA:srvname=//localhost\:3333/instance_name:user=scott:passwd=tiger'
     
     " Postgress
     let g:dbext_default_profile_PG = 'type=PGSQL:user=postgres'
@@ -1817,6 +1929,7 @@ To specify the type of database you connect to most often, you can place the
     let g:dbext_default_profile_POPFile = 'type=SQLITE:SQLITE_bin=C:\Programs\POPFile\sqlite.exe:dbname=C:\Programs\POPFile\popfile.db'
 <
 9.5 Connection information in modelines           *dbext-connect-modelines*
+                                                  *dbext-modelines*
 
  See |modeline| for details on what are modelines.  dbext uses a similar
  format to vim modelines.  This feature is enabled if the vim option 'modeline'
@@ -2145,13 +2258,13 @@ To specify the type of database you connect to most often, you can place the
  for more details.
  
 ==============================================================================
-16. Open Source                         	        *dbext-sourceforge*
+16. Open Source                         	*dbext-sourceforge*
 
  dbext is now an open source project found at: >
      https://sourceforge.net/projects/dbext/
 < 
 ==============================================================================
-17. Tutorial                            	        *dbext-tutorial*
+17. Tutorial                            	*dbext-tutorial*
 
  This tutorial is designed to take you through the common features of dbext
  so that:
@@ -2216,8 +2329,8 @@ To specify the type of database you connect to most often, you can place the
 
 
 
- Creating the connection
- -----------------------
+ 17.1 Creating the connection                    *dbext-tutorial-connection*
+ ----------------------------
  Now, we need to setup connection information for the buffer.  There are many
  ways to do this: use commands, use the menu or use the default mappings.
  Lets start with the most basic method.  You can execute the command: >
@@ -2237,8 +2350,8 @@ To specify the type of database you connect to most often, you can place the
 
 
 
- The result buffer
- -----------------
+ 17.2 The result buffer                          *dbext-tutorial-results*
+ ----------------------
  When SQL statements are executed, a new split below buffer is created called,
  "Result".  This buffer is readonly, you will not be prompted to save it when
  exiting Vim.  After the buffer has been created, you can move the buffer to a
@@ -2304,8 +2417,8 @@ To specify the type of database you connect to most often, you can place the
  re-run the command that created the current results.
 
 
- Executing commands
- ------------------
+ 17.3 Executing commands                         *dbext-tutorial-execute*
+ -----------------------
  Now, go to the top of the buffer (gg).  Move your cursor to the first
  statement and the word "TABLE" >
     CREATE TABLE customer(
@@ -2350,8 +2463,8 @@ To specify the type of database you connect to most often, you can place the
 
 
 
- Selecting from tables
- ---------------------
+ 17.4 Selecting from tables                      *dbext-tutorial-select*
+ --------------------------
  There are some very common actions when developing SQL.  For example, when
  coding a SELECT statement, we would like to see what data is currently in the
  table so we can determine what to add to the WHERE clause.
@@ -2431,8 +2544,8 @@ To specify the type of database you connect to most often, you can place the
 <
     
  
- Describing objects
- ------------------
+ 17.5 Describing objects                         *dbext-tutorial-describe*
+ -----------------------
  When you need to write SQL statements, or stored procedures, many times you
  need more than just the column names.  You also need the datatypes of the
  columns.
@@ -2471,14 +2584,14 @@ To specify the type of database you connect to most often, you can place the
 
 
 
- Connection Profiles
- -------------------
+ 17.6 Connection Profiles                        *dbext-tutorial-profile*
+ ------------------------
  The most efficient way to setup connection information is to create
  connection profiles in your |.vimrc|.  If you work with multiple databases,
  or a different database per project then you can add the following: >
-     let g:dbext_default_profile_usual        = 'type=ASA:user=DBA:passwd=SQL'
-     let g:dbext_default_profile_ORA          = 'type=ORA:user=scott:passwd=tiger'
-     let g:dbext_default_profile_mySQLServer  = 'type=SQLSRV:integratedlogin=1:dbname=myDB'
+     let g:dbext_default_profile_usual       = 'type=ASA:user=DBA:passwd=SQL'
+     let g:dbext_default_profile_ORA         = 'type=ORA:user=scott:passwd=tiger'
+     let g:dbext_default_profile_mySQLServer = 'type=SQLSRV:integratedlogin=1:dbname=myDB'
 <
  Then in your SQL files, you can add the following line where "//" is simply 
  a comment line marker for SQL files.  Comment indicators change by 
@@ -2500,10 +2613,12 @@ To specify the type of database you connect to most often, you can place the
  vimrc (using the profile created above): >
      let g:dbext_default_profile = 'usual'
 < 
+ More examples of connection profiles can be found here: 
+ |dbext-connect-profiles-examples|.
 
 
- Login Script
- ------------
+ 17.7 Login Script                            	 *dbext-tutorial-login*
+ -----------------
  For each profile, you can also specify a file of SQL commands to be 
  executed each time a connection is made to the database.  This can be
  useful if you want to set connection level properties within
@@ -2524,8 +2639,8 @@ To specify the type of database you connect to most often, you can place the
 
 
 
- Listing objects
- ---------------
+ 17.8 Listing object                            *dbext-tutorial-objects*
+ -------------------
  Often, you do not know the name of your table, but just need to browse
  through the database.  dbext can be used to display listings of objects, and
  you can optionally specify a prefix.
@@ -2572,8 +2687,8 @@ To specify the type of database you connect to most often, you can place the
 < 
 
 
- Object Completion
- -----------------
+ 17.9 Object Completion                         *dbext-tutorial-completion*
+ ----------------------
  You can usually remember the letter the object (table, procedure, view)
  begins with, but you cannot remember how to quite spell the name (either that
  or you are too lazy).
@@ -2611,13 +2726,13 @@ To specify the type of database you connect to most often, you can place the
  
 
 
- Host variable replacement
- -------------------------
+ 17.10 Host variable replacement                *dbext-tutorial-variables*
+ -------------------------------
  When writing SQL statements, you can often pass in parameters or host
  variables to be replaced at execution time.  This feature is enabled by
  default.
 
- Place your cursor on this statement: >
+ Place your cursor at the ^ in this statement: >
     SELECT id
       INTO @cust_variable_id
       FROM customer
@@ -2636,7 +2751,7 @@ To specify the type of database you connect to most often, you can place the
           INTO @cust_variable_id
 <      out of the SQL it sends to the database.  Generally, you would get an
        error indicating "@cust_variable_id" does not exist.  But since we are
-       trying to test the validity of the SELECT statement, dbext strip the
+       trying to test the validity of the SELECT statement, dbext strips` the
        INTO clause so we see what that SELECT statement will return.
 
     b) Next, we look for host variables, when one is found, you are prompted 
@@ -2659,13 +2774,57 @@ To specify the type of database you connect to most often, you can place the
 <      This allows you to test your statements without copying the statement
        into a scratch buffer, and replacing the host variables with values.
 
+    c) For variables which are not question marks, dbext will also 
+       temporarily store the value you entered (when prompted) and if you
+       were to re-run this statement or run another statement with the 
+       same host/variable names, dbext will automatically replace the 
+       variables with values used previously.  These values are stored 
+       on a per buffer basis.  You can view a list of previously saved 
+       values by running :DBListVar (or <Leader>slr (slv was already taken)). >
+            Connection: T(ASA)  U(dba)   at 22:43
+            ------------------------
+            ** Variable List **
+            ------------------------
+            set :host_var_name = '%b'
+            set @var_name = 1
+<       Previously stored variables can be removed by placing your 
+        cursor on the line above and hitting 'dd' to remove the variable.
+        If remembering variables is not desired you can set the 
+        g:dbext_default_variable_remember = 0 in your .vimrc.
+
+    d) Variables can also be defined two different ways.  
+
+       Method 1:
+       You can used the DBSetVar command to both define and remove 
+       variables: >
+            :DBSetVar :myvar1='myvar1'
+            :DBSetVar @myvar2='myvar2'
+            :DBSetVar @myint3=3
+<      To remove the variable, use DBSetVar with nothing after the = sign. >
+            :DBSetVar @myint3=  
+<      DBSetVar supports TAB completion.  
+            :DBSetVar <Tab>
+            :DBSetVar @m<Tab>
+       Will allow you to move through all currently defined variables and 
+       their values allowing you to easily change the value (while saving
+       some typing!).
+
+       Method 2:
+       In a buffer you can have multiple set statements and use mappings
+       to define (or execute) the variables: >
+            set :myvar4 = 'myvar4';
+            set @myvar5 = 'myvar5';
+            set @myint6 = 6;
+<      If your cursor is on one of these lines you can use <Leader>sal
+       (sql - assign - line), or you can visually select all 3 lines 
+       and use <Leader>sa or :'<,'>DBVarRangeAssign.
 
 
- Filetype support
- ----------------
+ 17.11 Filetype support                         *dbext-tutorial-filetype*
+ ----------------------
  This is an extension of the above host variable replacement.  The following
  filetypes are currently supported:  >
-     PHP, Java, JSP, JavaScript, jProperties, Perl, SQL, Vim
+     PHP, Java, JSP, JavaScript, jProperties, Perl, SQL, Visual Basic, Vim
 <
  Edit a new buffer: >
     :e parse.java
@@ -2713,8 +2872,8 @@ To specify the type of database you connect to most often, you can place the
 
 
 
- History
- -------
+ 17.12 History                            	*dbext-tutorial-history*
+ -------------
  History is a new feature of dbext 3.0.  Previous statements are 
  automatically recorded into a history file.  To view these statements
  run :DBHistory or <Leader>sh.  Pressing <enter> or double clicking will
@@ -2722,7 +2881,8 @@ To specify the type of database you connect to most often, you can place the
  To remove an item from the history you can use 'dd'.
 
 
-17.1 DBI Tutorial                            	        *dbext-tutorial-dbi*
+ 17.13 DBI Tutorial                            	*dbext-tutorial-dbi*
+ ------------------
 
  Assuming you have already followed the main tutorial, the DBI interface
  adds some additional commands and features not available when using the
