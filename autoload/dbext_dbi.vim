@@ -4,10 +4,10 @@
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       9.00
+" Version:       10.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2008 Nov 16
+" Last Modified: 2009 Mar 10
 " Created:       2007-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 "
@@ -114,7 +114,7 @@ if !has('perl')
     let g:loaded_dbext_dbi_msg = 'Vim does not have perl support enabled'
     finish
 endif
-let g:loaded_dbext_dbi = 900
+let g:loaded_dbext_dbi = 1000
 
 if !exists("dbext_dbi_debug")
    let g:dbext_dbi_debug = 0
@@ -719,13 +719,14 @@ sub db_connect
         # can be retrieved from the database.
         # This value can be overriden from your connection string
         # or by using:
+        #     DBSetOption LongReadLen=4096
         #     DBSetOption driver_parms=LongReadLen=4096
         #
         # LongTruncOk indicates to allow data truncation,
         # and do not report an error.
         $conn_local = DBI->connect( $DATA_SOURCE, $uid, $pwd,
                     { AutoCommit => 1, 
-                    LongReadLen => 500, 
+                    LongReadLen => 1000, 
                     LongTruncOk => 1, 
                     RaiseError => 0, 
                     PrintError => 0, 
@@ -889,6 +890,8 @@ sub db_set_connection_option
     my $conn_local;
     my $driver = '';
 
+    ($conn_local, $driver) = db_get_connection();
+
     $debug         = db_is_debug();
     if ( ! defined($option) || ! defined($value) ) {
         db_debug("Option and value must be specified");
@@ -906,13 +909,13 @@ sub db_set_connection_option
 
     if ( $option eq 'DBI_commit_on_disconnect' ) {
         $connections{$bufnr}->{'CommitOnDisconnect'} = $value;
-        db_debug("db_set_connection_option Opt[$option] Val:[".$connections{$bufnr}->{'CommitOnDisconnect'}."]");
+        db_debug("db_set_connection_option Conn[$bufnr]->Opt[$option] Val:[".$connections{$bufnr}->{'CommitOnDisconnect'}."]");
     } else {
         # Use global connection object
         # This expecting a boolean value (ie AutoCommit)
         $conn_local->{$option} = $value;
         #    or die $DBI::errstr;
-        db_debug("db_set_connection_option Opt[$option] Val:[".$conn_local->{$option}."]");
+        db_debug("db_set_connection_option ConnLocal->Opt[$option] Val:[".$conn_local->{$option}."]");
 
         my( $level, $err, $msg, $state ) = db_check_error($driver);
         if ( ! $msg eq "" ) {

@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2009 Jan 09
+*dbext.txt*	For Vim version 7.0.  Last change: 2009 Mar 14
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki <petike1 at dpg dot hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 9.00
+	  	dbext.vim version 10.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -91,6 +91,33 @@ David Fishburn
 
 ==============================================================================
 2. What's New						*dbext-new*
+
+Version 10.00
+
+ New Features
+ ------------
+ - Added new database support for SQL Anywhere UltraLite (11.x).
+ - Added new database support for Firebird (2.x).
+ - Added "@@variable" style to the list of bypassed variable names along 
+   with IN, OUT, INOUT and DECLARE.
+ - When listing stored variables, you can now remove multiple lines 
+   using visual mode.
+ - When closing the result window (using "q" or DBResultsClose) you are
+   intentionally returned to the buffer which opened the window
+   instead of allowing Vim to choose which window.
+
+ Bug Fixes
+ ---------
+ - The version 9.00 release of dbext broke modeline support.
+ - When listing variables the following error could be reported:
+   E121: Undefined variable
+ - It was not possible to retrieve more than 500 characters from a character
+   or binary column in the database when using DBI or ODBC.  Adding 
+   driver_parms=LongReadLen=4096 now works correctly.  You can also 
+   change this after you are connected to the database using 
+   DBSetOption LongReadLen=4096.  Running DBListConnections will display 
+   the current setting for each database connection currently open.
+
 
 Version 9.00
 
@@ -595,9 +622,23 @@ Version 2.00
 3. Overview						*dbext-overview*
 
  This plugin contains functions/mappings/commands to enable Vim to access 
- several databases. Currently Mysql, PostgreSQL, Ingres, Oracle, 
- Sybase Adaptive Server Anywhere, Sybase Adaptive Server Enterprise, 
- SQLite, Microsoft SQL Server, DB2 and Interbase are supported.
+ several databases. List of currently supported databases:
+        DB2 
+        Firebird
+        Ingres, 
+        Interbase
+        Microsoft SQL Server, 
+        MySQL, 
+        PostgreSQL, 
+        Oracle, 
+        Oracle Rdb on an Open VMS Node
+        SQLite, 
+        Sybase Adaptive Server Anywhere, 
+        Sybase UltraLite
+        Sybase Adaptive Server Enterprise, 
+ When using a Perl enabled Vim ( :echo has('perl') ):
+        DBI
+        ODBC
 
  It does this by shelling out to the operating system and calling the 
  command line tools that come with the client software for the database.

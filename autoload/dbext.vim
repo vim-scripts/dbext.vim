@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       9.00
+" Version:       10.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2009 Jan 09
+" Last Modified: 2009 Jan 30
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -37,7 +37,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 900
+let g:loaded_dbext_auto = 1000
 
 " call confirm("Loaded dbext autoload", "&Ok")
 " Script variable defaults, these are used internal and are never displayed
@@ -51,6 +51,12 @@ let s:dbext_tempfile = fnamemodify(tempname(), ":h").
             \ 'dbext.sql'
 let s:dbext_prev_sql     = ''
 let s:dbext_result_count = 0
+" Store previous buffer information so we can return to it when we 
+" " Store previous buffer information so we can return to it when we 
+" close the Result window
+" close the Result window
+let s:dbext_buffer_last_winnr = -1
+let s:dbext_buffer_last       = -1
 " }}}
 
 " Build internal lists {{{
@@ -79,6 +85,10 @@ function! s:DB_buildLists()
     call add(s:db_types_mv, 'SQLITE')
     " Oracle Rdb (stern)
     call add(s:db_types_mv, 'RDB')
+    " Sybase SQL Anywhere UltraLite (fishburn)
+    call add(s:db_types_mv, 'ULTRALITE')
+    " Firebird (fishburn)
+    call add(s:db_types_mv, 'FIREBIRD')
 
     " The following are only available with the
     " Perl DBI extension plug.
@@ -816,6 +826,12 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "ASA_on_error"            |return (exists("g:dbext_default_ASA_on_error")?g:dbext_default_ASA_on_error.'':'exit')
     elseif a:name ==# "ASA_SQL_Top_pat"         |return (exists("g:dbext_default_ASA_SQL_Top_pat")?g:dbext_default_ASA_SQL_Top_pat.'':'\(\cselect\)')
     elseif a:name ==# "ASA_SQL_Top_sub"         |return (exists("g:dbext_default_ASA_SQL_Top_sub")?g:dbext_default_ASA_SQL_Top_sub.'':'\1 TOP @dbext_topX ')
+    elseif a:name ==# "ULTRALITE_bin"            |return (exists("g:dbext_default_ULTRALITE_bin")?g:dbext_default_ULTRALITE_bin.'':'dbisql')
+    elseif a:name ==# "ULTRALITE_cmd_terminator" |return (exists("g:dbext_default_ULTRALITE_cmd_terminator")?g:dbext_default_ULTRALITE_cmd_terminator.'':';')
+    elseif a:name ==# "ULTRALITE_cmd_options"    |return (exists("g:dbext_default_ULTRALITE_cmd_options")?g:dbext_default_ULTRALITE_cmd_options.'':'-nogui -ul')
+    elseif a:name ==# "ULTRALITE_on_error"       |return (exists("g:dbext_default_ULTRALITE_on_error")?g:dbext_default_ULTRALITE_on_error.'':'exit')
+    elseif a:name ==# "ULTRALITE_SQL_Top_pat"    |return (exists("g:dbext_default_ULTRALITE_SQL_Top_pat")?g:dbext_default_ULTRALITE_SQL_Top_pat.'':'\(\cselect\)')
+    elseif a:name ==# "ULTRALITE_SQL_Top_sub"    |return (exists("g:dbext_default_ULTRALITE_SQL_Top_sub")?g:dbext_default_ULTRALITE_SQL_Top_sub.'':'\1 TOP @dbext_topX ')
     elseif a:name ==# "ASE_bin"                 |return (exists("g:dbext_default_ASE_bin")?g:dbext_default_ASE_bin.'':'isql')
     elseif a:name ==# "ASE_cmd_terminator"      |return (exists("g:dbext_default_ASE_cmd_terminator")?g:dbext_default_ASE_cmd_terminator.'':"\ngo\n")
     elseif a:name ==# "ASE_cmd_options"         |return (exists("g:dbext_default_ASE_cmd_options")?g:dbext_default_ASE_cmd_options.'':'-w 10000')
@@ -841,6 +857,12 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "MYSQL_version"           |return (exists("g:dbext_default_MYSQL_version")?g:dbext_default_MYSQL_version.'':'5')
     elseif a:name ==# "MYSQL_SQL_Top_pat"       |return (exists("g:dbext_default_MYSQL_SQL_Top_pat")?g:dbext_default_MYSQL_SQL_Top_pat.'':'\(.*\)')
     elseif a:name ==# "MYSQL_SQL_Top_sub"       |return (exists("g:dbext_default_MYSQL_SQL_Top_sub")?g:dbext_default_MYSQL_SQL_Top_sub.'':'\1 LIMIT @dbext_topX ')
+    elseif a:name ==# "FIREBIRD_bin"            |return (exists("g:dbext_default_FIREBIRD_bin")?g:dbext_default_FIREBIRD_bin.'':'isql')
+    elseif a:name ==# "FIREBIRD_cmd_options"    |return (exists("g:dbext_default_FIREBIRD_cmd_options")?g:dbext_default_FIREBIRD_cmd_options.'':'')
+    elseif a:name ==# "FIREBIRD_cmd_terminator" |return (exists("g:dbext_default_FIREBIRD_cmd_terminator")?g:dbext_default_FIREBIRD_cmd_terminator.'':';')
+    elseif a:name ==# "FIREBIRD_version"        |return (exists("g:dbext_default_FIREBIRD_version")?g:dbext_default_FIREBIRD_version.'':'5')
+    elseif a:name ==# "FIREBIRD_SQL_Top_pat"    |return (exists("g:dbext_default_FIREBIRD_SQL_Top_pat")?g:dbext_default_FIREBIRD_SQL_Top_pat.'':'\(.*\)')
+    elseif a:name ==# "FIREBIRD_SQL_Top_sub"    |return (exists("g:dbext_default_FIREBIRD_SQL_Top_sub")?g:dbext_default_FIREBIRD_SQL_Top_sub.'':'\1 FIRST @dbext_topX ')
     elseif a:name ==# "ORA_bin"                 |return (exists("g:dbext_default_ORA_bin")?g:dbext_default_ORA_bin.'':'sqlplus')
     elseif a:name ==# "ORA_cmd_header"          |return (exists("g:dbext_default_ORA_cmd_header")?g:dbext_default_ORA_cmd_header.'':"" .
                         \ "set pagesize 10000\n" .
@@ -1033,7 +1055,7 @@ endfunction
 " new buffer to set up the buffer defaults
 function! s:DB_resetBufferParameters(use_defaults)
     let no_defaults  = 0
-    let retval       = -1
+    let retval       = -2
 
     " Reset configuration parameters to defaults
     for param in s:config_params_mv
@@ -1076,7 +1098,7 @@ function! s:DB_resetBufferParameters(use_defaults)
     " for connection information
     if s:DB_get("type", no_defaults) == "" 
                 \ && a:use_defaults == 1
-                \ && retval != -1
+                \ && retval == -2
         call s:DB_promptForParameters()
     endif
 
@@ -1339,9 +1361,9 @@ function! dbext#DB_checkModeline()
             " connection parameters
             let no_defaults = 0
             let rc = s:DB_resetBufferParameters(no_defaults)
-            if rc == -1
-                break
-            endif
+            " if rc == -1
+            "     break
+            " endif
 
             let rc = dbext#DB_setMultipleOptions(mdl_options)
             if rc > -1
@@ -1403,9 +1425,13 @@ function! s:DB_stripLeadFollowSpaceLines(str)
     let stripped = substitute(a:str, '^[\r\n]\+', '', '')
     " Now take care of the other end of the string
     let stripped = substitute(stripped, '\([ \t]\+\)\([\r\n]\+\)', '\2', 'g')
-    " 
-    let stripped = substitute( stripped, '^\s*\(.\{-}\)[ \t\r\n]*$', '\1\n', '' )
-
+    
+    " Albie patch
+    " Unfortunately, the following substitute concats the first 2 lines, to 
+    " create a space on the first line
+    " let stripped = substitute( stripped, '^\s*\(.\{-}\)[ \t\r\n]*$', '\1\n', '' )
+    let stripped = substitute(stripped, '^\|[\n]\zs\s*\(.\{-}\)[ \t]*\ze[\r\n$]', '\1', 'g' )
+    let stripped = substitute(stripped, '^\s\+', '', '')
     return stripped
 endfunction
 
@@ -1756,6 +1782,129 @@ function! s:DB_ASA_getDictionaryView()
                 \ " ORDER BY ".(s:DB_get('dict_show_owner')==1?"vcreator||'.'||":'')."viewname; "
                 \ )
     return s:DB_ASA_stripHeaderFooter(result)
+endfunction 
+"}}}
+" UltraLite exec {{{
+function! s:DB_ULTRALITE_execSql(str)
+    " All defaults are specified in the DB_getDefault function.
+    " This contains the defaults settings for all database types
+    let terminator = dbext#DB_getWType("cmd_terminator")
+
+    let output = dbext#DB_getWType("cmd_header") 
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
+    " Only include a command terminator if one has not already
+    " been added
+    if output !~ s:DB_escapeStr(terminator) . 
+                \ '['."\n".' \t]*$'
+        let output = output . terminator
+    endif
+
+    exe 'redir! > ' . s:dbext_tempfile
+    silent echo output
+    redir END
+
+    let dbext_bin = s:DB_fullPath2Bin(dbext#DB_getWType("bin"))
+
+    let cmd = dbext_bin .  ' ' . dbext#DB_getWType("cmd_options") . ' ' .
+                \ s:DB_option('-onerror ', dbext#DB_getWType("on_error"), ' ') .
+                \ ' -c "' .
+                \ s:DB_option('uid=', s:DB_get("user"), ';') .
+                \ s:DB_option('pwd=', s:DB_get("passwd"), ';') .
+                \ s:DB_option('dsn=', s:DB_get("dsnname"), ';') .
+                \ s:DB_option('dbf=', s:DB_get("dbname"), ';') .
+                \ s:DB_option('', s:DB_get("extra"), '') 
+    let cmd = cmd .  '" ' . 
+                \ ' read ' . s:dbext_tempfile
+    let result = s:DB_runCmd(cmd, output, "")
+
+    return result
+endfunction
+
+function! s:DB_ULTRALITE_describeTable(table_name)
+    let owner  = s:DB_getObjectOwner(a:table_name)
+    let object = s:DB_getObjectName(a:table_name)
+    let owner  = ( strlen(owner) > 0 ? owner : '' ) 
+    " return s:DB_ULTRALITE_execSql("call sp_jdbc_columns('".object."', '".owner."');")
+    let sql =  ''.
+                \ 'select CAST("column_name" as VARCHAR(40)) column_name, "domain", "nulls", CAST("default" as VARCHAR(40)) "default", "domain_info", sc."object_id", CAST(st."table_name" as VARCHAR(40)) table_name '.
+                \ "  from SYSTABLE st ".
+                \ "  join SYSCOLUMN sc ".
+                \ "    on st.object_id = sc.table_id ".
+                \ " where st.table_name = '".object."' "
+                \ " order by sc.table_id, sc.object_id asc "
+    return s:DB_ULTRALITE_execSql(sql)
+endfunction
+
+function! s:DB_ULTRALITE_describeProcedure(proc_name)
+    echo 'UltraLite does not support stored procedures'
+    return -1
+endfunction
+
+function! s:DB_ULTRALITE_getListTable(table_prefix)
+    let owner      = s:DB_getObjectOwner(a:table_prefix)
+    let table_name = s:DB_getObjectName(a:table_prefix)
+    let sql = ''.
+                \ "select CAST(table_name as VARCHAR(70)) table_name, table_type " .
+                \ "  from SYSTABLE " .
+                \ " where table_name   like '" . table_name . "%' ".
+                \ " order by table_name"
+    return s:DB_ULTRALITE_execSql(sql)
+endfunction
+
+function! s:DB_ULTRALITE_getListProcedure(proc_prefix)
+    echo 'UltraLite does not support stored procedures'
+    return -1
+endfunction
+
+function! s:DB_ULTRALITE_getListView(view_prefix)
+    echo 'UltraLite does not support views'
+    return -1
+endfunction 
+
+function! s:DB_ULTRALITE_getListColumn(table_name) 
+    let owner      = s:DB_getObjectOwner(a:table_name)
+    let table_name = s:DB_getObjectName(a:table_name)
+    let query = ''.
+                \ "select column_name ".
+                \ "  from SYSTABLE st ".
+                \ "  join SYSCOLUMN sc ".
+                \ "    on st.object_id = sc.table_id ".
+                \ " where st.table_name = '".table_name."' "
+                \ " order by sc.object_id asc "
+    let result = s:DB_ULTRALITE_execSql( query )
+    return s:DB_ULTRALITE_stripHeaderFooter(result)
+endfunction 
+
+function! s:DB_ULTRALITE_stripHeaderFooter(result)
+    " Strip off column headers ending with a newline
+    let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
+    " Strip off query statistics
+    let stripped = substitute( stripped, '(\(First\s\+\)\?\d\+ rows\_.*', '', '' )
+    " Strip off trailing spaces
+    " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
+    return stripped
+endfunction 
+
+function! s:DB_ULTRALITE_getDictionaryTable() 
+    let result = s:DB_ULTRALITE_execSql(
+                \ "select table_name " .
+                \ "  from SYSTABLE " .
+                \ " order by table_name"
+                \ )
+    return s:DB_ULTRALITE_stripHeaderFooter(result)
+endfunction 
+
+function! s:DB_ULTRALITE_getDictionaryProcedure() 
+    echo 'UltraLite does not support stored procedures'
+    return -1
+endfunction 
+
+function! s:DB_ULTRALITE_getDictionaryView() 
+    echo 'UltraLite does not support views'
+    return -1
 endfunction 
 "}}}
 " ASE exec {{{
@@ -3299,6 +3448,132 @@ function! s:DB_SQLSRV_getDictionaryView() "{{{
                 \ " order by ".(s:DB_get('dict_show_owner')==1?"convert(varchar,u.name), ":'')."o.name"
                 \ )
     return s:DB_SQLSRV_stripHeaderFooter(result)
+endfunction "}}}
+"}}}
+" FIREBIRD exec {{{
+function! s:DB_FIREBIRD_execSql(str)
+    " All defaults are specified in the DB_getDefault function.
+    " This contains the defaults settings for all database types
+    let terminator = dbext#DB_getWType("cmd_terminator")
+
+    let output = dbext#DB_getWType("cmd_header") 
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
+    " Only include a command terminator if one has not already
+    " been added
+    if output !~ s:DB_escapeStr(terminator) . 
+                \ '['."\n".' \t]*$'
+        let output = output . terminator
+    endif
+
+    exe 'redir! > ' . s:dbext_tempfile
+    silent echo output
+    redir END
+
+    let dbext_bin = s:DB_fullPath2Bin(dbext#DB_getWType("bin"))
+
+    let cmd = dbext_bin .  ' ' . dbext#DB_getWType("cmd_options")
+    let cmd = cmd .
+                \ s:DB_option(' -u ', s:DB_get("user"), '') .
+                \ s:DB_option(' -p ',  s:DB_get("passwd"), '') .
+                \ s:DB_option(' ', s:DB_get("dbname"), '') .
+                \ s:DB_option(' ', s:DB_get("extra"), '') .
+                \ ' < ' . s:dbext_tempfile
+    let result = s:DB_runCmd(cmd, output, "")
+
+    return result
+endfunction
+
+function! s:DB_FIREBIRD_describeTable(table_name)
+    return s:DB_FIREBIRD_execSql("show tables ".a:table_name)
+endfunction
+
+function! s:DB_FIREBIRD_describeProcedure(procedure_name)
+    return s:DB_FIREBIRD_execSql("show procedure ".a:procedure_name)
+    return result
+endfunction
+
+function! s:DB_FIREBIRD_getListTable(table_prefix)
+    let query = "SELECT RDB$RELATION_NAME ".
+                \" FROM RDB$RELATIONS ".
+                \"WHERE RDB$SYSTEM_FLAG=0 ".
+                \"  AND RDB$RELATION_NAME LIKE '".a:table_prefix."%'".
+                \"ORDER BY RDB$RELATION_NAME "
+    return s:DB_FIREBIRD_execSql(query)
+endfunction
+
+function! s:DB_FIREBIRD_getListProcedure(proc_prefix)
+    let owner   = s:DB_getObjectOwner(a:proc_prefix)
+    let object  = s:DB_getObjectName(a:proc_prefix)
+    let query = "SELECT DISTINCT RDB$PROCEDURE_NAME ".
+                \" FROM RDB$PROCEDURES ".
+                \"WHERE RDB$PROCEDURE_NAME LIKE '".object."%'".
+                \"ORDER BY RDB$PROCEDURE_NAME "
+    return s:DB_FIREBIRD_execSql(query)
+endfunction
+
+function! s:DB_FIREBIRD_getListView(view_prefix)
+    let owner   = s:DB_getObjectOwner(a:view_prefix)
+    let object  = s:DB_getObjectName(a:view_prefix)
+    let query = "SELECT DISTINCT RDB$VIEW_NAME ".
+                \" FROM RDB$VIEW_RELATIONS ".
+                \"WHERE RDB$VIEW_NAME LIKE '".object."%'".
+                \"ORDER BY RDB$VIEW_NAME "
+    return s:DB_FIREBIRD_execSql(query)
+endfunction 
+
+function! s:DB_FIREBIRD_getListColumn(table_name) "{{{
+    let owner      = s:DB_getObjectOwner(a:table_name)
+    let table_name = s:DB_getObjectName(a:table_name)
+    let query = ''.
+                \ "SELECT f.rdb$field_name ".
+                \ "  FROM rdb$relation_fields f ".
+                \ "  JOIN rdb$relations r ".
+                \ "    ON f.rdb$relation_name = r.rdb$relation_name ".
+                \ "   AND r.rdb$view_blr IS NULL ".
+                \ "   AND ( ".
+                \ "           r.rdb$system_flag IS NULL ".
+                \ "        OR r.rdb$system_flag   = 0 ".
+                \ "       ) ".
+                \ " WHERE f.rdb$relation_name = '".table_name."' ".
+                \ " ORDER BY f.rdb$field_position "
+    let result = s:DB_FIREBIRD_execSql( query )
+    return s:DB_FIREBIRD_stripHeaderFooter(result)
+endfunction "}}}
+
+function! s:DB_FIREBIRD_stripHeaderFooter(result) "{{{
+    " RDB$RELATION_NAME
+    " RDB$FIELD_NAME
+    " ===============================================================================
+    " ==============================
+    " =================================================
+    " COUNTRY
+    " COUNTRY
+    "
+    " COUNTRY
+    " CURRENCY
+    "
+    " Strip off column headers ending with a newline
+    let stripped = substitute( a:result, '\_.*=\s*'."[\<C-J>]", '', '' )
+    " Strip off trailing spaces
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
+    return stripped
+endfunction "}}}
+
+function! s:DB_FIREBIRD_getDictionaryTable() "{{{
+    let result = s:DB_FIREBIRD_getListTable('')
+    return s:DB_FIREBIRD_stripHeaderFooter(result)
+endfunction "}}}
+
+function! s:DB_FIREBIRD_getDictionaryProcedure() "{{{
+    let result = s:DB_FIREBIRD_getListProcedure('')
+    return s:DB_FIREBIRD_stripHeaderFooter(result)
+endfunction "}}}
+
+function! s:DB_FIREBIRD_getDictionaryView() "{{{
+    let result = s:DB_FIREBIRD_getListView('')
+    return s:DB_FIREBIRD_stripHeaderFooter(result)
 endfunction "}}}
 "}}}
 " DBI (Perl) exec {{{
@@ -5698,21 +5973,6 @@ function! dbext#DB_runPrevCmd(...)
     endif
 endfunction 
 "}}}
-" removeVariable {{{
-function! dbext#DB_removeVariable(line)
-    let curr_bufnr     = s:dbext_prev_bufnr
-    let switched_bufnr = s:dbext_prev_bufnr
-
-    let rc = dbext#DB_switchPrevBuf()
-
-    " Check to ensure the buffer still exists
-    if rc > 0
-        call dbext#DB_sqlVarAssignment(1, a:line)
-    endif
-
-    DBResultsClose
-endfunction 
-"}}}
 " runCmd {{{
 function! s:DB_runCmd(cmd, sql, result)
     let s:dbext_prev_sql   = a:sql
@@ -5835,6 +6095,11 @@ function! s:DB_switchToBuffer(buf_name, buf_file, get_buf_nr_name)
     " Retieve this value before we switch buffers
     let l:buffer_lines = s:DB_get('buffer_lines')
 
+    " Save the current buffer number. The yankring will switch back to
+    " this buffer when an action is taken.
+    let s:dbext_buffer_last       = bufnr('%')
+    let s:dbext_buffer_last_winnr = winnr()
+
     " Do not use bufexists(res_buf_name), since it uses a fully qualified
     " path name to search for the buffer, which in effect opens multiple
     " buffers called "Result" if the files that you are executing the
@@ -5944,7 +6209,7 @@ endfunction "}}}
 function! dbext#DB_windowClose(buf_name)
     if a:buf_name == '%'
         " The user hit 'q', which is a buffer specific mapping to close
-        " the result or history window.  Save the size of the buffer
+        " the result/history/variable window.  Save the size of the buffer
         " for future use.
         
         " Update the local buffer variables with the current size
@@ -5954,6 +6219,11 @@ function! dbext#DB_windowClose(buf_name)
         
         " Hide it 
         hide
+
+        if bufwinnr(s:dbext_buffer_last) != -1
+            " If the buffer is visible, switch to it
+            exec s:dbext_buffer_last_winnr . "wincmd w"
+        endif
 
         return
     endif
@@ -5987,6 +6257,12 @@ function! dbext#DB_windowClose(buf_name)
 
         " Hide it 
         hide
+
+        if bufwinnr(s:dbext_buffer_last) != -1
+            " If the buffer is visible, switch to it
+            exec s:dbext_buffer_last_winnr . "wincmd w"
+        endif
+
         return
     endif
 
@@ -6011,6 +6287,12 @@ function! dbext#DB_windowClose(buf_name)
 
         " Hide it 
         hide
+
+        if bufwinnr(s:dbext_buffer_last) != -1
+            " If the buffer is visible, switch to it
+            exec s:dbext_buffer_last_winnr . "wincmd w"
+        endif
+
     endif
 endfunction "}}}
 " DB_windowOpen {{{
@@ -6027,7 +6309,12 @@ function! dbext#DB_windowOpen()
     if s:DB_switchToBuffer(res_buf_name, res_buf_name, 'result_bufnr') == 1
         nnoremap <buffer> <silent> R   :DBResultsRefresh<cr>
         nnoremap <buffer> <silent> O   :DBOrientationToggle<cr>
-        nnoremap <buffer> <silent> dd  :call dbext#DB_removeVariable(getline("."))<CR>
+        nnoremap <buffer> <silent> dd  :call dbext#DB_removeVariable()<CR>
+        xnoremap <buffer> <silent> d   :call dbext#DB_removeVariable()<CR>
+        " nnoremap <buffer> <silent> dd  :call s:DB_removeVariable()<CR>
+        " xnoremap <buffer> <silent> d   :call s:DB_removeVariable()<CR>
+        " nnoremap <buffer> <silent> dd  :DBVarRangeAssign!<CR>
+        " xnoremap <buffer> <silent> d   :DBVarRangeAssign!<CR>
     endif
 
     setlocal modified
@@ -6047,9 +6334,10 @@ function! dbext#DB_windowOpen()
         catch
         endtry
     endif
-    if hasmapto('DB_sqlVarAssignment')
+    if hasmapto('DB_removeVariable')
         try
-            silent! unmap <buffer> dd
+            silent! unmap  <buffer> dd
+            silent! xunmap <buffer> d
         catch
         endtry
     endif
@@ -6115,7 +6403,12 @@ function! s:DB_addToResultBuffer(output, do_clear)
     if s:DB_switchToBuffer(res_buf_name, res_buf_name, 'result_bufnr') == 1
         nnoremap <buffer> <silent> R   :DBResultsRefresh<cr>
         nnoremap <buffer> <silent> O   :DBOrientationToggle<cr>
-        nnoremap <buffer> <silent> dd  :call dbext#DB_removeVariable(getline("."))<CR>
+        nnoremap <buffer> <silent> dd  :call dbext#DB_removeVariable()<CR>
+        xnoremap <buffer> <silent> d   :call dbext#DB_removeVariable()<CR>
+        " nnoremap <buffer> <silent> dd  :call s:DB_removeVariable()<CR>
+        " xnoremap <buffer> <silent> d   :call s:DB_removeVariable()<CR>
+        " nnoremap <buffer> <silent> dd  :DBVarRangeAssign!<CR>
+        " xnoremap <buffer> <silent> d   :DBVarRangeAssign!<CR>
     endif
 
     setlocal modified
@@ -6250,12 +6543,16 @@ function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
         "   DECLARE  @variable CHAR(1)
         " Or part of a string
         "   '@variable'
-        " Or an assignment
-        "   SET @variable = ...
+        " Or part of path
+        "   /@variable'
+        " Or part of path
+        "   /@variable'
+        " Or a global variable
+        "   SET @@variable = ...
         " If so, ignore the match
-        let inout = matchstr(strpart(str, 1, (index-1)), '\(\<\w\+\ze\s*$\|''\ze$\)')
+        let inout = matchstr(strpart(str, 1, (index-1)), '\(\<\w\+\ze\s*$\|''\ze$\|/\ze$\|@\ze$\)')
 
-        if inout !~? '\(in\|out\|inout\|declare\|set\|''\)'
+        if inout !~? '\(in\|out\|inout\|declare\|set\|''\|/\|@\)'
             " Check to see if the variable is part of the temporarily
             " stored list of variables to ignore
             if has_key(b:dbext_sqlvar_temp_mv, var)
@@ -6331,9 +6628,10 @@ function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
                 endif
             endif
         else
-            if inout !~? "'" && s:DB_get('variable_remember') == '1'
+            " if inout !~? "'" && s:DB_get('variable_remember') == '1'
+            if s:DB_get('variable_remember') == '1'
                 " Remember this as only a temporary variable and remove
-                " these when the query finishes
+                " these when a new query begins
                 call dbext#DB_sqlVarAssignment(2, 'set '.var.' = '.var)
             endif
             " Skip this match and move on to the next
@@ -6349,7 +6647,9 @@ function! s:DB_parseHostVariables(query)
     let query = a:query
 
     call s:DB_sqlVarRemoveTemp()
-    call s:DB_sqlVarInit()
+    if s:DB_sqlVarInit() != 0
+        return -1
+    endif
     let query = s:DB_removeEmptyLines(query)
     " let query = s:DB_sqlVarSubstitute(query)
 
@@ -7104,6 +7404,30 @@ function! dbext#DB_sqlVarRangeAssignment(remove_var) range
     endfor
 endfunction
 
+function! dbext#DB_removeVariable() range
+    let curr_bufnr     = s:dbext_prev_bufnr
+    let switched_bufnr = s:dbext_prev_bufnr
+
+    let lines          = []
+    for lineNum in range(a:firstline, a:lastline)
+        let line = getline(lineNum)
+        if line !~ "^\s*$"
+            call add(lines, line)
+        endif
+    endfor
+
+    let rc = dbext#DB_switchPrevBuf()
+
+    " Check to ensure the buffer still exists
+    if rc > 0
+        for line in lines
+            call dbext#DB_sqlVarAssignment(1, line)
+        endfor
+    endif
+
+    DBResultsClose
+endfunction 
+
 function! s:DB_removeEmptyLines(sql)
     " let sql = s:DB_stripLeadFollowSpaceLines(a:sql)
     let sql = substitute(a:sql, '[\n\r]\+\(\s*[\n\r]\*\)*\s*[\n\r]\+', '\n', 'g')
@@ -7113,7 +7437,9 @@ endfunction
 
 function! s:DB_sqlVarSubstitute(sql)
     " Substitute sql vars in the given stmt
-    call s:DB_sqlVarInit()
+    if s:DB_sqlVarInit() != 0
+        return -1
+    endif
     let sql = a:sql
 
     for [k,v] in items(b:dbext_sqlvar_mv)
@@ -7133,6 +7459,10 @@ function! dbext#DB_sqlVarList(...)
     " Record current buffer to return to the correct one
     let s:dbext_prev_winnr = winnr()
     let s:dbext_prev_bufnr = bufnr('%')
+
+    if s:DB_sqlVarInit() != 0
+        return -1
+    endif
 
     let var_list = 
                 \ "------------------------\n" .
@@ -7232,9 +7562,10 @@ function! dbext#DB_historyList()
     nnoremap <buffer> q                      :DBResultsClose<cr>
     nnoremap <buffer> <silent> <space>       :DBResultsToggleResize<cr>
     
-    if hasmapto('DB_sqlVarAssignment')
+    if hasmapto('DB_removeVariable')
         try
-            silent! unmap <buffer> dd
+            silent! unmap  <buffer> dd
+            silent! xunmap <buffer> d
         catch
         endtry
     endif
