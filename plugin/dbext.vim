@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       10.00
+" Version:       11.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2009 Jan 17
+" Last Modified: 2009 Aug 16
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -38,10 +38,14 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext = 1000
+let g:loaded_dbext = 1100
 
 if !exists('g:dbext_default_menu_mode')
     let g:dbext_default_menu_mode = 3
+endif
+
+if !exists('g:dbext_rows_affected')
+    let g:dbext_rows_affected = 0
 endif
 
 " Commands {{{
@@ -54,15 +58,16 @@ command! -nargs=0 DBRollback        :call dbext#DB_rollback()
 command! -nargs=0 DBListConnections :call dbext#DB_getListConnections()
 command! -range -nargs=0 DBExecRangeSQL <line1>,<line2>call dbext#DB_execRangeSql()
 command! -nargs=+ Call              :call dbext#DB_execSql("call " . <q-args>)
-command! -nargs=+ Select            :call dbext#DB_execSql("select " . <q-args>)
-command! -nargs=+ Update            :call dbext#DB_execSql("update " . <q-args>)
-command! -nargs=+ Insert            :call dbext#DB_execSql("insert " . <q-args>)
-command! -nargs=+ Delete            :call dbext#DB_execSql("delete " . <q-args>)
-command! -nargs=+ Drop              :call dbext#DB_execSql("drop " . <q-args>)
-command! -nargs=+ Alter             :call dbext#DB_execSql("alter " . <q-args>)
+command! -nargs=+ -complete=customlist,dbext#DB_completeTables Select            :call dbext#DB_execSql("select " . <q-args>)
+command! -nargs=+ -complete=customlist,dbext#DB_completeTables Update            :call dbext#DB_execSql("update " . <q-args>)
+command! -nargs=+ -complete=customlist,dbext#DB_completeTables Insert            :call dbext#DB_execSql("insert " . <q-args>)
+command! -nargs=+ -complete=customlist,dbext#DB_completeTables Delete            :call dbext#DB_execSql("delete " . <q-args>)
+command! -nargs=+ -complete=customlist,dbext#DB_completeTables Drop              :call dbext#DB_execSql("drop " . <q-args>)
+command! -nargs=+ -complete=customlist,dbext#DB_completeTables Alter             :call dbext#DB_execSql("alter " . <q-args>)
 command! -nargs=+ Create            :call dbext#DB_execSql("create " . <q-args>)
 command! -nargs=1 DBSetOption       :call dbext#DB_setMultipleOptions(<q-args>)
 command! -nargs=? DBGetOption       :echo DB_listOption(<q-args>)
+" command! -nargs=* -complete=customlist,dbext#DB_completeSettings DBSetOption :call dbext#DB_setMultipleOptions(<q-args>)
 command! -nargs=* -complete=customlist,dbext#DB_completeSettings DBSetOption :call dbext#DB_setMultipleOptions(<q-args>)
 command! -nargs=* -complete=customlist,dbext#DB_completeSettings DBGetOption :echo DB_listOption(<q-args>)
 command! -range -nargs=0 -bang DBVarRangeAssign <line1>,<line2>call dbext#DB_sqlVarRangeAssignment(<bang>0)
@@ -322,8 +327,8 @@ endif
 if !hasmapto('<Plug>DBOrientationToggle') && !hasmapto('<Leader>so', 'n')
     nmap <unique> <Leader>so <Plug>DBOrientationToggle
 endif
-if !hasmapto('<Plug>DBVarRangeAssign')
-    if !hasmapto('<Leader>saa', 'n')
+if !hasmapto('DBVarRangeAssign')
+    if !hasmapto('<Leader>sas', 'n')
         nmap <unique> <silent> <Leader>sas :1,$DBVarRangeAssign<CR>
     endif
     if !hasmapto('<Leader>sal', 'n')

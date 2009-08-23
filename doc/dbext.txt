@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2009 Mar 14
+*dbext.txt*	For Vim version 7.0.  Last change: 2009 Aug 22
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki <petike1 at dpg dot hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 10.00
+	  	dbext.vim version 11.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -91,6 +91,43 @@ David Fishburn
 
 ==============================================================================
 2. What's New						*dbext-new*
+
+Version 11.00
+
+ New Features
+ ------------
+ - When autoclose is enabled, a message is displayed indicating autoclose is
+   enabled.  This message will now also include the number of rows affected
+   by the last statement (if applicable).  This is available for all 
+   database interfaces which can provide this information.  Vim scripts or
+   mappings have access to this value by referencing the g:dbext_rows_affected
+   variable (Philippe Moravie).
+ - The Select, Update, Delete, Alter and Drop commands will now complete 
+   table names.
+ - Revamped the saved variables (see |dbext-tutorial-variables|).  dbext 
+   checks your queries and will prompt for variables (see |dbext-prompting|).
+   dbext uses regular expressions to determine which variables should be 
+   prompted.  To see how you can easily extend the regular expressions follow
+   the tutorial.  This replaces the previous method which was too limiting.
+   The new technique uses Vim's standard regular expressions.  This introduces
+   the variable_def_regex dbext option and deprecates the variable_def dbext
+   option.
+ - With the introduction of saved variables, you are now prompted during 
+   SQL execution to determine whether the previously saved variables 
+   should be substituted.
+
+ Bug Fixes
+ ---------
+ - If you re-sourced plugin/dbext.vim you would receive the following error:
+   E227: mapping already exists for <Leader>sas
+ - Errors were reported about undefined variable, dbext_sqlvar_temp_mv,  if
+   executing a SQL statement directly from a filetype which was not SQL 
+   (i.e. PHP).
+ - If saved variables were in use, it was possible for dbext to used the 
+   replaced variables without the user knowing.  For example stored 
+   procedures could be created with the replaced strings instead of the 
+   variables.
+
 
 Version 10.00
 
@@ -625,17 +662,17 @@ Version 2.00
  several databases. List of currently supported databases:
         DB2 
         Firebird
-        Ingres, 
+        Ingres
         Interbase
-        Microsoft SQL Server, 
-        MySQL, 
-        PostgreSQL, 
-        Oracle, 
+        Microsoft SQL Server
+        MySQL
+        PostgreSQL
+        Oracle
         Oracle Rdb on an Open VMS Node
-        SQLite, 
-        Sybase Adaptive Server Anywhere, 
+        SQLite
+        Sybase Adaptive Server Anywhere
         Sybase UltraLite
-        Sybase Adaptive Server Enterprise, 
+        Sybase Adaptive Server Enterprise
  When using a Perl enabled Vim ( :echo has('perl') ):
         DBI
         ODBC
@@ -789,7 +826,7 @@ Version 2.00
     dbext_default_buffer_lines
 <       - How many lines the Result window should be >
     dbext_default_parse_statements 
-<       - Which statements are parsed for input parameters (See section 6) >
+<       - Which statements are parsed for input parameters (See |dbext-newdb|) >
     dbext_default_prompt_for_variables 
 <       - Allows you to specify if dbext should check for host variables >
     dbext_default_always_prompt_for_variables 
@@ -829,7 +866,7 @@ Version 2.00
           your needs, you can set a custom title.  To retrieve settings
           from the dbext plugin you can use: >
             :let new_title = 'Srvr: ' . DB_listOption('srvname')
-            :exec 'DBSetOption type=ASA:replace_title=1:custom_title='.new_title
+            :exec 'DBSetOption custom_title='.new_title
     dbext_default_use_tbl_alias
 <       - DBListColumn (by default) will create a column list with an
           alias attached to each column.  This option has three 
@@ -1199,7 +1236,9 @@ Version 2.00
     Many of these can also be set by running PromptForBufferParameters.
     For each buffer these variables can be changed by running >
         :DBSetOption user=DBA
-        :DBSetOption type=ASA:dsnname=Can Include Spaces:user=DBA
+        :DBSetOption type=ASA
+        :DBSetOption dsnname=Can Include Spaces
+        :DBSetOption user=DBA
  
     profile
 <       - Current profile specified (if any) >
@@ -1288,7 +1327,8 @@ Version 2.00
           setting is usually used to set temporary options, or output 
           options. >
     cmd_terminator
-<       - Command terminator (varies per database, see following section) >
+<       - Command terminator (varies per database, see
+          |dbext-configure-options|) >
     cmd_options
 <       - Optionally specify (or override) additional command line switches
           for the database tool. >
@@ -1819,6 +1859,7 @@ Version 2.00
  ahead of all input variables.  You can modify the buffer variable for this
  file as follows: >
         DBSetOption variable_def='?WQ,@wq,$wq,i_wq'
+        TODO update with variable_def_regex
 <
  or more specifically: >
         DBSetOption variable_def='i_wq'
@@ -1903,7 +1944,7 @@ To specify the type of database you connect to most often, you can place the
  prompted with a number list, which allows you to choose which profile you
  would like to use.  This is convenient since it can be difficult to remember
  the names of your profiles.  This feature can also be used with the dbext
- modelines (see section 9.5).
+ modelines (see |dbext-modelines|).
 
  In your |.vimrc| you can define the following: >
      let g:dbext_default_profile_ASA_generic = 'type=ASA:user=DBA:passwd=SQL'
@@ -1979,7 +2020,7 @@ To specify the type of database you connect to most often, you can place the
  When a new buffer is opened the top 5 (vim default for 'modelines' and bottom
  5 lines of of the buffer are checked for the dbext modeline.  If found,
  dbext will iterate through each option and set a corresponding local buffer
- variable to that value.  See section |dbext-configure|, "Buffer variables"
+ variable to that value.  See |dbext-configure|, "Buffer variables"
  for a list of the variables available.
 
  Example, assume I had the following commented line in a SQL file on the third
@@ -2448,7 +2489,7 @@ To specify the type of database you connect to most often, you can place the
 <        If an error was returned, this displays the SQL just executed.
          In our case you would see: "select * from customer".  Again, very 
          useful for debugging, especially when using the
-         prompt_for_parameters option (which is on by default, see below).
+         prompt_for_parameters option (which is on by default).
          
  Let assume the command did successfully execute against your database.
 
@@ -2770,8 +2811,9 @@ To specify the type of database you connect to most often, you can place the
  17.10 Host variable replacement                *dbext-tutorial-variables*
  -------------------------------
  When writing SQL statements, you can often pass in parameters or host
- variables to be replaced at execution time.  This feature is enabled by
- default.
+ variables to be replaced at execution time.  When executing these SQL 
+ statements, dbext will prompt you for a substitute value for the variable
+ and execute the SQL.  This feature is enabled by default.
 
  Place your cursor at the ^ in this statement: >
     SELECT id
@@ -2782,9 +2824,11 @@ To specify the type of database you connect to most often, you can place the
        AND id        =    @var_name;
            ^
 <The above statement includes 3 types of default host variables that get
- prompted for by dbext.  With your cursor where the ^ indicates, you can
- either hit \se, or you can visually select the entire SELECT statement and
- hit \se.
+ prompted for by dbext.  The regular expression used to find these variables
+ can easily be extended to support additional formats.  To extended it further
+ keep reading through to the end of |dbext-tutorial-variables|.  With your
+ cursor where the ^ indicates, you can either hit \se, or you can visually
+ select the entire SELECT statement and hit \se.
 
  Several things happen:
     a) Since you are running a SELECT statement *AND* you provided an INTO
@@ -2792,8 +2836,8 @@ To specify the type of database you connect to most often, you can place the
           INTO @cust_variable_id
 <      out of the SQL it sends to the database.  Generally, you would get an
        error indicating "@cust_variable_id" does not exist.  But since we are
-       trying to test the validity of the SELECT statement, dbext strips` the
-       INTO clause so we see what that SELECT statement will return.
+       trying to test the validity of the SELECT statement, dbext strips the
+       INTO clause so we can see what that SELECT statement will return.
 
     b) Next, we look for host variables, when one is found, you are prompted 
        for a replacement value.  There are very strict rules which dictate how
@@ -2860,6 +2904,75 @@ To specify the type of database you connect to most often, you can place the
        (sql - assign - line), or you can visually select all 3 lines 
        and use <Leader>sa or :'<,'>DBVarRangeAssign.
 
+ dbext can be extended via the |.vimrc| to search for additional formats
+ of variables.  By default it searches for variables of these formats: >
+        column_name = ?
+        column_name like :var_name
+        column_name > @var_name
+<
+ Assume you wrote this stored procedure: >
+        CREATE PROCEDURE sp_test_var_prompting(
+            IN p_input_parm INTEGER
+        )
+        RESULT (ID INTEGER)
+        BEGIN
+            DECLARE lv_local_var INTEGER;
+
+            SET lv_local_var = 6;
+
+            SELECT ID
+              FROM myTable
+             WHERE c1 = p_input_parm
+               AND c2 = lv_local_var;
+        END;
+<
+ Visually selecting (using capital V |linewise-visual|) the SELECT
+ statement and executing it (\se) you will not be prompted for any
+ input parameters since p_input_parm and lv_local_var do not match
+ the default variable formats.
+
+ You can view the current option parameters using: >
+        :DBGetOption variable_def_regex
+            \(\w\|'\)\@<!?\(\w\|'\)\@<!,\zs\(@\|:\|$\)\w\+\>
+<
+ This is actually 2 different regex expressions.  The first one 
+ finds the question marks and the second one finds any variables
+ beginning with "@,:,$". >
+        \(\w\|'\)\@<!?\(\w\|'\)\@<!
+        \zs\(@\|:\|$\)\w\+\>
+<
+ These are just standard Vim regular expressions which you can
+ test on your own by doing a find.  Once you have them correct you
+ can add them to dbext via your .vimrc.
+
+ In the case above, we want dbext to check for variables beginning
+ with p_ or lv_.  If we want to _only_ look for those then we can 
+ overwrite dbext defaults using DBSetOption: >
+        :DBSetOption variable_def_regex=\<\zs\(p_\|lv_\)\w\+\>
+            \<           - Beginning of a word (:h \< )
+            \zs          - Start the match here (:h \zs )
+            \(p_\|lv_\)  - Starts with a p_ or lv_
+            \w\+         - Any word character(s)
+            \>           - Ends on a word boundary
+<
+ All the search atoms used above are not necessarily required (i.e. \zs)
+ but I have added it to introduce you to some of the handy atoms available.
+ Now when you execute the SELECT statement in the stored procedure you
+ will be correctly prompted for p_input_parm and lv_local_var.
+
+ Each project you work on may have different standards and naming 
+ conventions.  This autocmd works by checking if you are opening
+ a file somewhere under a directory called MyProjectDir.  If so, it sets
+ dbext's current variable_def_regex for this buffer.  This |autocmd| can be
+ added to your |.vimrc|: >
+        autocmd BufRead */MyProjectDir/* exec 'DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>'
+<
+ Or if you simply wanted to extended the existing defaults, you can
+ retrieve the existing setting using dbext's DB_listOption function and
+ concatenate the new regex separated by a comma: >
+        autocmd BufRead */MyProjectDir/* exec 'DBSetOption variable_def_regex=' . DB_listOption('variable_def_regex') . ',\<\(p_\|lv_\)\w\+\>'
+<
+        
 
  17.11 Filetype support                         *dbext-tutorial-filetype*
  ----------------------
