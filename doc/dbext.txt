@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2009 Aug 22
+*dbext.txt*	For Vim version 7.0.  Last change: 2009 Aug 27
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki <petike1 at dpg dot hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 11.00
+	  	dbext.vim version 11.01
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -91,6 +91,19 @@ David Fishburn
 
 ==============================================================================
 2. What's New						*dbext-new*
+
+Version 11.01
+
+ Bug Fixes
+ ---------
+ - If a large result set is retrieved, there is a signficant performance
+   delay which was introduced in 11.00.  This was related to the new 
+   g:dbext_rows_affected feature (Tocer).
+ - Error E15: Invalid expression: b:dbext_sqlvar_mv[var] is reported if
+   you are using saved variables and then modified the query with a new 
+   variable.  Now the saved variables are used for the known variables 
+   and you are prompted for the unknown.
+
 
 Version 11.00
 
