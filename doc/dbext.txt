@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2009 Aug 27
+*dbext.txt*	For Vim version 7.0.  Last change: 2010 Jul 15
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki <petike1 at dpg dot hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 11.01
+	  	dbext.vim version 12.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -17,7 +17,7 @@ Homepage: http://vim.sourceforge.net/script.php?script_id=356
 
 *dbext* *dbext.vim* *db_ext* *db_ext.vim* *database-extension* *pgsql* *mysql*
 *asa* *ase* *ingres* *interbase* *sqlite* *sqlsrv* *ora* *oracle* 
-*db2* *DBI* *ODBC* *sqlanywhere*
+*db2* *DBI* *ODBC* *sqlanywhere* *firebird*
 
 1.  Getting Started			      |dbext-getting-started|
 2.  Whats New   			      |dbext-new|
@@ -92,11 +92,31 @@ David Fishburn
 ==============================================================================
 2. What's New						*dbext-new*
 
+Version 12.00
+
+ New Features
+ ---------
+ - A number of changes around the Oracle formating instructions.
+   Support for packages when describing certain objects.
+   These changes were provided by Sergey Khorev.
+ - Improved the parsing of Perl strings when prompting for 
+   variables.
+ - Made some additional changes to the variable_def_regex for how you 
+   can specify it from Vim modelines and DBSetOption.  This makes it 
+   much more flexible.
+
+ Bug Fixes
+ ---------
+ - If the word "profile" was used in a dbext profile name dbext would report
+   the error: "dbext: Profiles cannot be nested" (Chris Cierpisz).
+ - Corrected the regex used to find object owner names (Sergey Khorev).
+
+
 Version 11.01
 
  Bug Fixes
  ---------
- - If a large result set is retrieved, there is a signficant performance
+ - If a large result set is retrieved, there is a significant performance
    delay which was introduced in 11.00.  This was related to the new 
    g:dbext_rows_affected feature (Tocer).
  - Error E15: Invalid expression: b:dbext_sqlvar_mv[var] is reported if
@@ -1407,7 +1427,7 @@ Version 2.00
                                 \ "set flush off\n" .
                                 \ "set colsep \"\t\"\n" .
                                 \ "set tab off\n\n"
-        dbext_default_ORA_cmd_terminator       = ";\nquit;"
+        dbext_default_ORA_cmd_terminator       = ";"
         dbext_default_ORA_cmd_options          = '-S'
         dbext_default_DB2_use_db2batch         = 0
         dbext_default_DB2_bin                  = 'db2batch'
@@ -1472,7 +1492,7 @@ Version 2.00
             quit
 
     Installing the SQL Anywhere DBI module (ensure you are using 10.0.1.3525
-    and above)
+    or above)
         cd %SQLANY10%\src\perl
         copy "%SQLANYSAMP10%\demo.db"
         dbeng10 demo
@@ -1584,8 +1604,8 @@ Version 2.00
     " Execute SQL query under cursor. You need a semicolon at the 
     " end of the query.
     " sql - execute
-    nnoremap <unique> <Leader>se <Plug>DBExecSQL
-    :DBExecSQL
+    nnoremap <unique> <Leader>se <Plug>DBExecSQLUnderCursor
+    :DBExecSQLUnderCursor
 
     " Execute SQL query under cursor. You need a semicolon at the 
     " end of the query.  Prompt the user for how many rows to
@@ -1871,43 +1891,16 @@ Version 2.00
  takes 3 input parameters.  The author of the stored procedure places a i_
  ahead of all input variables.  You can modify the buffer variable for this
  file as follows: >
-        DBSetOption variable_def='?WQ,@wq,$wq,i_wq'
-        TODO update with variable_def_regex
+        DBSetOption variable_def_regex=,\<i_\w\+\>
 <
- or more specifically: >
-        DBSetOption variable_def='i_wq'
-<
- Adding new search and replace criteria must follow these rules:
-        i_ - look for this string
-        w  - MUST have word characters after it
-        W  - cannot have any word characters after it
-        q  - quotes do not matter
-        Q  - CANNOT be surrounded in quotes
-        ,  - delimits between the identifiers
->
-        DBSetOption variable_def='i_wq,'
+ The same regex expression should work when you simply run a find in Vim: >
+        /\<i_\w\+\>
 <
  This instructs the plugin to find all words that begin with "i_", with a
- series of \w characters following, that is NOT surrounded in quotes.  If the
- plugin finds more matches that expected, you can choose Cancel when prompted
- for the variable name, and choose Skip, to move to the next match.
+ series of \w characters following.  If the plugin finds more matches that
+ expected, you can choose Cancel when prompted for the variable name, and
+ choose Skip, to move to the next match.
  
- Another type of criteria is specified.  You can also use the "unitl" setting
- which allows you to specify the start of the string, and the everything
- should be replaced "until" another string.  Here is an example: >
-        SELECT * FROM Customers WHERE ID = http_variable('cust_id')
-<
- In this case, we want dbext to prompt for anything like "http_variable(...)".
- This can be configured using: >
-        DBSetOption variable_def='http_varu)'
-<
- This option has special rules, and is broken down as:
-        http_var - Look for this string
-        u        - Assume a match UNTIL
-        )        - This string
- So in this case, matching "http_var" until the ")" will force dbext to 
- prompt the user for a replacement of "http_variable('cust_id')".
-
  For more information on specific filetype support see |dbext-filetypes|
 
 ==============================================================================
@@ -2066,6 +2059,20 @@ To specify the type of database you connect to most often, you can place the
  different: >
      -- dbext:type=SQLITE:bin_path=D:\Programs\POPFile:dbname=D:\Programs\POPFile\popfile.db'
 <
+ If you use the variable_def_regex option to specify different variables to
+ prompt for, this setting can also be set via the modeline.  All though, due
+ to the special regex syntax.  This means to set the variable_def_regex from 
+ a modeline, you must use a separate modeline: >
+     // dbext:profile=myFavouriteProfile
+     // dbext:variable_def_regex=\<\(p_\|lv_\)\w\+\>
+<
+ If you simply want to add to the existing default settings for this option
+ the value can be preceeded by a comma: >
+     // dbext:variable_def_regex=,\<\(p_\|lv_\)\w\+\>
+<
+ Executing :DBGetOption variable_def_regex will display the new values 
+ notice the , separating 3 different regexes: >
+     variable_def_regex = \(\w\|'\)\@<!?\(\w\|'\)\@<!,\zs\(@\|:\|$\)\w\+\>,\<\(p_\|lv_\)\w\+\>
 
 
 9.6 Ask for connection parameters	           *dbext-connect-ask*
@@ -2978,12 +2985,12 @@ To specify the type of database you connect to most often, you can place the
  a file somewhere under a directory called MyProjectDir.  If so, it sets
  dbext's current variable_def_regex for this buffer.  This |autocmd| can be
  added to your |.vimrc|: >
-        autocmd BufRead */MyProjectDir/* exec 'DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>'
+        autocmd BufRead */MyProjectDir/* DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>
 <
  Or if you simply wanted to extended the existing defaults, you can
  retrieve the existing setting using dbext's DB_listOption function and
  concatenate the new regex separated by a comma: >
-        autocmd BufRead */MyProjectDir/* exec 'DBSetOption variable_def_regex=' . DB_listOption('variable_def_regex') . ',\<\(p_\|lv_\)\w\+\>'
+        autocmd BufRead */MyProjectDir/* DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>
 <
         
 

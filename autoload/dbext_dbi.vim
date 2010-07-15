@@ -4,10 +4,10 @@
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       11.01
+" Version:       12.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2009 Aug 27
+" Last Modified: 2010 Jul 15
 " Created:       2007-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 "
@@ -42,6 +42,8 @@
 "        "C:\Program Files\Microsoft Visual Studio .Net 2003\Common7\Tools\vsvars32.bat"
 "        or
 "        "C:\Program Files\Microsoft Visual Studio 8\Common7\Tools\vsvars32.bat"
+"        or
+"        "C:\Program Files (x86)\Microsoft Visual Studio 9.0\Common7\Tools\vsvars32.bat"
 "            perl Makefile.PL
 "            nmake
 "            nmake test
@@ -114,7 +116,7 @@ if !has('perl')
     let g:loaded_dbext_dbi_msg = 'Vim does not have perl support enabled'
     finish
 endif
-let g:loaded_dbext_dbi = 1101
+let g:loaded_dbext_dbi = 1200
 
 if !exists("dbext_dbi_debug")
    let g:dbext_dbi_debug = 0

@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       11.01
+" Version:       12.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2009 Aug 27
+" Last Modified: 2010 Jul 15
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -38,7 +38,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext = 1101
+let g:loaded_dbext = 1200
 
 if !exists('g:dbext_default_menu_mode')
     let g:dbext_default_menu_mode = 3
@@ -406,34 +406,6 @@ if has("gui_running") && has("menu") && g:dbext_default_menu_mode != 0
     exec 'noremenu  <script> '.menuRoot.'.List\ Connections\ (DBI) :DBListConnections<CR>'
 endif
 "}}}
-function! s:DB_checkModeline()
-    " Users can preset connection string options using Vim's modeline 
-    " features.
-    " For example, in a SQL file you could have the following:
-    "      -- dbext:profile=ASA_generic,user=bob
-    " See the Help for more details.
-    let rc = -1
-    if ((&modeline == '0') || (&modelines < 1))
-        return rc
-    endif
-    let saveSearch = @/
-    let pattern = 'dbext:'
-    let from_bottom_line = ((&modelines > line('$'))?1:(line('$')-&modelines))
-
-    let savePos = 'normal! '.line(".").'G'.col(".")."\<bar>"
-    silent execute "normal! 1G0\<bar>"
-    while search( pattern, 'W' )
-        if( (line(".") >= 1 && line(".") <= &modelines) ||
-                    \ (line(".") >= from_bottom_line)   )
-            call dbext#DB_checkModeline()
-        endif
-    endwhile
-
-    let @/ = saveSearch
-    execute savePos
-    return rc
-endfunction
-
 function! DB_getDictionaryName( which ) 
     return dbext#DB_getDictionaryName( a:which )
 endfunction 
@@ -511,7 +483,7 @@ endfunction
 augroup dbext
     au!
     autocmd BufEnter    * if exists('g:loaded_dbext_auto') != 0 | exec "call dbext#DB_setTitle()" | endif
-    autocmd BufReadPost * if &modeline == 1 | call s:DB_checkModeline() | endif
+    autocmd BufReadPost * if &modeline == 1 | call dbext#DB_checkModeline() | endif
     autocmd BufDelete   * if exists('g:loaded_dbext_auto') != 0 | exec 'call dbext#DB_auBufDelete( expand("<abuf>") )' | endif
     autocmd VimLeavePre * if exists('g:loaded_dbext_auto') != 0 | exec 'call dbext#DB_auVimLeavePre()' | endif
 augroup END

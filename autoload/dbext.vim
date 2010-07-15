@@ -1,18 +1,19 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       11.01
+" Version:       12.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2009 Aug 27
+" Last Modified: 2010 Jul 15
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
-" Contributors:  Joerg Schoppet <joerg dot schoppet at web dot de>
-"                Hari Krishna Dara <hari_vim at yahoo dot com>
+" Contributors:  Joerg Schoppet 
+"                Hari Krishna Dara 
 "                Ron Aaron
 "                Andi Stern
+"                Sergey Khorev
 "
 " Help:         :h dbext.txt 
 "
@@ -37,7 +38,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 1101
+let g:loaded_dbext_auto = 1200
 
 " call confirm("Loaded dbext autoload", "&Ok")
 " Script variable defaults, these are used internal and are never displayed
@@ -867,7 +868,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "FIREBIRD_SQL_Top_sub"    |return (exists("g:dbext_default_FIREBIRD_SQL_Top_sub")?g:dbext_default_FIREBIRD_SQL_Top_sub.'':'\1 FIRST @dbext_topX ')
     elseif a:name ==# "ORA_bin"                 |return (exists("g:dbext_default_ORA_bin")?g:dbext_default_ORA_bin.'':'sqlplus')
     elseif a:name ==# "ORA_cmd_header"          |return (exists("g:dbext_default_ORA_cmd_header")?g:dbext_default_ORA_cmd_header.'':"" .
-                        \ "set pagesize 10000\n" .
+                        \ "set pagesize 50000\n" .
                         \ "set wrap off\n" .
                         \ "set sqlprompt \"\"\n" .
                         \ "set linesize 10000\n" .
@@ -1391,7 +1392,6 @@ function! dbext#DB_checkModeline()
             if rc > -1
                 call s:DB_validateBufferParameters()
             endif
-            break
         else
             if( line(".") < from_bottom_line )
                 silent exec 'normal! '.from_bottom_line.'G'.col(".")."\<bar>"
@@ -1511,9 +1511,18 @@ function! dbext#DB_setMultipleOptions(multi_options, ...)
     endif
 
     " Special case due to regular expression syntax
-    if options_cs =~ 'variable_def_regex'
+    if options_cs =~ '\<variable_def_regex\>'
         let opt_value = substitute(options_cs, 'variable_def_regex\s*=\s*', '', '')
-        call s:DB_set('variable_def_regex', opt_value)
+        if opt_value =~ '^,'
+            let l:variable_def_regex = s:DB_get('variable_def_regex')
+            " if escape(','.l:variable_def_regex, '\\/.*$^~[]') !~ escape(opt_value, '\\/.*$^~[]')
+            if ','.l:variable_def_regex !~ escape(opt_value, '\\/.*$^~[]')
+                " Append to existing values if not already present
+                call s:DB_set('variable_def_regex', l:variable_def_regex.opt_value)
+            endif
+        else
+            call s:DB_set('variable_def_regex', opt_value)
+        endif
     else
         " Convert the comma separated list into a List
         let options_mv = split(options_cs, ':')
@@ -2847,11 +2856,11 @@ function! s:DB_ORA_execSql(str)
     " Added quit to the end of the command to exit SQLPLUS
     if output !~ s:DB_escapeStr(terminator) . 
                 \ '['."\n".' \t]*$'
-        let output = output . terminator
+        let output = output . "\n" . terminator
      endif
  
     " Added quit to the end of the command to exit SQLPLUS
-    let output = output . "\nquit".terminator
+    let output = output . "\nquit"
 
     exe 'redir! > ' . s:dbext_tempfile
     silent echo output
@@ -2872,11 +2881,11 @@ function! s:DB_ORA_execSql(str)
 endfunction
 
 function! s:DB_ORA_describeTable(table_name)
-    return s:DB_ORA_execSql("desc " . a:table_name)
+    return s:DB_ORA_execSql("set linesize 100\ndesc " . a:table_name)
 endfunction
 
 function! s:DB_ORA_describeProcedure(procedure_name)
-    return s:DB_ORA_execSql("desc " . a:procedure_name)
+    return s:DB_ORA_execSql("set linesize 100\ndesc " . a:procedure_name)
 endfunction
 
 function! s:DB_ORA_getListTable(table_prefix)
@@ -2897,16 +2906,39 @@ endfunction
 function! s:DB_ORA_getListProcedure(proc_prefix)
     let owner      = toupper(s:DB_getObjectOwner(a:proc_prefix))
     let obj_name   = toupper(s:DB_getObjectName(a:proc_prefix))
-    let query =   "select object_name, owner ".
-                \ "  from all_objects ".
-                \ " where object_type IN ('PROCEDURE', 'PACKAGE', 'FUNCTION') ".
-                \ "   and object_name LIKE '".obj_name."%' "
-    if strlen(owner) > 0
-        let query = query .
-                    \ "   and owner = '".owner."' "
+    let pkg_name   = s:DB_getObjectOwner(obj_name)
+    if !empty(pkg_name)
+        let obj_name = s:DB_getObjectName(obj_name)
     endif
-    let query = query .
-                \ " order by object_name"
+
+    if !empty(owner)
+        if !empty(pkg_name) " schema.package.procedure
+            let query =   "select procedure_name object_name, owner ||'.'|| object_name owner ".
+                        \ "  from all_procedures ".
+                        \ " where object_type = 'PACKAGE' ".
+                        \ "   and procedure_name LIKE '".obj_name."%' ".
+                        \ "   and owner = '".owner."' and object_name = '".pkg_name."'"
+        else " schema.procedureORpackage or package.procedure
+            let query =   "select object_name, owner ".
+                        \ "  from all_objects ".
+                        \ " where object_type IN ('PROCEDURE', 'PACKAGE', 'FUNCTION') ".
+                        \ "   and object_name LIKE '".obj_name."%' ".
+                        \ "   and owner = '".owner."'".
+                        \ " UNION ALL ".
+                        \ "select procedure_name, object_name ".
+                        \ "  from all_procedures ".
+                        \ " where object_type = 'PACKAGE' ".
+                        \ "   and object_name = '".owner."'".
+                        \ "   and procedure_name LIKE '".obj_name."%'"
+        endif
+    else " just a name
+        let query =   "select object_name, owner ".
+                    \ "  from all_objects ".
+                    \ " where object_type IN ('PROCEDURE', 'PACKAGE', 'FUNCTION') " .
+                    \ "   and object_name LIKE '".obj_name."%' "
+    endif
+
+    let query .= " order by 1"
     return s:DB_ORA_execSql( query )
 endfunction
 
@@ -2920,8 +2952,7 @@ function! s:DB_ORA_getListView(view_prefix)
         let query = query .
                     \ "   and owner = '".owner."' "
     endif
-    let query = query .
-                \ " order by view_name"
+    let query .= " order by view_name"
     return s:DB_ORA_execSql( query )
 endfunction 
 
@@ -2931,19 +2962,17 @@ function! s:DB_ORA_getListColumn(table_name) "{{{
     let query =   "select column_name     ".
                 \ "  from ALL_TAB_COLUMNS ".
                 \ " where table_name = '".table_name."' "
-    if strlen(owner) > 0
-        let query = query .
-                    \ "   and owner = '".owner."' "
+    if !empty(owner)
+        let query .= "   and owner = '".owner."' "
     endif
-    let query = query .
-                \ " order by column_id"
+    let query .= " order by column_id"
     let result = s:DB_ORA_execSql( query )
     return s:DB_ORA_stripHeaderFooter(result)
 endfunction "}}}
 
 function! s:DB_ORA_stripHeaderFooter(result) "{{{
     " Strip off column headers ending with a newline
-    let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
+    let stripped = substitute( a:result, '^\_.\{-}[- ]\+\n', '', 'g' )
     let g:dbext_rows_affected = matchstr(stripped, '\zs\d\+\ze\s\+row')
     " Strip off query statistics
     let stripped = substitute( stripped, '\d\+ rows\_.*', '', '' )
@@ -2957,6 +2986,7 @@ endfunction "}}}
 
 function! s:DB_ORA_getDictionaryTable() "{{{
     let result = s:DB_ORA_execSql(
+                \ "set pagesize 0\n".
                 \ "select ".(s:DB_get('dict_show_owner')==1?"owner||'.'||":'')."table_name" .
                 \ "  from ALL_ALL_TABLES " .
                 \ " order by ".(s:DB_get('dict_show_owner')==1?"owner, ":'')."table_name  "
@@ -2965,18 +2995,29 @@ function! s:DB_ORA_getDictionaryTable() "{{{
 endfunction "}}}
 
 function! s:DB_ORA_getDictionaryProcedure() "{{{
-    let result = s:DB_ORA_execSql(
-                \ "select ".(s:DB_get('dict_show_owner')==1?"owner||'.'||":'')."object_name                          " .
+    let query = "set pagesize 0\n".
+                \"select ".(s:DB_get('dict_show_owner')==1?"owner||'.'||":'')."object_name                          " .
                 \ "  from all_objects                          " .
                 \ " where object_type IN                       " .
                 \ "       ('PROCEDURE', 'PACKAGE', 'FUNCTION') " .
-                \ " order by ".(s:DB_get('dict_show_owner')==1?"owner, ":'')."object_name                       "
-                \ )
+                \ " UNION ALL " .
+                \ "select ".(s:DB_get('dict_show_owner')==1?"owner||'.'||object_name||'.'||":'')."procedure_name            " .
+                \ "  from all_procedures                       " .
+                \ " where object_type = 'PACKAGE' and procedure_name is not null "
+    if s:DB_get('dict_show_owner')==1
+        let query .= " UNION ALL " .
+                \ "select object_name||'.'||procedure_name     " .
+                \ "  from all_procedures                       " .
+                \ " where object_type = 'PACKAGE' and procedure_name is not null "
+    endif
+    let query .= " order by 1"
+    let result = s:DB_ORA_execSql(query)
     return s:DB_ORA_stripHeaderFooter(result)
 endfunction "}}}
 
 function! s:DB_ORA_getDictionaryView() "{{{
     let result = s:DB_ORA_execSql(
+                \ "set pagesize 0\n".
                 \ "select ".(s:DB_get('dict_show_owner')==1?"owner||'.'||":'')."view_name    " .
                 \ "  from ALL_VIEWS    " .
                 \ " order by ".(s:DB_get('dict_show_owner')==1?"owner, ":'')."view_name "
@@ -3866,8 +3907,8 @@ function! s:DB_DBI_describeProcedure(procedure_name)
 
     " The owner name can be optionally followed by a "." due to the syntax of
     " some of the different databases (ASE and SQL Server)
-    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_owner\.\?', owner, '')
-    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_name', object, '')
+    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_owner\.\?', owner, 'g')
+    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_name', object, 'g')
     
     let cmd = "perl db_query()"
     exec cmd
@@ -4019,8 +4060,8 @@ function! s:DB_DBI_getListProcedure(proc_prefix)
         return -1
     endif
 
-    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_owner', owner, '')
-    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_name', object, '')
+    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_owner', owner, 'g')
+    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_name', object, 'g')
     
     let cmd = "perl db_query()"
     exec cmd
@@ -4433,8 +4474,8 @@ function! s:DB_ODBC_describeProcedure(procedure_name)
 
     " The owner name can be optionally followed by a "." due to the syntax of
     " some of the different databases (ASE and SQL Server)
-    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_owner\.\?', owner, '')
-    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_name', object, '')
+    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_owner\.\?', owner, 'g')
+    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_name', object, 'g')
     
     let cmd = "perl db_query()"
     exec cmd
@@ -4605,8 +4646,8 @@ function! s:DB_ODBC_getListProcedure(proc_prefix)
         return -1
     endif
 
-    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_owner', owner, '')
-    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_name', object, '')
+    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_owner', owner, 'g')
+    let g:dbext_dbi_sql = substitute(g:dbext_dbi_sql, 'dbext_replace_name', object, 'g')
     
     let cmd = "perl db_query()"
     exec cmd
@@ -5481,7 +5522,7 @@ function! s:DB_getObjectOwner(object) "{{{
     " \("\|\[\)\? - ignore any quotes
     " \.          - must by followed by a .
     " let owner = matchstr( a:object, '^\s*\zs.*\ze\.' )
-    let owner = matchstr( a:object, '^\("\|\[\)\?\zs\.\{-}\ze\("\|\]\)\?\.' )
+    let owner = matchstr( a:object, '^\("\|\[\)\?\zs.\{-}\ze\("\|\]\)\?\.' )
     return owner
 endfunction "}}}
 function! s:DB_getObjectName(object) "{{{ 
@@ -7459,10 +7500,11 @@ function! s:DB_parsePerl(query)
 
     " Prompt for the variables which are part of
     " string concentations like this:
-    "   "SELECT * FROM " + prefix+"product"
-    "   "SELECT * FROM " + obj.method() +"product"
+    "   "SELECT * FROM " + $prefix+"product"
+    "   "SELECT * FROM " + $obj.method() +"product"
     "   "SELECT * FROM " . method() ."product"
-    let var_expr = '"\s*\(+\|\.\)\s*\(.\{-}\)\s*\(+\|\.\)\s*"'
+    "   "SELECT * FROM product WHERE c1 = $mycol AND c2 = ".$cols[2];
+    let var_expr = '"\s*\(+\|\.\)\s*\(.\{-}\)\s*\(\(\(+\|\.\)\s*"\)\|;\|$\)'
     "  "\s*       - Double quote followed any space 
     "  \(+\|\.\)  - A plus sign or period
     "  \s*        - Any space
@@ -7470,6 +7512,12 @@ function! s:DB_parsePerl(query)
     "  \s*        - Any space
     "  \(+\|\.\)  - A plus sign or period
     "  \s*"       - Any space followed by a double quote
+    let query = s:DB_searchReplace(query, var_expr, var_expr, 0)
+
+    " Prompt for $ variables 
+    "   "SELECT * FROM product WHERE c1 = $mycol "
+    let var_expr = '\(\$\w\+\)'
+    "  \(\$\w\+\)  - The variable / obj / method beginning with a $
     let query = s:DB_searchReplace(query, var_expr, var_expr, 0)
 
     return query
@@ -7583,7 +7631,7 @@ function! s:DB_parseProfile(value)
     let no_defaults = 0
     let rc = s:DB_resetBufferParameters(no_defaults)
 
-    if profile_value =~? 'profile'
+    if profile_value =~? '\<profile\>'
         let rc = -1
         call s:DB_warningMsg('dbext: Profiles cannot be nested' )
         return -1
