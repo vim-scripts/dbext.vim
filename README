@@ -59,7 +59,7 @@ buffer basis.
         SELECT first_name, city
           FROM customer
          WHERE last_name    = @name
-In the case you will be asked for a value for @name.  The rules for defining input parameters are customizable either globally or on a per buffer basis. See help file for more details.
+In the case you will be asked for a value for @name.  The rules for defining input parameters are customizable either globally or on a per buffer basis.  The rules for finding these variables can be setup as standard Vim regular expressions.  So if you can find the variables using /, you can easily customize your own settings using your own naming conventions.  See help file for more details.
 
 FileType Support
 --------------------------

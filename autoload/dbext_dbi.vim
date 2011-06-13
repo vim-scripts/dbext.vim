@@ -1,13 +1,13 @@
 " File:          dbext_dbi.vim
-" Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
+" Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
 " Purpose:       A perl extension for use with dbext.vim. 
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       12.00
+" Version:       13.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2010 Jul 15
+" Last Modified: 2010 Sep 07
 " Created:       2007-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 "
@@ -116,7 +116,7 @@ if !has('perl')
     let g:loaded_dbext_dbi_msg = 'Vim does not have perl support enabled'
     finish
 endif
-let g:loaded_dbext_dbi = 1200
+let g:loaded_dbext_dbi = 1300
 
 if !exists("dbext_dbi_debug")
    let g:dbext_dbi_debug = 0
@@ -424,7 +424,7 @@ sub db_list_connections
     my @col_length;
     my $max_col_width = 0;
     my $i = 0;
-    my @headers = [ ("Buffer", "Driver", "AutoCommit", "CommitOnDisconnect", "Connection Parameters", "LongReadLen") ];
+    my @headers = [ ("Buffer", "Driver", "AutoCommit", "CommitOnDisconnect", "Connection Parameters", "LongReadLen", "FileName") ];
     
     db_set_vim_var("g:dbext_dbi_msg", '');
     foreach my $row2 ( @headers ) {
@@ -450,6 +450,7 @@ sub db_list_connections
                     , $connections{$bufnr}->{'CommitOnDisconnect'}
                     , $connections{$bufnr}->{'params'}
                     , $connections{$bufnr}->{'conn'}->{'LongReadLen'}
+                    , db_vim_eval('fnamemodify( bufname( bufnr('.$bufnr.')), ":p:t")' )
                     );
             push @table, [ @row ]; 
             $i = 0;
@@ -800,7 +801,7 @@ sub db_disconnect
         return 0;
     }
 
-    ($conn_local, $driver) = db_get_connection();
+    ($conn_local, $driver) = db_get_connection($bufnr);
 
     if( ! defined($conn_local) ) {
         db_debug('db_disconnect:This should not have happened since this buffer was connected:'.$bufnr);
