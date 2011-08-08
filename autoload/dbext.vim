@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
-" Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
+" Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       12.00
+" Version:       13.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2010 Jul 15
+" Last Modified: 2011 May 31
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -38,7 +38,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 1200
+let g:loaded_dbext_auto = 1300
 
 " call confirm("Loaded dbext autoload", "&Ok")
 " Script variable defaults, these are used internal and are never displayed
@@ -794,7 +794,7 @@ function! s:DB_getDefault(name)
     " Q - CANNOT be surrounded in quotes
     " , - delimiter between options
     elseif a:name ==# "variable_def"            |return (exists("g:dbext_default_variable_def")?g:dbext_default_variable_def.'':'?WQ,@wq,:wq,$wq')
-    elseif a:name ==# "variable_def_regex"      |return (exists("g:dbext_default_variable_def_regex")?g:dbext_default_variable_def_regex.'':'\(\w\|'."'".'\)\@<!?\(\w\|'."'".'\)\@<!,\zs\(@\|:\|$\)\w\+\>')
+    elseif a:name ==# "variable_def_regex"      |return (exists("g:dbext_default_variable_def_regex")?g:dbext_default_variable_def_regex.'':'\(\w\|'."'".'\)\@<!?\(\w\|'."'".'\)\@<!,\zs\(@\|:\a\|$\)\w\+\>')
     elseif a:name ==# "buffer_lines"            |return (exists("g:dbext_default_buffer_lines")?g:dbext_default_buffer_lines.'':10)
     elseif a:name ==# "use_result_buffer"       |return (exists("g:dbext_default_use_result_buffer")?g:dbext_default_use_result_buffer.'':1)
     elseif a:name ==# "use_sep_result_buffer"   |return (exists("g:dbext_default_use_sep_result_buffer")?g:dbext_default_use_sep_result_buffer.'':0)
@@ -3665,13 +3665,17 @@ endfunction "}}}
 " DBI (Perl) exec {{{
 function! s:DB_DBI_Autoload()
     if !exists("g:loaded_dbext_dbi") 
-        " Load the perl based module (if not already)
-        call dbext_dbi#DBI_load_perl_subs()
+        if has('perl')
+            " Load the perl based module (if not already)
+            call dbext_dbi#DBI_load_perl_subs()
 
-        if !exists("g:loaded_dbext_dbi") 
-            call s:DB_warningMsg( 
-                        \ 'dbext:The DBI interface could not be loaded, ensure autoload/dbext_dbi.vim exists'
-                        \ )
+            if !exists("g:loaded_dbext_dbi") 
+                call s:DB_warningMsg( 
+                            \ 'dbext:The DBI interface could not be loaded, ensure autoload/dbext_dbi.vim exists'
+                            \ )
+            endif
+        else
+            return -1
         endif
     endif
 
@@ -5793,6 +5797,7 @@ function! dbext#DB_auVimLeavePreOld() "{{{
     " Switch back to the current buffer
     silent! exec cur_buf.'buffer'
 endfunction "}}}
+
 function! dbext#DB_auBufDelete(del_buf_nr) "{{{
     " This function will delete any temporary dictionary files that were 
     " created and disconnect any DBI or ODBC connections
@@ -6523,7 +6528,7 @@ function! s:DB_addToResultBuffer(output, do_clear)
     endif
     " Delete all the lines prior to this run
     if a:do_clear == "clear" 
-        %d
+        %d_
         silent! exec "normal! iConnection: ".conn_props.' at '.strftime("%H:%M")."\<Esc>0"
 
         " We only clear the results buffer at the start of a command
@@ -6640,6 +6645,11 @@ function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
     " Find the string index position of the first match
     let index = match(str, a:exp_find_str)
     while index > -1
+        " DEBUGGING
+        " This is a useful echo statemen to use inside the debug loop 
+        " when using breakadd
+        "     echo index matchstr(str, a:exp_find_str, index) var a:exp_find_str "\n" strpart(str, 0, (index-1))
+
         let count_nbr = count_nbr + 1
         " Retrieve the name of what we found
         " let var = matchstr(str, a:exp_get_value, index)
@@ -6650,107 +6660,118 @@ function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
         "   OUT      @variable CHAR(1)
         "   INOUT    @variable CHAR(1)
         "   DECLARE  @variable CHAR(1)
+        "   VARIABLE @variable CHAR(1)  -- CREATE VARIABLE @variable
         " Or part of a string
         "   '@variable'
         " Or part of path
         "   /@variable'
-        " Or part of path
-        "   /@variable'
         " Or a global variable
         "   SET @@variable = ...
+        " Or the definition of a global variable
+        "   CREATE VARIABLE variable ...
         " If so, ignore the match
-        let inout = matchstr(strpart(str, 1, (index-1)), '\(\<\w\+\ze\s*$\|''\ze$\|/\ze$\|@\ze$\)')
+        let inout = matchstr(strpart(str, 0, index), '\(\<\w\+\ze\s*$\|''\ze$\|/\ze$\|@\ze$\)')
 
-        if inout !~? '\(in\|out\|inout\|declare\|set\|''\|/\|@\)'
-            " Check to see if the variable is part of the temporarily
-            " stored list of variables to ignore
-            if has_key(b:dbext_sqlvar_temp_mv, var)
-                " Ingore match and move on
-                let index = match(str, a:exp_find_str, index+strlen(var))
-            else
-                " Prompt for value and continue
-                let index = index + 1
-
-                let response = 2
-                " If enabled, default to using saved variables
-                let use_save_vars = (s:DB_get("use_saved_variables")==1?1:2)
-
-                if has_key(b:dbext_sqlvar_mv, var)
-                    let var_val = b:dbext_sqlvar_mv[var]
-                    let dialog_msg = "There are previously saved variables which can be used ".
-                                \ "in your SQL.  Should these saved variables be used? "
-                    if s:DB_get("use_saved_variables") == 0
-                        let use_save_vars = confirm(dialog_msg,
-                                                \ "&Yes" .
-                                                \ "\n&No"
-                                                \ )
-                        call s:DB_set("use_saved_variables", use_save_vars)
-                    endif
-                endif
-
-                if use_save_vars == 1 && has_key(b:dbext_sqlvar_mv, var)
-                    let var_val = b:dbext_sqlvar_mv[var]
+        if inout !~? '\(in\|out\|inout\|declare\|set\|variable\|''\|/\|@\)'
+            " Check if the variable name is preceeded by a comment character.
+            " If so, ignore and continue.
+            if strpart(str, 0, (index-1)) !~ '\(--\|\/\/\)\s*$'
+                " Check to see if the variable is part of the temporarily
+                " stored list of variables to ignore
+                if has_key(b:dbext_sqlvar_temp_mv, var)
+                    " Ingore match and move on
+                    " let index = match(str, a:exp_find_str, index+strlen(var))
+                    let index = index + strlen(var) + 1
                 else
-                    " Prompt the user using the name of the variable
-                    let dialog_msg = "Enter value for " . var
-                    if a:count_matches == 1
-                        " If there is no name (ie ?), then include the
-                        " count of what was found so the user can
-                        " distinguish between different ?s
-                        let dialog_msg = dialog_msg . " number " . count_nbr
-                    endif
-                    let dialog_msg = dialog_msg . ": "
-                    let var_val = s:DB_getInput( 
-                                \ dialog_msg,
-                                \ '',
-                                \ "dbext_cancel"
-                                \ )
+                    " Prompt for value and continue
+                    " let index = index + 1
+
                     let response = 2
-                    " Ok or Cancel result in an empty string
-                    if var_val == "dbext_cancel" 
-                        let response = 5
-                    elseif var_val == "" 
-                        " If empty, check if they want to leave it empty
-                        " of skip this variable
-                        let response = confirm("Your value is empty!",
-                                                \ "&Skip" .
-                                                \ "\n&Use blank" .
-                                                \ "\nS&top Prompting" .
-                                                \ "\n&Never Prompt" .
-                                                \ "\n&Abort"
-                                                \ )
+                    " If enabled, default to using saved variables
+                    let use_save_vars = (s:DB_get("use_saved_variables")==1?1:2)
+
+                    if has_key(b:dbext_sqlvar_mv, var)
+                        let var_val = b:dbext_sqlvar_mv[var]
+                        let dialog_msg = "There are previously saved variables which can be used ".
+                                    \ "in your SQL.  Should these saved variables be used? "
+                        if s:DB_get("use_saved_variables") == 0
+                            let use_save_vars = confirm(dialog_msg,
+                                                    \ "&Yes" .
+                                                    \ "\n&No"
+                                                    \ )
+                            call s:DB_set("use_saved_variables", use_save_vars)
+                        endif
+                    endif
+
+                    if use_save_vars == 1 && has_key(b:dbext_sqlvar_mv, var)
+                        let var_val = b:dbext_sqlvar_mv[var]
+                    else
+                        " Prompt the user using the name of the variable
+                        let dialog_msg = "Enter value for " . var
+                        if a:count_matches == 1
+                            " If there is no name (ie ?), then include the
+                            " count of what was found so the user can
+                            " distinguish between different ?s
+                            let dialog_msg = dialog_msg . " number " . count_nbr
+                        endif
+                        let dialog_msg = dialog_msg . ": "
+                        let var_val = s:DB_getInput( 
+                                    \ dialog_msg,
+                                    \ '',
+                                    \ "dbext_cancel"
+                                    \ )
+                        let response = 2
+                        " Ok or Cancel result in an empty string
+                        if var_val == "dbext_cancel" 
+                            let response = 5
+                        elseif var_val == "" 
+                            " If empty, check if they want to leave it empty
+                            " of skip this variable
+                            let response = confirm("Your value is empty!",
+                                                    \ "&Skip" .
+                                                    \ "\n&Use blank" .
+                                                    \ "\nS&top Prompting" .
+                                                    \ "\n&Never Prompt" .
+                                                    \ "\n&Abort"
+                                                    \ )
+                        endif
+                    endif
+                    if response == 1
+                        " Skip this match and move on to the next
+                        " let index = match(str, a:exp_find_str, index+strlen(var))
+                        let index = index + strlen(var) + 1
+                    elseif response == 2
+                        " Use blank
+                        " Replace the variable with what was entered
+                        let replace_sub = '\%'.(index+1).'c'.'.\{'.strlen(var).'}'
+                        let str = substitute(str, replace_sub, var_val, '')
+                        " let index = match(str, a:exp_find_str, index+strlen(var_val))
+                        let index = index + strlen(var_val) + 1
+                        if a:count_matches != 1 && s:DB_get('variable_remember') == '1'
+                            " Add this assignment to the list of remembered 
+                            " assignments unless it is question marks as host
+                            " variables.
+                            call dbext#DB_sqlVarAssignment(0, 'set '.var.' = '.var_val)
+                        endif
+                    elseif response == 4
+                        " Never Prompt
+                        call s:DB_set("always_prompt_for_variables", '-1')
+                        break
+                    elseif response == 5
+                        " Abort
+                        " If we are aborting, do not execute the SQL statement
+                        let str = ""
+                        break
+                    else
+                        " Stop Prompting
+                        " Skip all remaining matches
+                        call s:DB_set("stop_prompt_for_variables", 1)
+                        break
                     endif
                 endif
-                if response == 1
-                    " Skip this match and move on to the next
-                    let index = match(str, a:exp_find_str, index+strlen(var))
-                elseif response == 2
-                    " Use blank
-                    " Replace the variable with what was entered
-                    let replace_sub = '\%'.index.'c'.'.\{'.strlen(var).'}'
-                    let str = substitute(str, replace_sub, var_val, '')
-                    let index = match(str, a:exp_find_str, index+strlen(var_val))
-                    if a:count_matches != 1 && s:DB_get('variable_remember') == '1'
-                        " Add this assignment to the list of remembered 
-                        " assignments unless it is question marks as host
-                        " variables.
-                        call dbext#DB_sqlVarAssignment(0, 'set '.var.' = '.var_val)
-                    endif
-                elseif response == 4
-                    " Never Prompt
-                    call s:DB_set("always_prompt_for_variables", '-1')
-                    break
-                elseif response == 5
-                    " Abort
-                    " If we are aborting, do not execute the SQL statement
-                    let str = ""
-                    break
-                else
-                    " Stop Prompting
-                    " Skip all remaining matches
-                    call s:DB_set("stop_prompt_for_variables",1)
-                    break
-                endif
+            else
+                " Move on to next match
+                let index = index + strlen(var) + 1
             endif
         else
             " if inout !~? "'" && s:DB_get('variable_remember') == '1'
@@ -6760,8 +6781,12 @@ function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
                 call dbext#DB_sqlVarAssignment(2, 'set '.var.' = '.var)
             endif
             " Skip this match and move on to the next
-            let index = match(str, a:exp_find_str, index+strlen(var))
+            " let index = match(str, a:exp_find_str, index+strlen(var)) + 1
+            let index = index + strlen(var) + 1
         endif
+
+        " Find next match
+        let index = match(str, a:exp_find_str, index)
     endwhile
     return str
 endfunction 
@@ -8189,7 +8214,20 @@ function! dbext#DB_connect()
     return 0
 endfunction 
 
-function! dbext#DB_disconnect()
+function! dbext#DB_disconnect(...)
+    let bufnr = bufnr("%")
+
+    if a:0 > 0 && a:1 != ''
+        let bufnr = matchstr(a:1, '\d\+')
+
+        if bufnr == ''
+            call s:DB_warningMsg(
+                        \ "dbext: Input must be a buffer number "
+                        \ )
+            return -1
+        endif
+    endif
+
     " Only valid for DBI and ODBC (perl)
     let driver = s:DB_get('type')
     if (driver !~ '\<DBI\>\|\<ODBC\>') 
@@ -8205,23 +8243,36 @@ function! dbext#DB_disconnect()
         return -1
     endif
 
-    " If AutoCommit is on, there is no need to issue commits
-    " If AutoCommit is on disconnect, otherwise let the
-    " user make the choice since it could intefere
-    " with an already running transaction
-    perl db_get_connection_option('AutoCommit')
-    
-    let is_AutoCommit = g:dbext_dbi_result 
+    if bufnr == bufnr('%')
+        " If AutoCommit is on, there is no need to issue commits
+        " If AutoCommit is on disconnect, otherwise let the
+        " user make the choice since it could intefere
+        " with an already running transaction
+        perl db_get_connection_option('AutoCommit')
+        
+        let is_AutoCommit = g:dbext_dbi_result 
 
-    if is_AutoCommit == 0 
-        if s:DB_get('DBI_commit_on_disconnect') == 1 
-            call dbext#DB_commit()
-        else
-            call dbext#DB_rollback()
+        if is_AutoCommit == 0
+            if s:DB_get('DBI_commit_on_disconnect') == 1 
+                call dbext#DB_commit()
+            else
+                call dbext#DB_rollback()
+            endif
         endif
     endif
 
-    perl db_disconnect()
+    exec "perl db_disconnect( '".bufnr."' )"
+
+    return 0
+endfunction 
+
+function! dbext#DB_disconnectAll()
+    " Ensure the dbext_dbi plugin is loaded
+    if s:DB_DBI_Autoload() == -1
+        return -1
+    endif
+
+    perl db_disconnect_all()
 
     return 0
 endfunction 

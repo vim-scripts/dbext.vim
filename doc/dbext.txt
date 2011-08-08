@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2010 Jul 15
+*dbext.txt*	For Vim version 7.0.  Last change: 2011 Jun 03
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki <petike1 at dpg dot hu>
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 12.00
+	  	dbext.vim version 13.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -91,6 +91,32 @@ David Fishburn
 
 ==============================================================================
 2. What's New						*dbext-new*
+
+Version 13.00
+
+ New Features
+ ---------
+ - Added new command, DBDisconnectAll, for DBI/ODBC.
+ - DBDisconnect for DBI/ODBC now can accept an optional parameter 
+   for the buffer you wish disconnected.
+ - DBListConnections also includes the buffer filename in it's output 
+   to help associate the two more easily.
+ - Updated the default variable_def_regex to include an alphabetic 
+   character after a ":" for host variables to avoid false matches
+   with time formats "10:20".
+ - Improved the variable substitution to also check if a variable is 
+   preceeded by a single line comment character.  If so, ignore the match.
+         CALL myProc( sl_var1  -- p_var1
+                    , sl_var2  -- p_var2
+                    );   
+
+ Bug Fixes
+ ---------
+ - When clearing the results buffer the default register was updated.
+ - Duplicate tag on MyProjectDir when running helptags (Simon Dambe).
+ - Some of the variable substitution options Skip, Use Blank had off 
+   by one errors.
+
 
 Version 12.00
 
@@ -858,6 +884,12 @@ Version 2.00
 <       - Whether to use separate result buffers for each file >
     dbext_default_buffer_lines
 <       - How many lines the Result window should be >
+    dbext_default_query_statements 
+<       - Which statements are used to determine what query is under the
+          cursor.  The default value for this option is:a >
+              select,update,delete,insert,create,grant,alter,call,exec,merge,with
+<         This can be updated via your vimrc using: >
+              let dbext_default_query_statements = 'select,update';
     dbext_default_parse_statements 
 <       - Which statements are parsed for input parameters (See |dbext-newdb|) >
     dbext_default_prompt_for_variables 
@@ -1347,6 +1379,9 @@ Version 2.00
     display_cmd_line
 <       - Optionally display the command line used to execute the command
           in the Result buffer useful for debugging >
+    query_statements 
+<       - Which statements are used to determine what query is under the
+          cursor. >
     parse_statements 
 <       - Which statements are parsed for input parameters |dbext-prompting| >
     variable_def 
@@ -1601,8 +1636,18 @@ Version 2.00
     
  Normal mode mapping (|:nmap|):
 
-    " Execute SQL query under cursor. You need a semicolon at the 
-    " end of the query.
+    " Execute SQL query under cursor. The statement requires a valid
+    " statement terminator at the end of the query.  This is typically 
+    " a semicolon or "go".
+    " DBExecSQLUnderCursor works by starting at the current cursor position
+    " and searching backwards for the first keyword defined by the dbext 
+    " query_statements option.  Then searches forward for a cmd_terminator 
+    " (usually a semicolon but it depends on database type).
+    " The SQL found within these 2 searches is executed.
+    " This has a number of downfalls, consider this SQL:
+    "    create table xyz_bak as select * from xyz
+    " For ambiguous statements, use visual mode to highlight exactly what 
+    " you would want executed.
     " sql - execute
     nnoremap <unique> <Leader>se <Plug>DBExecSQLUnderCursor
     :DBExecSQLUnderCursor
@@ -2534,7 +2579,9 @@ To specify the type of database you connect to most often, you can place the
     c) Menu (if available):
         Plugin->dbext->Exec SQL (Under cursor)
 
- DBExecSQLUnderCursor searches backwards for the following words: >
+ DBExecSQLUnderCursor searches backwards for the certain keywords (based on
+ the query_statements option).  An example of the default values for this 
+ option are: >
     select, insert, update, delete, create, grant, alter, 
     call, exec, merge, with
 <
@@ -2990,7 +3037,7 @@ To specify the type of database you connect to most often, you can place the
  Or if you simply wanted to extended the existing defaults, you can
  retrieve the existing setting using dbext's DB_listOption function and
  concatenate the new regex separated by a comma: >
-        autocmd BufRead */MyProjectDir/* DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>
+        autocmd BufRead */MyProjectDir2/* DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>
 <
         
 

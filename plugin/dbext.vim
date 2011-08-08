@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
-" Copyright (C) 2002-7, Peter Bagyinszki, David Fishburn
+" Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       12.00
+" Version:       13.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2010 Jul 15
+" Last Modified: 2010 Sep 07
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -38,7 +38,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext = 1200
+let g:loaded_dbext = 1300
 
 if !exists('g:dbext_default_menu_mode')
     let g:dbext_default_menu_mode = 3
@@ -52,7 +52,8 @@ endif
 command! -nargs=+ DBExecSQL         :call dbext#DB_execSql(<q-args>)
 command! -nargs=+ DBExecSQLTopX     :call dbext#DB_execSqlTopX(<q-args>)
 command! -nargs=0 DBConnect         :call dbext#DB_connect()
-command! -nargs=0 DBDisconnect      :call dbext#DB_disconnect()
+command! -nargs=* DBDisconnect      :call dbext#DB_disconnect(<q-args>)
+command! -nargs=* DBDisconnectAll   :call dbext#DB_disconnectAll()
 command! -nargs=0 DBCommit          :call dbext#DB_commit()
 command! -nargs=0 DBRollback        :call dbext#DB_rollback()
 command! -nargs=0 DBListConnections :call dbext#DB_getListConnections()
