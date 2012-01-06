@@ -2985,12 +2985,12 @@ To specify the type of database you connect to most often, you can place the
  a file somewhere under a directory called MyProjectDir.  If so, it sets
  dbext's current variable_def_regex for this buffer.  This |autocmd| can be
  added to your |.vimrc|: >
-        autocmd BufRead */MyProjectDir/* DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>
+        autocmd BufRead /MyProjectDir/ DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>
 <
  Or if you simply wanted to extended the existing defaults, you can
  retrieve the existing setting using dbext's DB_listOption function and
  concatenate the new regex separated by a comma: >
-        autocmd BufRead */MyProjectDir/* DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>
+        autocmd BufRead /MyProjectDir/ DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>
 <
         
 
