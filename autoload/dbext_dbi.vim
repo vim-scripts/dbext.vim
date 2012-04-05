@@ -4,10 +4,10 @@
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       13.00
+" Version:       14.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2010 Sep 07
+" Last Modified: 2012 Feb 24
 " Created:       2007-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 "
@@ -37,7 +37,15 @@
 "        copy "%SQLANYSAMP10%\demo.db"
 "        dbeng10 demo
 "
-"        Make sure SQLANY10 is in your path before any other versions of SQL
+"        cd %SQLANY11%\SDK\perl
+"        copy "%SQLANYSAMP11%\demo.db"
+"        dbeng11 demo
+"
+"        cd %SQLANY12%\SDK\perl
+"        copy "%SQLANYSAMP12%\demo.db"
+"        dbeng12 demo
+"
+"        Make sure SQLANY(10|11|12) is in your path before any other versions of SQL
 "        Anywhere.
 "        "C:\Program Files\Microsoft Visual Studio .Net 2003\Common7\Tools\vsvars32.bat"
 "        or
@@ -116,7 +124,7 @@ if !has('perl')
     let g:loaded_dbext_dbi_msg = 'Vim does not have perl support enabled'
     finish
 endif
-let g:loaded_dbext_dbi = 1300
+let g:loaded_dbext_dbi = 1400
 
 if !exists("dbext_dbi_debug")
    let g:dbext_dbi_debug = 0
@@ -140,8 +148,8 @@ if !exists("dbext_dbi_trace_level")
    let g:dbext_dbi_trace_level = 0
 endif
 
-" See help use-cpo-save for info on the variable save_cpo  
-let s:save_cpo = &cpo
+" Turn on support for line continuations when creating the script
+let s:cpo_save = &cpo
 set cpo&vim
 
 function! dbext_dbi#DBI_load_perl_subs()
@@ -1688,5 +1696,8 @@ EOCore
     " echomsg "Finished loading Perl subroutines"
     let g:dbext_dbi_loaded_perl_subs = 1
 endfunction
+
+let &cpo = s:cpo_save
+unlet s:cpo_save
 
 " vim:fdm=marker:nowrap:ts=4:expandtab:

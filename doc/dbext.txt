@@ -1,13 +1,13 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2011 Jun 03
+*dbext.txt*	For Vim version 7.0.  Last change: 2012 Mar 23
 
 
                 	  VIM REFERENCE MANUAL 
                                 by 
                      David Fishburn <dfishburn dot vim at gmail dot com>
-                     Peter Bagyinszki <petike1 at dpg dot hu>
+                     Peter Bagyinszki 
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 13.00
+	  	dbext.vim version 14.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -91,6 +91,32 @@ David Fishburn
 
 ==============================================================================
 2. What's New						*dbext-new*
+
+Version 14.00
+
+ New Features
+ ---------
+ - Added support for using extended connection strings with Oracle and SQLPlus 
+   (Fredrik Acosta).
+ - Added a new buffer option to specify which filetype dbext should use when 
+   parsing the query.  If an existing language already works as you need 
+   you can tell dbext to use it via the modeline or DBSetOption
+   (Albie Janse van Rensburg).
+ - Added an example of a function I use to execute blocks of stored procedures
+   using dbext's commands.
+ - For PostgreSQL, dbext will check for the existance of a .pgpass file.  If
+   not found, execution will abort and a warning message will be displayed.
+   By default $HOME/.pgpass will be validated (Frank Schwach).
+
+ Bug Fixes
+ ---------
+ - When closing or deleting buffers it was possible to loose syntax, filetype 
+   and hidden settings (Alexey Radkov).
+ - Parsing VisualBasic and Basic variables let to errors in DB_parseVB
+   (Albie Janse van Rensburg).
+ - Generating a column list for an ASA database left an extra , at the end
+   of the list.  This also affected the SQLComplete plugin.
+
 
 Version 13.00
 
@@ -1271,6 +1297,16 @@ Version 2.00
         prompted, the value will be stored for later use.  To turn
         this feature off, add the following to your .vimrc: >
             let g:dbext_default_variable_remember = '0'
+    dbext_default_filetype
+<       Default: &filetype
+        New feature to version 14.0.  By default, dbext will use
+        Vim's filetype when parsing queries.  But depending on your
+        setup and your language, a different filetype might already
+        prompt for variables they way you need.  This will allow 
+        you to override the dbext default and use the value you 
+        specify. >
+            :DBSetOption filetype=sql
+            let g:dbext_default_profile_test = 'type=ASA:user=DBA:passwd=SQL:filetype=sql'
 
 
 <
@@ -1425,6 +1461,7 @@ Version 2.00
         dbext_default_PGSQL_cmd_header         = ''
         dbext_default_PGSQL_cmd_terminator     = ''
         dbext_default_PGSQL_cmd_options        = ''
+        dbext_default_PGSQL_pgpass             = expand('$HOME/.pgpass')
         dbext_default_MYSQL_bin                = 'isql'
         dbext_default_MYSQL_cmd_header         = ''
         dbext_default_MYSQL_cmd_terminator     = ''
@@ -2171,6 +2208,7 @@ To specify the type of database you connect to most often, you can place the
 
  dbext's commands can be used within mappings.  Here is a simple example 
  that you can place in your |.vimrc|:
+
      a) Sets connection information (based on "your_profile"). >
            profile=your_profile
 <       This assumes you have the following in your |.vimrc| >
@@ -2190,6 +2228,66 @@ To specify the type of database you connect to most often, you can place the
            \ :let sql_cmd = "DBExecSQL delete from xsl " .
            \      "where name = '" . expand("%:t") . "';"<CR>
            \ :exec sql_cmd<CR>
+<
+ Here is an example of a custom map which I use to execute a block of SQL from
+ a file full of stored procedures.  The function finds the necessary SQL and
+ calls dbext's DBExecRangeSQL command.  Add the function to your vimrc.
+>
+    " Since I repeatedly need to edit stored procedures, the CREATE PROCEDURE
+    " statement is preceeded by an IF ... END IF block which will drop
+    " the procedure or it uses the CREATE OR REPLACE syntax.  
+    " This function will visually select the IF block to the END; statement
+    " of the stored procedure and execute it.  Or check for the 
+    " CREATE OR REPLACE and stop there and look to the end.
+    function! SQLExecuteIfCreateReplace()
+        let l:old_sel = &sel
+        let &sel = 'inclusive'
+        let saveWrapScan=&wrapscan
+        let saveSearch=@/ 
+        let l:reg_z = @z
+        let &wrapscan=0
+        let @z = ''
+        let found = 0
+        let startLine = 0
+        let endLine = 0
+        let curLine = line(".")
+        let curCol  = virtcol(".")
+    
+        " Must default the command terminator
+        let l:dbext_cmd_terminator = ";"
+    
+        try
+            " Search backwards and do NOT wrap
+            " Find the line beginning with an IF clause
+            "     IF EXISTS( SELECT 1 ...
+            " or find an or replace clause
+            "     CREATE OR REPLACE PROCEDURE ...
+            " And execute it until we find an 
+            "     END 
+            " at the beginning of a line.
+            let startLine = search('\c\(^\<if\>\|\<or\s\+replace\>\)', 'bcnW' )
+    
+            if startLine > 0
+                " Search forward and visually select all lines
+                " until we find an END; clause
+                let endLine = search('^END'.l:dbext_cmd_terminator.'\s*$', 'cnW')
+                exec startLine.','.endLine.'DBExecRangeSQL'
+            endif
+        finally
+            call cursor(curLine, curCol)
+            noh
+            let l:query = @z
+            let @z = l:reg_z
+            let @/=saveSearch
+            let &wrapscan=saveWrapScan
+            let &sel = l:old_sel
+        endtry
+    endfunction
+<
+ The mapping I use to trigger the function is <Leader>sbe using the 
+ mnemonic sql - begin - end
+>
+    nnoremap <Leader>sbe :call SQLExecuteIfCreateReplace()<CR>
 <
 ==============================================================================
 11. Object Completion                                 	*dbext-completion*

@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       13.00
+" Version:       14.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2011 May 31
+" Last Modified: 2012 Mar 23
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -38,7 +38,11 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 1300
+let g:loaded_dbext_auto = 1400
+
+" Turn on support for line continuations when creating the script
+let s:cpo_save = &cpo
+set cpo&vim
 
 " call confirm("Loaded dbext autoload", "&Ok")
 " Script variable defaults, these are used internal and are never displayed
@@ -169,6 +173,7 @@ function! s:DB_buildLists()
     call add(s:config_params_mv, 'autoclose')
     call add(s:config_params_mv, 'autoclose_min_lines')
     call add(s:config_params_mv, 'variable_remember')
+    call add(s:config_params_mv, 'filetype')
 
     " Script parameters
     let s:script_params_mv = []
@@ -884,6 +889,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "PGSQL_cmd_terminator"    |return (exists("g:dbext_default_PGSQL_cmd_terminator")?g:dbext_default_PGSQL_cmd_terminator.'':';')
     elseif a:name ==# "PGSQL_SQL_Top_pat"       |return (exists("g:dbext_default_PGSQL_SQL_Top_pat")?g:dbext_default_PGSQL_SQL_Top_pat.'':'\(.*\)')
     elseif a:name ==# "PGSQL_SQL_Top_sub"       |return (exists("g:dbext_default_PGSQL_SQL_Top_sub")?g:dbext_default_PGSQL_SQL_Top_sub.'':'\1 LIMIT @dbext_topX ')
+    elseif a:name ==# "PGSQL_pgpass"            |return (exists("g:dbext_default_PGSQL_pgpass")?g:dbext_default_PGSQL_pgpass.'':'$HOME/.pgpass')
     elseif a:name ==# "RDB_bin"                 |return (exists("g:dbext_default_RDB_bin")?g:dbext_default_RDB_bin.'':'mc sql$')
     elseif a:name ==# "RDB_cmd_header"          |return (exists("g:dbext_default_RDB_cmd_header")?g:dbext_default_RDB_cmd_header.'':"".
                 \ "set line length 10000\n" .
@@ -1124,6 +1130,10 @@ function! s:DB_resetBufferParameters(use_defaults)
                 \ && retval == -2
         call s:DB_promptForParameters()
     endif
+
+    " if s:DB_get('filetype') == ''
+    "     let s:DB_set('filetype') = &filetype
+    " endif
 
     " call s:DB_validateBufferParameters()
     let retval = s:DB_validateBufferParameters()
@@ -1795,7 +1805,9 @@ function! s:DB_ASA_stripHeaderFooter(result)
     let stripped = substitute( stripped, '\((\)\?\(First\s\+\)\?\d\+ row\_.*', '', '' )
     " Strip off trailing spaces
     " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
-    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', '' )
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', 'g' )
+    " Strip blank lines
+    let stripped = substitute( stripped, '\(\n\)\(\n\)', '', 'g' )
     return stripped
 endfunction 
 
@@ -2870,11 +2882,11 @@ function! s:DB_ORA_execSql(str)
 
     let cmd = dbext_bin .  
                 \ ' ' . dbext#DB_getWType("cmd_options") .
-                \ s:DB_option(' ', s:DB_get("user"), '') .
+                \ s:DB_option(" '", s:DB_get("user"), '') .
                 \ s:DB_option('/', s:DB_get("passwd"), '') .
                 \ s:DB_option('@', s:DB_get("srvname"), '') .
                 \ s:DB_option(' ', s:DB_get("extra"), '') .
-                \ ' @' . s:dbext_tempfile
+                \ '" @' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output, "")
 
     return result
@@ -3026,7 +3038,32 @@ function! s:DB_ORA_getDictionaryView() "{{{
 endfunction "}}}
 "}}}
 " PGSQL exec {{{
+function! s:DB_PGSQL_check_pgpass()
+    " All defaults are specified in the DB_getDefault function.
+    " This contains the defaults settings for all database types
+    let filename = dbext#DB_getWType("pgpass")
+
+    if !filereadable(expand(filename))
+        call s:DB_warningMsg( 
+                    \ "dbext:PostgreSQL requires a '".
+                    \ dbext#DB_getWType("pgpass").
+                    \ "' file in order to authenticate.  ".
+                    \ 'This file is missing.  '.
+                    \ "The binary '".
+                    \ dbext#DB_getWType("bin").
+                    \ "' does not accept commandline passwords."
+                    \ )
+        return -1
+    endif
+
+    return
+endfunction
+
 function! s:DB_PGSQL_execSql(str)
+    if s:DB_PGSQL_check_pgpass() == -1 
+        return -1
+    endif
+
     " All defaults are specified in the DB_getDefault function.
     " This contains the defaults settings for all database types
     let terminator = dbext#DB_getWType("cmd_terminator")
@@ -4973,6 +5010,10 @@ function! dbext#DB_execSql(query)
         return -1
     endif
 
+    " Mark the current line to return to
+    let curline     = line(".")
+    let curcol      = virtcol(".")
+
    " Add query to internal history
     call s:DB_historyAdd(query)
     
@@ -4994,13 +5035,25 @@ function! dbext#DB_execSql(query)
     endif
     
     if query != ""
-        return dbext#DB_execFuncTypeWCheck('execSql', query)
+        let rc = dbext#DB_execFuncTypeWCheck('execSql', query)
+
+        " Return to previous location
+        " Accounting for beginning of the line
+        " silent! exe 'norm! '.curline."G\<bar>".(curcol-1).(((curcol-1)> 0)?'l':'')
+        call cursor(curline, curcol)
+
+        return rc
     else
        " If the query was cancelled, close the history 
        " window which was opened when we added the 
        " query above.
         call dbext#DB_windowClose(s:DB_resBufName())
     endif
+
+    " Return to previous location
+    " Accounting for beginning of the line
+    " silent! exe 'norm! '.curline."G\<bar>".(curcol-1).(((curcol-1)> 0)?'l':'')
+    call cursor(curline, curcol)
 
     return -1
 endfunction
@@ -5086,6 +5139,10 @@ function! dbext#DB_execSqlTopX(...)
 endfunction
 
 function! dbext#DB_execRangeSql() range
+    " Mark the current line to return to
+    let curline     = a:lastline
+    let curcol      = 0
+
     if a:firstline != a:lastline
         let saveR = @"
         silent! exec a:firstline.','.a:lastline.'y'
@@ -5095,7 +5152,13 @@ function! dbext#DB_execRangeSql() range
         let query = getline(a:firstline)
     endif
 
-    return dbext#DB_execSql(query)
+    let rc = dbext#DB_execSql(query)
+
+    " Return to previous location
+    " Accounting for beginning of the line
+    call cursor(curline, curcol)
+
+    return rc
 endfunction
 
 function! s:DB_getLoginScript(filename)
@@ -5814,6 +5877,13 @@ function! dbext#DB_auBufDelete(del_buf_nr) "{{{
         return
     endif
 
+    " Do not let current buffer and syntax highlighting go which may
+    " happen when current value of 'bufhidden' is 'delete', 'wipe' etc.
+    let cur_bufhidden = &bufhidden
+    let cur_syntax    = &syntax
+    let cur_filetype  = &filetype
+    setlocal bufhidden=
+
     let idx = index(s:dbext_buffers_with_dict_files, del_buf)
     
     if idx > -1 || exists('g:loaded_dbext_auto')
@@ -5839,6 +5909,13 @@ function! dbext#DB_auBufDelete(del_buf_nr) "{{{
 
         " Switch back to the current buffer
         silent! exec cur_buf.'buffer'
+
+        " Switch back value of 'bufhidden' and syntax
+        if !empty(cur_bufhidden)
+            exec "setlocal bufhidden=".cur_bufhidden
+            exec "setlocal syntax=".cur_syntax
+            exec "setlocal filetype=".cur_filetype
+        endif
     endif
 endfunction "}}}
 "}}}
@@ -6597,33 +6674,41 @@ function! dbext#DB_parseQuery(query)
         return a:query
     endif
 
-    if &filetype == "sql"
+    " If the user has not overriden the filetype using DB_setOption 
+    " then use the filetype Vim set
+    let l:filetype = s:DB_get('filetype')
+    if l:filetype == ''
+        call s:DB_set('filetype', &filetype)
+        let l:filetype = &filetype
+    endif
+
+    if matchstr( l:filetype, "sql" ) == "sql"
         " Dont parse the SQL query, since DB_parseHostVariables
         " will pickup the standard host variables for prompting.
         " let query = s:DB_parseSQL(a:query)
         return s:DB_parseHostVariables(a:query)
-    elseif &filetype == "java" || 
-                \ &filetype == "jsp"  || 
-                \ &filetype == "html"  || 
-                \ &filetype == "javascript" 
+    elseif matchstr( l:filetype, "java" ) == "java" || 
+                \ matchstr( l:filetype, "jsp" ) == "jsp"  || 
+                \ matchstr( l:filetype, "html" ) == "html"  || 
+                \ matchstr( l:filetype, "javascript" ) == "javascript" 
         let query = s:DB_parseJava(a:query)
         return s:DB_parseHostVariables(query)
-    elseif &filetype == "jproperties" 
+    elseif matchstr( l:filetype, "jproperties" ) == "jproperties" 
         let query = s:DB_parseJProperties(a:query)
         return s:DB_parseHostVariables(query)
-    elseif &filetype == "perl"
+    elseif matchstr( l:filetype, "perl" ) == "perl"
         " The Perl parser will deal with string concatenation
         let query = s:DB_parsePerl(a:query)
         " Let the SQL parser handle embedded host variables
         return s:DB_parseHostVariables(query)
-    elseif &filetype == "php"
+    elseif matchstr( l:filetype, "php" ) == "php"
         let query = s:DB_parsePHP(a:query)
         return s:DB_parseHostVariables(query)
-    elseif &filetype == "vim"
+    elseif matchstr( l:filetype, "vim" ) == "vim"
         let query = s:DB_parseVim(a:query)
         return s:DB_parseHostVariables(query)
-    elseif &filetype == "vb"    ||
-           \ &filetype == "basic"
+    elseif matchstr( l:filetype, "vb" ) == "vb"    ||
+           \ matchstr( l:filetype, "basic" ) == "basic"
         let query = s:DB_parseVB(a:query)
         return s:DB_parseHostVariables(query)
     else
@@ -7553,7 +7638,7 @@ endfunction
 function! s:DB_parseVB(query)
 
     " Join all line continuations by removing the ending "_"
-    let a_query = substitute(a:query, " _[\r\n]\\+\\s*", "","")
+    let a_query = substitute(a:query, " _[\r\n]\\+\\s*", "","g")
 
     " Get the string part of the vb query and remove the beginning
     " and closing quotes
@@ -7603,20 +7688,7 @@ function! s:DB_parseVB(query)
     "  \s*[+&]    - Any space and a plus sign
     "  \s*"       - Any space followed by a double quote
 
-    " Replace all sql vars using existing buffer variables
-    let index = match(query, var_expr_q)
-    while index > -1
-        let var = matchstr(query, var_expr, index)
-        let val = s:DB_sqlvar_get(var)
-        " echo b:dbext_sqlvar_mv
-        if index == 0
-            let query = val.query[index+strlen(var)+2:]
-        else
-            let query = query[0:index-1].val.query[index+strlen(var)+2:]
-        endif
-        let index = match(query, var_expr, index+strlen(var))
-    endwhile
-    " let query = s:DB_searchReplace(query, var_expr, var_expr, 0)
+    let query = s:DB_searchReplace(query, var_expr, var_expr, 0)
 
     "call inputdialog(query)
     return query
@@ -8281,4 +8353,8 @@ endfunction
 call s:DB_buildLists()
 
 call s:DB_resetGlobalParameters()
+
+let &cpo = s:cpo_save
+unlet s:cpo_save
+
 " vim:fdm=marker:nowrap:ts=4:expandtab:ff=unix:
