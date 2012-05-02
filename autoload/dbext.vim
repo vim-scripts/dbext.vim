@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       14.00
+" Version:       15.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2012 Mar 23
+" Last Modified: 2012 Apr 30
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -38,7 +38,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 1400
+let g:loaded_dbext_auto = 1500
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -774,6 +774,18 @@ function! dbext#DB_getWType(name)
     return retval
 endfunction
 
+"" Get buffer defaulting to the buffer set value 
+"" or if empty use the database type default.
+function! dbext#DB_getWTypeDefault(name)
+    let retval = s:DB_get(a:name)
+
+    if retval == "" && exists("b:dbext_type")
+        let retval = s:DB_get(b:dbext_type.'_'.a:name)
+    endif
+    
+    return retval
+endfunction
+
 "" Returns hardcoded defaults for parameters.
 function! s:DB_getDefault(name)
     " Must use g:dbext_default_profile.'' so that it is expanded
@@ -863,6 +875,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "MYSQL_cmd_options"       |return (exists("g:dbext_default_MYSQL_cmd_options")?g:dbext_default_MYSQL_cmd_options.'':'')
     elseif a:name ==# "MYSQL_cmd_terminator"    |return (exists("g:dbext_default_MYSQL_cmd_terminator")?g:dbext_default_MYSQL_cmd_terminator.'':';')
     elseif a:name ==# "MYSQL_version"           |return (exists("g:dbext_default_MYSQL_version")?g:dbext_default_MYSQL_version.'':'5')
+    elseif a:name ==# "MYSQL_extra"             |return (exists("g:dbext_default_MYSQL_extra")?g:dbext_default_MYSQL_extra.'':'-t')
     elseif a:name ==# "MYSQL_SQL_Top_pat"       |return (exists("g:dbext_default_MYSQL_SQL_Top_pat")?g:dbext_default_MYSQL_SQL_Top_pat.'':'\(.*\)')
     elseif a:name ==# "MYSQL_SQL_Top_sub"       |return (exists("g:dbext_default_MYSQL_SQL_Top_sub")?g:dbext_default_MYSQL_SQL_Top_sub.'':'\1 LIMIT @dbext_topX ')
     elseif a:name ==# "FIREBIRD_bin"            |return (exists("g:dbext_default_FIREBIRD_bin")?g:dbext_default_FIREBIRD_bin.'':'isql')
@@ -1634,7 +1647,7 @@ function! s:DB_ASA_execSql(str)
                 \ s:DB_option('eng=', s:DB_get("srvname"), ';') .
                 \ s:DB_option('dbn=', s:DB_get("dbname"), ';') .
                 \ s:DB_option('links=', links, ';') .
-                \ s:DB_option('', s:DB_get("extra"), '') 
+                \ s:DB_option('', dbext#DB_getWTypeDefault("extra"), '') 
     if has("win32") && s:DB_get("integratedlogin") == 1
         let cmd = cmd . 
                 \ s:DB_option('int=', 'yes', ';') 
@@ -1869,7 +1882,7 @@ function! s:DB_ULTRALITE_execSql(str)
                 \ s:DB_option('pwd=', s:DB_get("passwd"), ';') .
                 \ s:DB_option('dsn=', s:DB_get("dsnname"), ';') .
                 \ s:DB_option('dbf=', s:DB_get("dbname"), ';') .
-                \ s:DB_option('', s:DB_get("extra"), '') 
+                \ s:DB_option('', dbext#DB_getWTypeDefault("extra"), '') 
     let cmd = cmd .  '" ' . 
                 \ ' read ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output, "")
@@ -1993,7 +2006,7 @@ function! s:DB_ASE_execSql(str)
                 \ s:DB_option('-H ', s:DB_get("host"), ' ') .
                 \ s:DB_option('-S ', s:DB_get("srvname"), ' ') .
                 \ s:DB_option('-D ', s:DB_get("dbname"), ' ') .
-                \ s:DB_option('', s:DB_get("extra"), '') .
+                \ s:DB_option('', dbext#DB_getWTypeDefault("extra"), '') .
                 \ ' -i ' . s:dbext_tempfile
 
     let result = s:DB_runCmd(cmd, output, "")
@@ -2185,13 +2198,13 @@ function! s:DB_DB2_execSql(str)
 
         let dbext_bin = s:DB_fullPath2Bin(dbext#DB_getWType("bin"))
 
-        let cmd = dbext_bin .  ' ' . dbext#DB_getWType("cmd_options")
+        let cmd = dbext_bin . ' ' . dbext#DB_getWType("cmd_options") . ' '
         if s:DB_get("user") != ""
             let cmd = cmd . ' -a ' . s:DB_get("user") . '/' .
                         \ s:DB_get("passwd") . ' '
         endif
         let cmd = cmd . 
-                    \ s:DB_option(' ', s:DB_get("extra"), ' ') .
+                    \ s:DB_option(' ', dbext#DB_getWTypeDefault("extra"), ' ') .
                     \ s:DB_option('-d ', s:DB_get("dbname"), ' ') .
                     \ s:DB_option('-l ', dbext#DB_getWType("cmd_terminator"), ' ').
                     \ ' -f ' . s:dbext_tempfile
@@ -2237,7 +2250,7 @@ function! s:DB_DB2_execSql(str)
         let dbext_bin = s:DB_fullPath2Bin(dbext#DB_getWType("db2cmd_bin"))
 
         let cmd = dbext_bin .  ' ' . dbext#DB_getWType("db2cmd_cmd_options")
-        let cmd = cmd . ' ' .  s:DB_option('', s:DB_get("extra"), ' ') .
+        let cmd = cmd . ' ' .  s:DB_option('', dbext#DB_getWTypeDefault("extra"), ' ') .
                     \ s:DB_option('-t', dbext#DB_getWType("cmd_terminator"), ' ') .
                     \ '-f ' . s:dbext_tempfile
     endif
@@ -2415,7 +2428,7 @@ function! s:DB_INGRES_execSql(str)
     let dbext_bin = s:DB_fullPath2Bin(dbext#DB_getWType("bin"))
 
     let cmd = dbext_bin .  ' ' . 
-                \ s:DB_option('', s:DB_get("extra"), ' ') .
+                \ s:DB_option('', dbext#DB_getWTypeDefault("extra"), ' ') .
                 \ s:DB_option('-S ', s:DB_get("dbname"), ' ') .
                 \ s:DB_option('', dbext#DB_getWType("cmd_options"), ' ') .
                 \ ' < ' . s:dbext_tempfile
@@ -2500,7 +2513,7 @@ function! s:DB_INTERBASE_execSql(str)
                 \ s:DB_option('-username ', s:DB_get("user"), ' ') .
                 \ s:DB_option('-password ', s:DB_get("passwd"), ' ') .
                 \ s:DB_option('', dbext#DB_getWType("cmd_options"), ' ') .
-                \ s:DB_option('', dbext#DB_getWType("extra"), ' ') .
+                \ s:DB_option('', dbext#DB_getWTypeDefault("extra"), ' ') .
                 \ '-input ' . s:dbext_tempfile .
                 \ s:DB_option(' ', s:DB_get("dbname"), '')
     let result = s:DB_runCmd(cmd, output, "")
@@ -2587,9 +2600,9 @@ function! s:DB_MYSQL_execSql(str)
                 \ s:DB_option(' -h ', s:DB_get("host"), '') .
                 \ s:DB_option(' -P ', s:DB_get("port"), '') .
                 \ s:DB_option(' -D ', s:DB_get("dbname"), '') .
-                \ s:DB_option(' ', '-t', '') .
-                \ s:DB_option(' ', s:DB_get("extra"), '') .
+                \ s:DB_option(' ', dbext#DB_getWTypeDefault("extra"), '') .
                 \ ' < ' . s:dbext_tempfile
+                " \ s:DB_option(' ', '-t', '') .
     let result = s:DB_runCmd(cmd, output, "")
 
     return result
@@ -2716,7 +2729,7 @@ endfunction "}}}
 function! s:DB_SQLITE_execSql(str)
 
     if s:DB_get("dbname") == ""
-        call s:DB_errorMsg("dbext:You must specify a database name/file")
+        call s:DB_warningMsg("dbext:You must specify a database name/file")
         return -1
     endif
 
@@ -2754,7 +2767,7 @@ function! s:DB_SQLITE_execSql(str)
 
     let cmd = dbext_bin .  ' ' . dbext#DB_getWType("cmd_options")
     let cmd = cmd .
-                \ s:DB_option(' ', s:DB_get("extra"), '') .
+                \ s:DB_option(' ', dbext#DB_getWTypeDefault("extra"), '') .
                 \ s:DB_option(' ', s:DB_get("dbname"), '') .
                 \ ' < ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output, "")
@@ -2885,7 +2898,7 @@ function! s:DB_ORA_execSql(str)
                 \ s:DB_option(" '", s:DB_get("user"), '') .
                 \ s:DB_option('/', s:DB_get("passwd"), '') .
                 \ s:DB_option('@', s:DB_get("srvname"), '') .
-                \ s:DB_option(' ', s:DB_get("extra"), '') .
+                \ s:DB_option(' ', dbext#DB_getWTypeDefault("extra"), '') .
                 \ '" @' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output, "")
 
@@ -3091,7 +3104,7 @@ function! s:DB_PGSQL_execSql(str)
                 \ s:DB_option('-U ', s:DB_get("user"), ' ') .
                 \ s:DB_option('-h ', s:DB_get("host"), ' ') .
                 \ s:DB_option('-p ', s:DB_get("port"), ' ') .
-                \ s:DB_option(' ', s:DB_get("extra"), '') .
+                \ s:DB_option(' ', dbext#DB_getWTypeDefault("extra"), '') .
                 \ ' -q -f ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output, "")
 
@@ -3460,7 +3473,7 @@ function! s:DB_SQLSRV_execSql(str)
                 \ s:DB_option(' -H ', s:DB_get("host"), ' ') .
                 \ s:DB_option(' -S ', s:DB_get("srvname"), ' ') .
                 \ s:DB_option(' -d ', s:DB_get("dbname"), ' ') .
-                \ s:DB_option(' ', s:DB_get("extra"), '') .
+                \ s:DB_option(' ', dbext#DB_getWTypeDefault("extra"), '') .
                 \ ' -i ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output, "")
 
@@ -3601,7 +3614,7 @@ function! s:DB_FIREBIRD_execSql(str)
                 \ s:DB_option(' -u ', s:DB_get("user"), '') .
                 \ s:DB_option(' -p ',  s:DB_get("passwd"), '') .
                 \ s:DB_option(' ', s:DB_get("dbname"), '') .
-                \ s:DB_option(' ', s:DB_get("extra"), '') .
+                \ s:DB_option(' ', dbext#DB_getWTypeDefault("extra"), '') .
                 \ ' < ' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output, "")
 
@@ -5882,11 +5895,11 @@ function! dbext#DB_auBufDelete(del_buf_nr) "{{{
     let cur_bufhidden = &bufhidden
     let cur_syntax    = &syntax
     let cur_filetype  = &filetype
-    setlocal bufhidden=
 
     let idx = index(s:dbext_buffers_with_dict_files, del_buf)
     
     if idx > -1 || exists('g:loaded_dbext_auto')
+        setlocal bufhidden=
         " Switch to the buffer being deleted
         silent! exec del_buf.'buffer'
 
