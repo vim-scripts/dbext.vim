@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2012 May 01
+*dbext.txt*	For Vim version 7.0.  Last change: 2012 Jun 11
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki 
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 15.00
+	  	dbext.vim version 16.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -92,13 +92,19 @@ David Fishburn
 ==============================================================================
 2. What's New						*dbext-new*
 
+Version 16.00
+
+ Bug Fixes
+ ---------
+ - For Oracle databases, the SQLPlus command had unmatched quotation marks 
+   which could lead to errors displayed by dbext indicating it could not 
+   open the file to execute the SQL (JustinF Zhang).
+
+
 Version 15.00
 
  New Features
  ---------
- - For Oracle connection profiles, support this form of server name, 
-   srvname=(description=(address=(protocol=TCP)(host=dbhost.our.domain.com)(port=1521))(connect_data=(server=dedicated)(service_name=gps03tst.our.domain.com)))
-   (Fredrik Acosta).
  - A new database confirguration parameter, g:dbext_default_DBTYPE_extra, is 
    available to allow the user to customize command line parameters passed to
    the database binary used to execute the statement.  This can be overriden
@@ -117,7 +123,8 @@ Version 14.00
 
  New Features
  ---------
- - Added support for using extended connection strings with Oracle and SQLPlus 
+ - For Oracle connection profiles, support this form of server name, 
+   srvname=(description=(address=(protocol=TCP)(host=dbhost.our.domain.com)(port=1521))(connect_data=(server=dedicated)(service_name=gps03tst.our.domain.com)))
    (Fredrik Acosta).
  - Added a new buffer option to specify which filetype dbext should use when 
    parsing the query.  If an existing language already works as you need 
