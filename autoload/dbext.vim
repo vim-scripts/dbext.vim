@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       16.00
+" Version:       17.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2012 May 22
+" Last Modified: 2012 Sep 29
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -38,7 +38,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 1600
+let g:loaded_dbext_auto = 1700
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -51,9 +51,12 @@ set cpo&vim
 let s:dbext_buffers_with_dict_files = []
 " +shellslash is set on windows so it can be used to decide
 " what type of slash to use
-let s:dbext_tempfile = fnamemodify(tempname(), ":h").
-            \ ((has('win32') && ! exists('+shellslash'))?'\':(has('vms')?'':'/')).
-            \ 'dbext.sql'
+let s:dbext_tempfile = fnamemodify(tempname(), ":h")
+let s:dbext_tempfile = s:dbext_tempfile.(s:dbext_tempfile =~ '^/' ? '/' : '\').'dbext.sql'
+"let s:dbext_tempfile = fnamemodify(tempname(), ":h").((has('win32') && ! exists('+shellslash'))?'\':(has('vms')?'':'/')).'dbext.sql'
+"let s:dbext_tempfile = fnamemodify(tempname(), ":h")
+"            \ ((has('win32') && ! exists('+shellslash'))?'\':(has('vms')?'':'/')).
+"            \ 'dbext.sql'
 let s:dbext_prev_sql     = ''
 let s:dbext_result_count = 0
 " Store previous buffer information so we can return to it when we 
@@ -94,6 +97,8 @@ function! s:DB_buildLists()
     call add(s:db_types_mv, 'ULTRALITE')
     " Firebird (fishburn)
     call add(s:db_types_mv, 'FIREBIRD')
+    " Firebird (fishburn)
+    call add(s:db_types_mv, 'HANA')
 
     " The following are only available with the
     " Perl DBI extension plug.
@@ -174,6 +179,8 @@ function! s:DB_buildLists()
     call add(s:config_params_mv, 'autoclose_min_lines')
     call add(s:config_params_mv, 'variable_remember')
     call add(s:config_params_mv, 'filetype')
+    call add(s:config_params_mv, 'statement_starts_line')
+    call add(s:config_params_mv, 'ignore_variable_regex')
 
     " Script parameters
     let s:script_params_mv = []
@@ -403,7 +410,9 @@ function! dbext#DB_execFuncTypeWCheck(name,...)
     if a:0 == 0
         return s:DB_{b:dbext_type}_{a:name}()
     elseif a:0 == 1
-        return s:DB_{b:dbext_type}_{a:name}(a:1)
+        let result = s:DB_{b:dbext_type}_{a:name}(a:1)
+        return result
+        " return s:DB_{b:dbext_type}_{a:name}(a:1)
     elseif a:0 == 2
         return s:DB_{b:dbext_type}_{a:name}(a:1, a:2)
     elseif a:0 == 3
@@ -811,7 +820,7 @@ function! s:DB_getDefault(name)
     " Q - CANNOT be surrounded in quotes
     " , - delimiter between options
     elseif a:name ==# "variable_def"            |return (exists("g:dbext_default_variable_def")?g:dbext_default_variable_def.'':'?WQ,@wq,:wq,$wq')
-    elseif a:name ==# "variable_def_regex"      |return (exists("g:dbext_default_variable_def_regex")?g:dbext_default_variable_def_regex.'':'\(\w\|'."'".'\)\@<!?\(\w\|'."'".'\)\@<!,\zs\(@\|:\a\|$\)\w\+\>')
+    elseif a:name ==# "variable_def_regex"      |return (exists("g:dbext_default_variable_def_regex")?g:dbext_default_variable_def_regex.'':'\(\w\|'."'".'\)\@<!?\(\w\|'."'".'\)\@<!,\zs\(@\|:\a\|\$\)\w\+\>')
     elseif a:name ==# "buffer_lines"            |return (exists("g:dbext_default_buffer_lines")?g:dbext_default_buffer_lines.'':10)
     elseif a:name ==# "use_result_buffer"       |return (exists("g:dbext_default_use_result_buffer")?g:dbext_default_use_result_buffer.'':1)
     elseif a:name ==# "use_sep_result_buffer"   |return (exists("g:dbext_default_use_sep_result_buffer")?g:dbext_default_use_sep_result_buffer.'':0)
@@ -840,6 +849,8 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "autoclose"               |return (exists("g:dbext_default_autoclose")?g:dbext_default_autoclose.'':'0')
     elseif a:name ==# "autoclose_min_lines"     |return (exists("g:dbext_default_autoclose_min_lines")?g:dbext_default_autoclose_min_lines.'':'2')
     elseif a:name ==# "variable_remember"       |return (exists("g:dbext_default_variable_remember")?g:dbext_default_variable_remember.'':'1')
+    elseif a:name ==# "statement_starts_line"   |return (exists("g:dbext_default_statement_starts_line")?g:dbext_default_statement_starts_line.'':'1')
+    elseif a:name ==# "ignore_variable_regex"   |return (exists("g:dbext_default_ignore_variable_regex")?g:dbext_default_ignore_variable_regex.'':'\(in\|out\|inout\|declare\|set\|variable\|''\|/\|@\)')
     elseif a:name ==# "ASA_bin"                 |return (exists("g:dbext_default_ASA_bin")?g:dbext_default_ASA_bin.'':'dbisql')
     elseif a:name ==# "ASA_cmd_terminator"      |return (exists("g:dbext_default_ASA_cmd_terminator")?g:dbext_default_ASA_cmd_terminator.'':';')
     elseif a:name ==# "ASA_cmd_options"         |return (exists("g:dbext_default_ASA_cmd_options")?g:dbext_default_ASA_cmd_options.'':'-nogui')
@@ -884,6 +895,12 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "FIREBIRD_version"        |return (exists("g:dbext_default_FIREBIRD_version")?g:dbext_default_FIREBIRD_version.'':'5')
     elseif a:name ==# "FIREBIRD_SQL_Top_pat"    |return (exists("g:dbext_default_FIREBIRD_SQL_Top_pat")?g:dbext_default_FIREBIRD_SQL_Top_pat.'':'\(.*\)')
     elseif a:name ==# "FIREBIRD_SQL_Top_sub"    |return (exists("g:dbext_default_FIREBIRD_SQL_Top_sub")?g:dbext_default_FIREBIRD_SQL_Top_sub.'':'\1 FIRST @dbext_topX ')
+    elseif a:name ==# "HANA_bin"                |return (exists("g:dbext_default_HANA_bin")?g:dbext_default_HANA_bin.'':'hdbsql')
+    elseif a:name ==# "HANA_cmd_terminator"     |return (exists("g:dbext_default_HANA_cmd_terminator")?g:dbext_default_HANA_cmd_terminator.'':'')
+    elseif a:name ==# "HANA_cmd_options"        |return (exists("g:dbext_default_HANA_cmd_options")?g:dbext_default_HANA_cmd_options.'':'')
+    elseif a:name ==# "HANA_on_error"           |return (exists("g:dbext_default_HANA_on_error")?g:dbext_default_HANA_on_error.'':'exit')
+    elseif a:name ==# "HANA_SQL_Top_pat"        |return (exists("g:dbext_default_HANA_SQL_Top_pat")?g:dbext_default_HANA_SQL_Top_pat.'':'\(\cselect\)')
+    elseif a:name ==# "HANA_SQL_Top_sub"        |return (exists("g:dbext_default_HANA_SQL_Top_sub")?g:dbext_default_HANA_SQL_Top_sub.'':'\1 TOP @dbext_topX ')
     elseif a:name ==# "ORA_bin"                 |return (exists("g:dbext_default_ORA_bin")?g:dbext_default_ORA_bin.'':'sqlplus')
     elseif a:name ==# "ORA_cmd_header"          |return (exists("g:dbext_default_ORA_cmd_header")?g:dbext_default_ORA_cmd_header.'':"" .
                         \ "set pagesize 50000\n" .
@@ -921,11 +938,11 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "SQLSRV_SQL_Top_pat"      |return (exists("g:dbext_default_SQLSRV_SQL_Top_pat")?g:dbext_default_SQLSRV_SQL_Top_pat.'':'\(\cselect\)')
     elseif a:name ==# "SQLSRV_SQL_Top_sub"      |return (exists("g:dbext_default_SQLSRV_SQL_Top_sub")?g:dbext_default_SQLSRV_SQL_Top_sub.'':'\1 TOP @dbext_topX ')
     elseif a:name ==# "prompt_profile"          |return (exists("g:dbext_default_prompt_profile")?g:dbext_default_prompt_profile.'':"" .
-                \ (has('gui_running')?("[Optional] Enter profile #:\n".s:prompt_profile_list):
+                \ ((has('gui_running') && &guioptions !~# 'c')?("[Optional] Enter profile #:\n".s:prompt_profile_list):
                 \ (s:prompt_profile_list."\n[Optional] Enter profile #: "))
                 \ )
     elseif a:name ==# "prompt_type"             |return (exists("g:dbext_default_prompt_type")?g:dbext_default_prompt_type.'':"" .
-                \ (has('gui_running')?("\nDatabase:".s:prompt_type_list):
+                \ ((has('gui_running') && &guioptions !~# 'c')?("\nDatabase:".s:prompt_type_list):
                 \ (s:prompt_type_list."\nDatabase: "))
                 \ )
     elseif a:name ==# "prompt_integratedlogin"  |return (exists("g:dbext_default_prompt_integratedlogin")?g:dbext_default_prompt_integratedlogin.'':'[Optional] Use Integrated Login: ')
@@ -1545,6 +1562,18 @@ function! dbext#DB_setMultipleOptions(multi_options, ...)
             endif
         else
             call s:DB_set('variable_def_regex', opt_value)
+        endif
+    elseif options_cs =~ '\<ignore_variable_regex\>'
+        let opt_value = substitute(options_cs, 'ignore_variable_regex\s*=\s*', '', '')
+        if opt_value =~ '^,'
+            let l:ignore_variable_regex = s:DB_get('ignore_variable_regex')
+            " if escape(','.l:ignore_variable_regex, '\\/.*$^~[]') !~ escape(opt_value, '\\/.*$^~[]')
+            if ','.l:ignore_variable_regex !~ escape(opt_value, '\\/.*$^~[]')
+                " Append to existing values if not already present
+                call s:DB_set('ignore_variable_regex', l:ignore_variable_regex.opt_value)
+            endif
+        else
+            call s:DB_set('ignore_variable_regex', opt_value)
         endif
     else
         " Convert the comma separated list into a List
@@ -3712,20 +3741,260 @@ function! s:DB_FIREBIRD_getDictionaryView() "{{{
     return s:DB_FIREBIRD_stripHeaderFooter(result)
 endfunction "}}}
 "}}}
+" HANA exec {{{
+function! s:DB_HANA_execSql(str)
+    " All defaults are specified in the DB_getDefault function.
+    " This contains the defaults settings for all database types
+    let terminator = dbext#DB_getWType("cmd_terminator")
+
+    let output = dbext#DB_getWType("cmd_header") 
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
+    " Only include a command terminator if one has not already
+    " been added
+    if output !~ s:DB_escapeStr(terminator) . 
+                \ '['."\n".' \t]*$'
+        let output = output . terminator
+    endif
+
+    exe 'redir! > ' . s:dbext_tempfile
+    silent echo output
+    redir END
+
+    let dbext_bin = s:DB_fullPath2Bin(dbext#DB_getWType("bin"))
+
+    let cmd = dbext_bin .  ' ' . dbext#DB_getWType("cmd_options") . ' ' .
+                \ s:DB_option('-n ', s:DB_get("host"), ' ') .
+                \ s:DB_option('-u ', s:DB_get("user"), ' ') .
+                \ s:DB_option('-p ', s:DB_get("passwd"), ' ') .
+                \ s:DB_option('', dbext#DB_getWTypeDefault("extra"), '') 
+    let cmd = cmd .  ' ' . 
+                \ ' -I ' . s:dbext_tempfile
+    let result = s:DB_runCmd(cmd, output, "")
+
+    return result
+endfunction
+
+function! s:DB_HANA_describeTable(table_name)
+    let owner  = s:DB_getObjectOwner(a:table_name)
+    let object = s:DB_getObjectName(a:table_name)
+    let owner  = ( strlen(owner) > 0 ? owner : '' ) 
+    let sql =  ''.
+                \ "select * ".
+                \ "  from SYS.SYSCOLUMNS as sc ".
+                \ " where sc.TABLE_NAME = '".object."' "
+
+    if owner != ''
+        let sql = sql .
+                    \" and sc.SCHEMA_NAME = '".owner."' "
+    endif
+    let sql = sql .
+                \ " order by sc.POSITION asc "
+    return s:DB_HANA_execSql(sql)
+endfunction
+
+function! s:DB_HANA_describeProcedure(proc_name)
+    let owner  = s:DB_getObjectOwner(a:proc_name)
+    let object = s:DB_getObjectName(a:proc_name)
+    let owner  = ( strlen(owner) > 0 ? owner : '' ) 
+    let sql =  ''.
+                \ "select * ".
+                \ "  from SYS.PROCEDURE_PARAMETERS as pp ".
+                \ " where pp.PROCEDURE_NAME = '".object."' "
+
+    if owner != ''
+        let sql = sql .
+                    \" and pp.SCHEMA_NAME = '".owner."' "
+    endif
+    let sql = sql .
+                \ " order by pp.POSITION asc "
+    return s:DB_HANA_execSql(sql)
+endfunction
+
+function! s:DB_HANA_getListTable(table_prefix)
+    let owner      = s:DB_getObjectOwner(a:table_prefix)
+    let object     = s:DB_getObjectName(a:table_prefix)
+    let sql = ''.
+                \ '\dt ' . 
+                \ (owner != '' ? (owner . '%.') : '' ) . 
+                \ ( object != '' ? (object . '%') : '' )
+    let sql = ''.
+                \ 'select '.(s:DB_get('dict_show_owner')==1?"SCHEMA_NAME||'.'||":'').'TABLE_NAME ' .
+                \ "  from SYS.TABLES " .
+                \ " where TABLE_NAME  like '" . object . "%' ".
+                \ (s:DB_get('dict_show_owner')==1?"   and SCHEMA_NAME like '" . owner . "%' ":'').
+                \ ' order by '.(s:DB_get('dict_show_owner')==1?"SCHEMA_NAME,":'').'TABLE_NAME'
+    let result = s:DB_HANA_execSql(sql)
+    let result = s:DB_HANA_stripHeaderFooter(result)
+    " Remove column declaration
+    let result = substitute( result, '\(SCHEMA_NAME||\.||\)\?TABLE_NAME.\{-}\(\n\)', '', 'g' )
+    " Convert first , into a . separator
+    " let result = substitute( result, '","', '"."', 'g' )
+    " Remove all double quotes
+    let result = substitute( result, '"', '', 'g' )
+    return result
+endfunction
+
+function! s:DB_HANA_getListProcedure(proc_prefix)
+    let owner      = s:DB_getObjectOwner(a:proc_prefix)
+    let object     = s:DB_getObjectName(a:proc_prefix)
+    let sql = ''.
+                \ '\dp ' . 
+                \ (owner != '' ? (owner . '%.') : '' ) . 
+                \ ( object != '' ? (object . '%') : '' )
+    let sql = ''.
+                \ 'select '.(s:DB_get('dict_show_owner')==1?"SCHEMA_NAME||'.'||":'').'PROCEDURE_NAME ' .
+                \ "  from SYS.PROCEDURES " .
+                \ " where PROCEDURE_NAME  like '" . object . "%' ".
+                \ (s:DB_get('dict_show_owner')==1?"   and SCHEMA_NAME like '" . owner . "%' ":'').
+                \ ' order by '.(s:DB_get('dict_show_owner')==1?"SCHEMA_NAME,":'').'PROCEDURE_NAME'
+                "\ "select SCHEMA_NAME || '.' || PROCEDURE_NAME " .
+                "\ "  from SYS.PROCEDURES " .
+                "\ " where PROCEDURE_NAME  like '" . object . "%' ".
+                "\ "   and SCHEMA_NAME like '" . owner . "%' ".
+                "\ " order by PROCEDURE_NAME"
+    let result = s:DB_HANA_execSql(sql)
+    let result = s:DB_HANA_stripHeaderFooter(result)
+    " Remove last , to end of line as \dp returns too many columns
+    " let result = substitute( "\n".result, '\(\n\).\{-},.\{-}\zs,.\{-}\ze\(\n\)', '', 'g' )
+    " Convert first , into a . separator
+    " let result = substitute( result, '","', '"."', 'g' )
+    " Remove column declaration
+    let result = substitute( result, '\(SCHEMA_NAME||\.||\)\?PROCEDURE_NAME.\{-}\(\n\)', '', 'g' )
+    " Remove all double quotes
+    let result = substitute( result, '"', '', 'g' )
+    return result
+endfunction
+
+function! s:DB_HANA_getListView(view_prefix)
+    let owner      = s:DB_getObjectOwner(a:view_prefix)
+    let object     = s:DB_getObjectName(a:view_prefix)
+    let sql = ''.
+                \ '\dv ' . 
+                \ (owner != '' ? (owner . '%.') : '' ) . 
+                \ ( object != '' ? (object . '%') : '' )
+    let sql = ''.
+                \ 'select '.(s:DB_get('dict_show_owner')==1?"SCHEMA_NAME||'.'||":'').'VIEW_NAME ' .
+                \ "  from SYS.VIEWS " .
+                \ " where VIEW_NAME  like '" . object . "%' ".
+                \ (s:DB_get('dict_show_owner')==1?"   and SCHEMA_NAME like '" . owner . "%' ":'').
+                \ ' order by '.(s:DB_get('dict_show_owner')==1?"SCHEMA_NAME,":'').'VIEW_NAME'
+                " \ "select SCHEMA_NAME || '.' || VIEW_NAME " .
+                " \ "  from SYS.VIEWS " .
+                " \ " where VIEW_NAME  like '" . object . "%' ".
+                " \ "   and SCHEMA_NAME like '" . owner . "%' ".
+                " \ " order by VIEW_NAME"
+    let result = s:DB_HANA_execSql(sql)
+    let result = s:DB_HANA_stripHeaderFooter(result)
+    " Remove column declaration
+    let result = substitute( result, '\(SCHEMA_NAME||\.||\)\?VIEW_NAME.\{-}\(\n\)', '', 'g' )
+    " Convert first , into a . separator
+    " let result = substitute( result, '","', '"."', 'g' )
+    " Remove all double quotes
+    let result = substitute( result, '"', '', 'g' )
+    return result
+endfunction 
+
+function! s:DB_HANA_getListColumn(table_name) 
+    let owner      = s:DB_getObjectOwner(a:table_name)
+    let object     = s:DB_getObjectName(a:table_name)
+    let sql = ''.
+                \ '\dc ' . 
+                \ (owner != '' ? (owner . '.') : '' ) . 
+                \ object
+    let sql = ''.
+                \ "select COLUMN_NAME " .
+                \ "  from SYS.TABLE_COLUMNS " .
+                \ " where TABLE_NAME  = '" . object . "' ".
+                \ (owner != '' ? ("   and SCHEMA_NAME = '" . owner . "' ") : '').
+                \ " order by POSITION"
+                " \ "select COLUMN_NAME " .
+                " \ "  from SYS.TABLE_COLUMNS " .
+                " \ (owner != '' ? ("   and SCHEMA_NAME = '" . owner . "' ") : '').
+                " \ " order by POSITION"
+                " \ 'select '.(s:DB_get('dict_show_owner')==1?"SCHEMA_NAME||'.'||":'').'COLUMN_NAME ' .
+    let result = s:DB_HANA_execSql(sql)
+    " Remove Table declaration
+    " let result = substitute( result, 'Table ".\{-}\(\n\)', '', 'g' )
+    " Remove Column name list
+    " let result = substitute( result, 'Column Name,.\{-}\ze\(\n\)', '', 'g' )
+    " let result = substitute( result, '^Column Name\ze\(\n\)', '', 'g' )
+    let result = substitute( result, '^COLUMN_NAME\ze\(\n\)', '', 'g' )
+    let result = s:DB_HANA_stripHeaderFooter(result)
+    " Remove last , to end of line as \dc returns too many columns
+    " let result = substitute( result."\n", '\(\n\).\{-}\zs,.\{-}\ze\(\n\)', '', 'g' )
+    " Remove all double quotes
+    let result = substitute( result, '"', '', 'g' )
+    " Remove leading blank line
+    let result = substitute( result, '^\(\n\)', '', 'g' )
+    return result
+endfunction 
+
+function! s:DB_HANA_stripHeaderFooter(result)
+    let stripped = a:result
+    " Strip off column headers ending with a newline
+    " let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
+    " Strip off List of X
+    let stripped = substitute( stripped, '\(\n\)\?List\s\+of\s\+.\{-}\(\n\)', '', 'g' )
+    " Strip off metadata column name tags
+    let stripped = substitute( stripped, '\(\n\)\?Schema,Name.\{-}\(\n\)', '', 'g' )
+    " Strip off query statistics
+    let g:dbext_rows_affected = matchstr(stripped, '\(\n\)\zs\d\+\zerows\?\s\+selected')
+    let stripped = substitute( stripped, '\(\n\)\d\+\s\+row\_.*', '', '' )
+    " Strip off trailing spaces
+    let stripped = substitute( stripped, '\(\<\w\+\>\)\s*\(\n\)', '\1\2', 'g' )
+    " Strip blank lines
+    let stripped = substitute( stripped, '\(\n\)\(\n\)', '', 'g' )
+    return stripped
+endfunction 
+
+function! s:DB_HANA_getDictionaryTable() 
+    let result = s:DB_HANA_getListTable('')
+    return s:DB_HANA_stripHeaderFooter(result)
+endfunction 
+
+function! s:DB_HANA_getDictionaryProcedure() 
+    let result = s:DB_HANA_getListProcedure('')
+    return s:DB_HANA_stripHeaderFooter(result)
+endfunction 
+
+function! s:DB_HANA_getDictionaryView() 
+    let result = s:DB_HANA_getListView('')
+    return s:DB_HANA_stripHeaderFooter(result)
+endfunction 
+"}}}
 " DBI (Perl) exec {{{
 function! s:DB_DBI_Autoload()
     if !exists("g:loaded_dbext_dbi") 
-        if has('perl')
-            " Load the perl based module (if not already)
-            call dbext_dbi#DBI_load_perl_subs()
+        call dbext_dbi#DBI_initialize()
 
-            if !exists("g:loaded_dbext_dbi") 
-                call s:DB_warningMsg( 
-                            \ 'dbext:The DBI interface could not be loaded, ensure autoload/dbext_dbi.vim exists'
-                            \ )
-            endif
-        else
+        if !exists("g:loaded_dbext_dbi") 
+            call s:DB_warningMsg( 
+                        \ 'dbext:The DBI interface could not be loaded, ensure autoload/dbext_dbi.vim exists'
+                        \ )
             return -1
+        endif
+
+        if g:loaded_dbext_dbi == -1
+            let msg = 'dbext:The DBI interface could not be loaded'
+            if exists('g:loaded_dbext_dbi_msg') 
+                let msg = msg . ':' . g:loaded_dbext_dbi_msg
+            endif
+            call s:DB_warningMsg( msg )
+            return -1 
+        endif
+
+        " Load the perl based module (if not already)
+        call dbext_dbi#DBI_load_perl_subs()
+
+        if g:loaded_dbext_dbi == -1
+            let msg = 'dbext:The DBI interface failed to initialize'
+            if exists('g:loaded_dbext_dbi_msg') 
+                let msg = msg . ':' . g:loaded_dbext_dbi_msg
+            endif
+            call s:DB_warningMsg( msg )
+            return -1 
         endif
     endif
 
@@ -5683,16 +5952,14 @@ function! dbext#DB_DictionaryCreate( drop_dict, which ) "{{{
     " but for variables names we use the lower case which_dict
     let which_dict = tolower(a:which)
     
-    " First check if we are refreshing the table dictionary
-    " If so, remove it 
-    call s:DB_DictionaryDelete( which_dict )
-
-    let temp_file = "-1"
-
     " Give the user the ability to remove a dictionary
     if a:drop_dict == 1
-        return temp_file
+        " First check if we are refreshing the table dictionary
+        " If so, remove it 
+        call s:DB_DictionaryDelete( which_dict )
     endif
+
+    let temp_file = "-1"
 
     " In order to parse a statement, we must know what database type
     " we are dealing with to choose the correct cmd_terminator
@@ -5712,7 +5979,18 @@ function! dbext#DB_DictionaryCreate( drop_dict, which ) "{{{
 
     let l:prev_use_result_buffer = s:DB_get('use_result_buffer')
     call s:DB_set('use_result_buffer', 0)
-    " let dict_list = s:DB_{b:dbext_type}_getDictionary{a:which}()
+    
+    " Check if the dictionary has already been created, if so 
+    " return the current temporary file holding it
+    let temp_file = s:DB_get("dict_".which_dict."_file")
+
+    if temp_file != '' && filereadable(temp_file)
+        return temp_file
+    else
+        let temp_file = "-1"
+    endif
+
+    " Otherwise, create a new dictionary
     let dict_list = dbext#DB_execFuncTypeWCheck('getDictionary'.a:which)
     call s:DB_set('use_result_buffer', l:prev_use_result_buffer)
 
@@ -5722,7 +6000,7 @@ function! dbext#DB_DictionaryCreate( drop_dict, which ) "{{{
         " Create a new temporary file with the table names
         " let b:dbext_dict_{a:which}_file = tempname()
         let temp_file = tempname()
-        call s:DB_set("dict_".which_dict."_file", temp_file )
+        call s:DB_set("dict_".which_dict."_file", temp_file)
         exe 'redir! > ' . temp_file
         silent echo dict_list."\n"
         redir END
@@ -5733,6 +6011,7 @@ function! dbext#DB_DictionaryCreate( drop_dict, which ) "{{{
         call s:DB_addBufDictList( bufnr("%") )
     else
         call s:DB_warningMsg( 'dbext:Failed to create ' . which_dict . ' dictionary' )
+        return temp_file
     endif
 
     if s:DB_get('type') =~ '\<DBI\>\|\<ODBC\>'
@@ -6240,6 +6519,8 @@ function! s:DB_runCmd(cmd, sql, result)
 
         " Return to original window
         exec s:dbext_prev_winnr."wincmd w"
+
+        return result
     else 
         " Don't use result buffer
         if l:display_cmd_line == 1
@@ -6770,7 +7051,10 @@ function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
         " If so, ignore the match
         let inout = matchstr(strpart(str, 0, index), '\(\<\w\+\ze\s*$\|''\ze$\|/\ze$\|@\ze$\)')
 
-        if inout !~? '\(in\|out\|inout\|declare\|set\|variable\|''\|/\|@\)'
+        " The above query gathers the preceeding text to make the above
+        " determination
+        " if inout !~? '\(in\|out\|inout\|declare\|set\|variable\|''\|/\|@\)'
+        if inout !~? s:DB_get('ignore_variable_regex')
             " Check if the variable name is preceeded by a comment character.
             " If so, ignore and continue.
             if strpart(str, 0, (index-1)) !~ '\(--\|\/\/\)\s*$'
@@ -6872,6 +7156,9 @@ function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
                 let index = index + strlen(var) + 1
             endif
         else
+            " We have determined these are variables we need to remember
+            " and not prompt for again (depending on variable_remember).
+
             " if inout !~? "'" && s:DB_get('variable_remember') == '1'
             if s:DB_get('variable_remember') == '1'
                 " Remember this as only a temporary variable and remove
@@ -6886,126 +7173,7 @@ function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
         " Find next match
         let index = match(str, a:exp_find_str, index)
     endwhile
-    return str
-endfunction 
-function! s:DB_searchReplaceOld(str, exp_find_str, exp_get_value, count_matches)
 
-    " Check if the user has chosen to "Stop Prompting" for this query
-    if s:DB_get("stop_prompt_for_variables") == 1
-        return a:str
-    endif
-
-    let str = a:str
-    let count_nbr = 0
-    " Find the string index position of the first match
-    let index = match(str, a:exp_find_str)
-    while index > -1
-        let count_nbr = count_nbr + 1
-        " Retrieve the name of what we found
-        let var = matchstr(str, a:exp_get_value, index)
-
-        " Check if this is part of a parameter definition
-        "   IN       @variable CHAR(1)
-        "   OUT      @variable CHAR(1)
-        "   INOUT    @variable CHAR(1)
-        "   DECLARE  @variable CHAR(1)
-        " Or part of a string
-        "   '@variable'
-        " Or part of path
-        "   /@variable'
-        " Or part of path
-        "   /@variable'
-        " Or a global variable
-        "   SET @@variable = ...
-        " If so, ignore the match
-        let inout = matchstr(strpart(str, 1, (index-1)), '\(\<\w\+\ze\s*$\|''\ze$\|/\ze$\|@\ze$\)')
-
-        if inout !~? '\(in\|out\|inout\|declare\|set\|''\|/\|@\)'
-            " Check to see if the variable is part of the temporarily
-            " stored list of variables to ignore
-            if has_key(b:dbext_sqlvar_temp_mv, var)
-                " Ingore match and move on
-                let index = match(str, a:exp_find_str, index+strlen(var))
-            else
-                " Prompt for value and continue
-                let index = index + 1
-
-                let response = 2
-                if has_key(b:dbext_sqlvar_mv, var)
-                    let var_val = b:dbext_sqlvar_mv[var]
-                else
-                    " Prompt the user using the name of the variable
-                    let dialog_msg = "Enter value for " . var
-                    if a:count_matches == 1
-                        " If there is no name (ie ?), then include the
-                        " count of what was found so the user can
-                        " distinguish between different ?s
-                        let dialog_msg = dialog_msg . " number " . count_nbr
-                    endif
-                    let dialog_msg = dialog_msg . ": "
-                    let var_val = s:DB_getInput( 
-                                \ dialog_msg,
-                                \ '',
-                                \ "dbext_cancel"
-                                \ )
-                    let response = 2
-                    " Ok or Cancel result in an empty string
-                    if var_val == "dbext_cancel" 
-                        let response = 5
-                    elseif var_val == "" 
-                        " If empty, check if they want to leave it empty
-                        " of skip this variable
-                        let response = confirm("Your value is empty!",
-                                                \ "&Skip" .
-                                                \ "\n&Use blank" .
-                                                \ "\nS&top Prompting" .
-                                                \ "\n&Never Prompt" .
-                                                \ "\n&Abort"
-                                                \ )
-                    endif
-                endif
-                if response == 1
-                    " Skip this match and move on to the next
-                    let index = match(str, a:exp_find_str, index+strlen(var))
-                elseif response == 2
-                    " Use blank
-                    " Replace the variable with what was entered
-                    let replace_sub = '\%'.index.'c'.'.\{'.strlen(var).'}'
-                    let str = substitute(str, replace_sub, var_val, '')
-                    let index = match(str, a:exp_find_str, index+strlen(var_val))
-                    if a:count_matches != 1 && s:DB_get('variable_remember') == '1'
-                        " Add this assignment to the list of remembered 
-                        " assignments unless it is question marks as host
-                        " variables.
-                        call dbext#DB_sqlVarAssignment(0, 'set '.var.' = '.var_val)
-                    endif
-                elseif response == 4
-                    " Never Prompt
-                    call s:DB_set("always_prompt_for_variables", '-1')
-                    break
-                elseif response == 5
-                    " Abort
-                    " If we are aborting, do not execute the SQL statement
-                    let str = ""
-                    break
-                else
-                    " Stop Prompting
-                    " Skip all remaining matches
-                    call s:DB_set("stop_prompt_for_variables",1)
-                    break
-                endif
-            endif
-        else
-            " if inout !~? "'" && s:DB_get('variable_remember') == '1'
-            if s:DB_get('variable_remember') == '1'
-                " Remember this as only a temporary variable and remove
-                " these when a new query begins
-                call dbext#DB_sqlVarAssignment(2, 'set '.var.' = '.var)
-            endif
-            " Skip this match and move on to the next
-            let index = match(str, a:exp_find_str, index+strlen(var))
-        endif
-    endwhile
     return str
 endfunction 
 "}}}
@@ -7042,11 +7210,19 @@ function! s:DB_parseHostVariables(query)
     let dbext_parse_statements =
                 \ substitute(dbext_parse_statements, '\s*,\s*', '\\|', 'g')
 
+    " Add regex conditions
+    let dbext_parse_statements = '\('.dbext_parse_statements.'\)'
+
+    if s:DB_get("statement_starts_line") == '1'
+        let dbext_parse_statements = '^[\n\t ]*' . dbext_parse_statements
+    endif
+
     " Only perform replacements if the first statement is one of the
     " following. We do not want to parse the query if for example
     " we are creating a procedure which often uses declared
     " variables within.
-    if query =~? '^[\n\t ]*\('.dbext_parse_statements.'\)'
+    " if query =~? '^[\n\t ]*\('.dbext_parse_statements.'\)'
+    if query =~? dbext_parse_statements
         " Default response to not search and replace
         let response = 2
         " If the user didn't specify any settings, then use the default
@@ -7111,197 +7287,6 @@ function! s:DB_parseHostVariables(query)
                 let retrieve_ident = 1
 
                 let query = s:DB_searchReplace(query, variable_def,
-                            \ retrieve_ident, count_matches)
-                if query == ""
-                    " User has aborted the parsing and does not want
-                    " the statement executed
-                    break
-                endif
-            endfor
-        endif
-    endif
-    return query
-endfunction
-function! s:DB_parseHostVariablesOld(query)
-    let query = a:query
-
-    call s:DB_sqlVarRemoveTemp()
-    if s:DB_sqlVarInit() != 0
-        return -1
-    endif
-    let query = s:DB_removeEmptyLines(query)
-    " let query = s:DB_sqlVarSubstitute(query)
-
-    if s:DB_get("always_prompt_for_variables") == -1
-        " Never try to parse the query
-        return query
-    endif
-
-    " If query is a SELECT statement, remove any INTO clauses as long
-    " as it is not preceeded by INSERT or MERGE
-    " Use an case insensitive comparison
-    " For some reason [\n\s]* does not work
-    if query =~? '^[\n \t]*select'
-        let query = substitute(query, 
-                    \ '\c\%(\<\%(insert\|merge\)\s\+\)\@<!\<INTO\>.\{-}\<FROM\>', 
-                    \ 'FROM', 'g')
-    endif
-
-    " Must default the statements to parse
-    let dbext_parse_statements = s:DB_get("parse_statements")
-    " Verify the string is in the correct format
-    " Strip off any trailing commas
-    let dbext_parse_statements =
-                \ substitute(dbext_parse_statements, ',$','','')
-    " Convert commas to regex ors
-    let dbext_parse_statements =
-                \ substitute(dbext_parse_statements, '\s*,\s*', '\\|', 'g')
-
-    " Only perform replacements if the first statement is one of the
-    " following. We do not want to parse the query if for example
-    " we are creating a procedure which often uses declared
-    " variables within.
-    if query =~? '^[\n\t ]*\('.dbext_parse_statements.'\)'
-        " Default response to no search and replace
-        let response = 2
-        " If the user didn't specify any settings, then use the default
-        " variable definitions, otherwise use the users override
-        let dbext_variable_def = s:DB_get("variable_def")
-        let dbext_variable_def =
-                    \ substitute(dbext_variable_def,',\?\s*$',',','')
-        " From the list of variable definitions, strip out only
-        " the identifiers (ie ? @ $ )
-        " ; - begins with a ;
-        " . - we want this character
-        " .\{-} - do not include following characters
-        " \ze - end the match on the previous characters
-        " ; - stop at the first ;
-        let identifier_list = substitute(','.dbext_variable_def,
-                    \ ',\(.\)\(.\{-}\)\ze,', '\1', 'g' )
-        " Remove the trailing ;
-        let identifier_list = substitute(identifier_list, '\(.*\),\s*$',
-                    \ '\1', 'g' )
-
-        if s:DB_get("always_prompt_for_variables") == 1
-            let response = 1
-        else
-            " If the statement has any of the following characters
-            " ask if the user wants to be prompted for replacements
-            " if query =~? '[?@:$]'
-            if query =~? '['.identifier_list.']'
-                let response = confirm("Do you want to prompt " .
-                            \ "for input variables?"
-                            \, "&Yes\n&No\n&Always\nNe&ver\nAbor&t", 1 )
-            endif
-        endif
-        if response == 5
-            return ""
-        elseif response == 4
-            call s:DB_set("always_prompt_for_variables", "-1")
-            return query
-        elseif response == 3
-            call s:DB_set("always_prompt_for_variables", "1")
-            return query
-        elseif response == 2
-            " If the user does not want to parse the query
-            " return the query as is
-            return query
-        endif
-        " Process each variable definition, format is as follows:
-        " identifier1[wW][qQ];identifier2[wW][qQ];identifier3[wW][qQ];
-        let pos = 0
-        let var_list = split(s:DB_get("variable_def"), ',')
-        
-        if !empty(var_list)
-            for variable_def in var_list
-                " Extract the identifier, use the greedy nature of regex.
-                " Allow them to specify more than a single character for the
-                " search. We must assume they follow the correct format
-                " though and the criteria ends with a WQ; (case insensitive)
-                let until_str = ''
-                let identifier = matchstr(variable_def,'\zs\(.*\)\ze[wW][qQ]$')
-                " let identifier = substitute(variable_def,'\(.*\)[wWu][qQ]$','\1','')
-                let following_word_option = 
-                            \ matchstr(variable_def, '.*\zs[wW]\ze[qQ]$')
-                            " substitute(variable_def, '.*\([wW]\)[qQ]$', '\1', '')
-                let quotes_option = 
-                            \ matchstr(variable_def, '.*\zs[qQ]\ze$')
-                            " substitute(variable_def, '.*\([qQ]\)$', '\1', '')
-                if identifier == ''
-                    let until_str = 
-                            \ matchstr(variable_def, '.*[u]\zs.\+\ze$')
-                            " substitute(variable_def, '.*[u]\(.\+\)$', '\1', '')
-                    let identifier = 
-                            \ matchstr(variable_def, '\zs.*\ze[u]\(.\+\)$')
-                endif
-
-                " Validation checks
-                if strlen(identifier) != 0
-                    " Make sure no word characters preceed the identifier
-                    let no_preceed_word = '\(\w\)\@<!'
-                else
-                    let msg = "dbext: Variable Def: Invalid identifier[" .
-                                \ variable_def . "]"
-                    call s:DB_warningMsg(msg)
-                    return query
-                endif
-                if until_str != ''
-                    " Prompt up until the following 
-                    let following_word = ''
-                    let retrieve_ident = identifier . following_word
-                elseif following_word_option ==# 'w'
-                    " w - MUST have word characters after it
-                    let following_word = '\w\+'
-                    let retrieve_ident = identifier . following_word
-                elseif following_word_option ==# 'W'
-                    " W - CANNOT have any word characters after it
-                    let following_word = '\(\w\)\@<!'
-                    let retrieve_ident = identifier
-                else
-                    let msg = "dbext: Variable Def: " .
-                                \ "Invalid following word indicator[" .
-                                \ variable_def . "]"
-                    call s:DB_warningMsg(msg)
-                    return query
-                endif
-                if until_str != ''
-                    " Prompt up until the following 
-                    let quotes = ''
-                elseif quotes_option ==# 'q'
-                    " q - quotes do not matter
-                    let quotes = ''
-                elseif quotes_option ==# 'Q'
-                    " Q - CANNOT be surrounded in quotes
-                    let quotes = "'".'\@<!'
-                else
-                    let msg = "dbext: Variable Def: Invalid quotes indicator[" .
-                                \ variable_def . "]"
-                    call s:DB_warningMsg(msg)
-                    return query
-                endif
-
-
-                " If W is chosen, then the identifier cannot be followed
-                " by any word characters.  If this is the case (like with ?s)
-                " there is no way to distinguish between which ? you are 
-                " prompting for, therefore count the identifier and
-                " display this information while prompting.
-                let count_matches = 0
-                if variable_def =~# 'W[qQ]$'
-                    let count_matches = 1
-                endif
-
-                if until_str != ''
-                    let srch_cond      = escape(identifier, '\\/.*$^~[]') .
-                                \ '.\{-}' .
-                                \ escape(until_str, '\\/.*$^~[]')
-                    let retrieve_ident = srch_cond
-                else
-                    let srch_cond = quotes . no_preceed_word .
-                            \ identifier . following_word . quotes
-                endif
-
-                let query = s:DB_searchReplace(query, srch_cond,
                             \ retrieve_ident, count_matches)
                 if query == ""
                     " User has aborted the parsing and does not want
@@ -7381,19 +7366,26 @@ function! s:DB_parsePHP(query)
     " different strings together.
 
     " Strip off beginning and closing quotes
+    " But first check if there is a leading quote
     " These can be single or double quotes
-    let query = substitute(query, 
-                \ '\%(^[\t "'."'".']*\)\?', 
-                \ '', 
-                \ ''
-                \ )
-    " For the ending quotes, remove at most 1
-    let query = substitute(query, 
-                \ '["'."'".']\?\s*\(;\|\.\)\?\s*$', 
-                \ '', 
-                \ ''
-                \ )
-                " \ '[ "'."'".';]\+$', 
+    let leading_quote_regex = '\%(^[\t "'."'".']*\)\?'
+    let leading_quote = matchstr( query, leading_quote_regex )
+    if leading_quote != ''
+        let query = substitute(query, 
+                    \ leading_quote_regex,
+                    \ '', 
+                    \ ''
+                    \ )
+        " For the ending quotes, remove at most 1
+        " accounting for ending statements ; 
+        " and joining lines .
+        let query = substitute(query, 
+                    \ '['.leading_quote.']\?\s*\(;\|\.\)\?\s*$', 
+                    \ '', 
+                    \ ''
+                    \ )
+                    " \ '[ "'."'".';]\+$', 
+    endif
 
     " Since strings are enclosed in double quotes ("), they can be escaped
     " with a backslash, we must replace these as well.
@@ -7463,6 +7455,8 @@ function! s:DB_parsePHP(query)
     "  }\?             - Close curly is optional
     let query = s:DB_searchReplace(query, var_expr, var_expr, 0)
 
+    call s:DB_set("statement_starts_line", '0')
+
     return query
 endfunction
 "}}}
@@ -7488,16 +7482,23 @@ function! s:DB_parseJava(query)
     "      something ",
     "      something " +
     "      something " ;
-    let query = substitute(query, 
-                \ '\%(^[\t "]*\)\?', 
-                \ '', 
-                \ ''
-                \ )
-    let query = substitute(query, 
-                \ '[ ";,+]\+$', 
-                \ '', 
-                \ ''
-                \ )
+    " But first check if there is a leading quote
+    " These can be single or double quotes
+    let leading_quote_regex = '\%(^[\t "]*\)\?'
+    let leading_quote = matchstr( query, leading_quote_regex )
+    if leading_quote != ''
+        let query = substitute(query, 
+                    \ leading_quote_regex,
+                    \ '', 
+                    \ ''
+                    \ )
+        let query = substitute(query, 
+                    \ '[ ";,+]\+$', 
+                    \ '', 
+                    \ ''
+                    \ )
+    endif
+
     " If strings are concatenated over multiple lines, since they are
     " joined now, remove the concatenation
     "    "select " + " * from " + " some_table ";
@@ -7526,6 +7527,8 @@ function! s:DB_parseJava(query)
     "  \s*+       - Any space and a plus sign
     "  \s*"       - Any space followed by a double quote
     let query = s:DB_searchReplace(query, var_expr, var_expr, 0)
+
+    call s:DB_set("statement_starts_line", '0')
 
     return query
 endfunction
@@ -7591,6 +7594,8 @@ function! s:DB_parseVim(query)
     "  \s*"       - Any space followed by a double quote
     let query = s:DB_searchReplace(query, var_expr, var_expr, 0)
 
+    call s:DB_set("statement_starts_line", '0')
+
     return query
 endfunction
 "}}}
@@ -7642,6 +7647,8 @@ function! s:DB_parsePerl(query)
     let var_expr = '\(\$\w\+\)'
     "  \(\$\w\+\)  - The variable / obj / method beginning with a $
     let query = s:DB_searchReplace(query, var_expr, var_expr, 0)
+
+    call s:DB_set("statement_starts_line", '0')
 
     return query
 endfunction
@@ -7702,6 +7709,8 @@ function! s:DB_parseVB(query)
     "  \s*"       - Any space followed by a double quote
 
     let query = s:DB_searchReplace(query, var_expr, var_expr, 0)
+
+    call s:DB_set("statement_starts_line", '0')
 
     "call inputdialog(query)
     return query
@@ -8324,7 +8333,8 @@ function! dbext#DB_disconnect(...)
     endif
 
     " Ensure the dbext_dbi plugin is loaded
-    if s:DB_DBI_Autoload() == -1
+    if !exists("g:loaded_dbext_dbi") || g:loaded_dbext_dbi == -1
+    " if s:DB_DBI_Autoload() == -1
         return -1
     endif
 
@@ -8353,7 +8363,8 @@ endfunction
 
 function! dbext#DB_disconnectAll()
     " Ensure the dbext_dbi plugin is loaded
-    if s:DB_DBI_Autoload() == -1
+    if !exists("g:loaded_dbext_dbi") || g:loaded_dbext_dbi == -1
+    " if s:DB_DBI_Autoload() == -1
         return -1
     endif
 

@@ -4,10 +4,10 @@
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       16.00
+" Version:       17.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2012 Jun 11
+" Last Modified: 2012 Jun 26
 " Created:       2007-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 "
@@ -119,38 +119,124 @@
 if exists("g:loaded_dbext_dbi") 
    finish
 endif
+let g:loaded_dbext_dbi = 1700
+
+" Turn on support for line continuations when creating the script
+let s:cpo_save = &cpo
+set cpo&vim
+
+function! dbext_dbi#DBI_initialize()
+    if !exists("dbext_dbi_debug")
+       let g:dbext_dbi_debug = 0
+    endif
+    if !exists("dbext_dbi_result")
+       let g:dbext_dbi_result = -1
+    endif
+    if !exists("dbext_dbi_msg")
+       let g:dbext_dbi_msg = ""
+    endif
+    if !exists("dbext_dbi_sql")
+       let g:dbext_dbi_sql = ""
+    endif
+    if !exists("dbext_dbi_max_rows")
+       let g:dbext_dbi_max_rows = 300
+    endif
+    if !exists("dbext_default_dbi_column_delimiter")
+       let g:dbext_default_dbi_column_delimiter = "  "
+    endif
+    if !exists("dbext_dbi_trace_level")
+       let g:dbext_dbi_trace_level = 0
+    endif
+endfunction
+
+call dbext_dbi#DBI_initialize()
+
 if !has('perl')  
     let g:loaded_dbext_dbi = -1
     let g:loaded_dbext_dbi_msg = 'Vim does not have perl support enabled'
     finish
 endif
-let g:loaded_dbext_dbi = 1600
 
-if !exists("dbext_dbi_debug")
-   let g:dbext_dbi_debug = 0
-endif
-if !exists("dbext_dbi_result")
-   let g:dbext_dbi_result = -1
-endif
-if !exists("dbext_dbi_msg")
-   let g:dbext_dbi_msg = ""
-endif
-if !exists("dbext_dbi_sql")
-   let g:dbext_dbi_sql = ""
-endif
-if !exists("dbext_dbi_max_rows")
-   let g:dbext_dbi_max_rows = 300
-endif
-if !exists("dbext_default_dbi_column_delimiter")
-   let g:dbext_default_dbi_column_delimiter = "  "
-endif
-if !exists("dbext_dbi_trace_level")
-   let g:dbext_dbi_trace_level = 0
-endif
-
-" Turn on support for line continuations when creating the script
-let s:cpo_save = &cpo
-set cpo&vim
+" dbext_dbi sub routines:
+"     sub db_trim_white_space
+"     sub db_echo 
+"     sub db_debug 
+"     sub db_is_debug 
+"         - Debugging subroutines
+"     sub db_vim_check_inside 
+"         - For debugging purposes this code can run outside of 
+"           Vim.  This routine will bypass certain code if running
+"           outside of Vim.
+"     sub db_vim_eval 
+"         - Uses Vim to evaluate expressions
+"     sub db_vim_op 
+"     sub db_vim_print 
+"         - Write to a Vim buffer
+"     sub db_get_defaults 
+"     sub db_escape 
+"         - Escape strings for expressions
+"     sub db_remove_newlines 
+"     sub db_get_available_drivers 
+"         - Returns a list of installed DBI drivers
+"     sub db_list_connections
+"         - Lists all open database connections
+"     sub db_get_info
+"         - Returns information about the DBI driver
+"     sub db_commit 
+"     sub db_rollback 
+"     sub db_is_connected 
+"         - Used to determine if a new connection is required
+"     sub db_get_connection 
+"         - Returns this buffers connection handle
+"     sub db_check_error 
+"     sub db_odbc_err_handler 
+"         - Error handling and reporting
+"     sub db_connect 
+"     sub db_disconnect
+"     sub db_disconnect_all
+"         - Connecting and disconnecting
+"     sub db_get_connection_option
+"     sub db_set_connection_option
+"         - Allows DBI options to be set like BLOB size
+"     sub db_query 
+"         - Executes a statement against the database
+"     sub db_format_results 
+"         - Loops through the results of a query and determines
+"           maximum column size for formatting
+"     sub db_format_array
+"         - Loops through the results and formats the array
+"           for display in a Vim buffer
+"     sub db_print_results 
+"         - Makes the appropriate calls to add the data
+"           to the Vim dbext buffer
+"     sub db_results_variable
+"         - Instead of adding the results to the Vim dbext buffer
+"           directly, the results can be returned to Vim as a string
+"           and this can be displayed via a echo command.
+"     sub db_results_list
+"         - Loops through the result set from the query and creates 
+"           and array of values.
+"     sub db_catalogue 
+"     sub db_odbc_catalogue 
+"         - Used to query the DBI catalogue and return metadata
+"           like lists of tables, columns, stored procedures 
+"           and so on.
+"
+" When a query is executed (db_query) dbext will check for any errors
+" (db_check_error).
+"
+" If no errors, loop through the results and determine the maximum length of
+" each column (db_format_results) and store the results of the query
+" (db_format_array) then place in the global variable @result_set.
+"
+" Then I ask dbext for the column separator
+" (dbext_default_dbi_column_delimiter, which defaults to 3 blank spaces).
+"
+" Then db_format_array() loops through the array, @result_set and using the
+" array of column maximums builds an appropriate length string so all columns
+" line up.   Then eventually we write to a Vim buffer using dbext_dbi.vim/sub
+" db_vim_print.
+"
 
 function! dbext_dbi#DBI_load_perl_subs()
 
@@ -198,6 +284,8 @@ my $inside_vim    = 0;
 my $native_err    = 0;
 
 
+# Sets a Vim variable to a value.  Will worry about 
+# escaping strings when necessary.
 sub db_set_vim_var
 {
     my $var_name = shift;
@@ -241,12 +329,24 @@ sub db_debug
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_is_debug');
+# Checks if the dbext plugin enabled a debug mode.
+# If so, will echo out various messages to track it's 
+# behaviour.  This is less necessary if you read the 
+# comments in the db_vim_check_inside routine.
 sub db_is_debug 
 {
     return db_vim_eval('g:dbext_dbi_debug');
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_vim_check_inside');
+# Allows dbext_dbi code to be run inside a straight Perl 
+# file.  This allows you to write and debug Perl code using 
+# your usual tools.  Once you have it correct and working outside 
+# of Vim, simply paste the Perl code back into dbext_dbi.vim.
+# If you follow the use of the helper functions, like db_vim_eval, 
+# db_vim_op and db_vim_print, and so on, the code is portable.
+# This is really the only way to get code working effectively 
+# and quickly.
 sub db_vim_check_inside 
 {
     eval {
@@ -263,6 +363,7 @@ sub db_vim_check_inside
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_vim_eval');
+# Use Vim to evaluate a string
 sub db_vim_eval 
 {
     my $cmd = shift;
@@ -298,6 +399,13 @@ sub db_vim_eval
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_vim_op');
+# Perform a Vim operation (Vim Perl supported API) against 
+# the instance of Vim already running.
+# Available operators are:
+#     Count   - Returns the count of lines in the buffer
+#     Append  - Adds a new line to a Vim buffer
+#     call    - Calls an object in Vim
+#     Default - Echo the string
 sub db_vim_op 
 {
     my $op            = shift;
@@ -352,6 +460,7 @@ sub db_vim_op
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_vim_print');
+# Prints a line into the Vim buffer
 sub db_vim_print 
 {
     my $line_nbr      = shift;
@@ -424,6 +533,9 @@ sub db_get_available_drivers
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_list_connections');
+# Called by the dbext, DBListConnections command.
+# In the dbext results buffer, it will list all the buffers 
+# with existing database connections.
 sub db_list_connections
 {
     db_debug('db_list_connections:'.Dumper(%connections));
@@ -559,6 +671,7 @@ sub db_rollback
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_is_connected');
+# Returns a 1 is this buffer already has an existing connection
 sub db_is_connected 
 {
     my $bufnr        = shift;
@@ -596,6 +709,7 @@ sub db_is_connected
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_get_connection');
+# Returns the connection handle for this buffer number
 sub db_get_connection 
 {
     my $bufnr        = shift;
@@ -619,6 +733,7 @@ sub db_get_connection
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_check_error');
+# Reports an error if one detected
 sub db_check_error 
 {
     my $err    = 0;
@@ -685,6 +800,9 @@ sub db_odbc_err_handler
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_connect');
+# Creates a new connection to the database and sets any 
+# appropriate options.  Tracks the connection handles made 
+# in here: $connections
 sub db_connect 
 {
     my $driver     = shift;
@@ -946,6 +1064,7 @@ sub db_set_connection_option
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_query');
+# Executes a statement against the database
 sub db_query 
 {
     my $sql = shift;
@@ -1038,6 +1157,14 @@ sub db_query
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_format_results');
+# Loops through the results and creates an array for display in a Vim buffer.
+# Only gathers DBI_max_rows from the result set.
+# Also determines the maximum column size for each row in the result set 
+# so that the display of the results can be formatted correctly.
+# The column name are stored here: @result_headers
+# The data from the query is stored here: @result_set
+# The maximum column width for each column is stored here: @result_col_length
+# The maximum column width for all rows is stored here: $result_max_col_width
 sub db_format_results 
 {
     my $sth = shift;
@@ -1148,6 +1275,12 @@ sub db_format_results
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_format_array');
+# Loops through the results and formats the array
+# for display in a Vim buffer.  Ensures all NULLs, unprintable
+# characters, embedded quotes and emebedded quotes are all treated 
+# appropriately.
+# The formatted rows are stored here: @result_set
+# It also stores the entire result in a string here: $result
 sub db_format_array()
 {
     # For each row returned concatenate the columns together
@@ -1193,6 +1326,10 @@ sub db_format_array()
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_print_results');
+# Makes the appropriate calls to add the data to the Vim dbext buffer.
+# The data can be formatted as a horizontal table 
+# or vertically, which is especially useful when there is only 
+# one row returned.
 sub db_print_results 
 {
     my $format = shift;
@@ -1301,6 +1438,9 @@ sub db_print_results
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_results_variable');
+# Instead of adding the results to the Vim dbext buffer
+# directly, the results can be returned to Vim as a string
+# and this can be displayed via a echo command.
 sub db_results_variable
 {
     my $format = shift;
@@ -1488,6 +1628,9 @@ sub db_results_list
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_catalogue');
+# Used to query the DBI catalogue and return metadata
+# like lists of tables, columns, stored procedures 
+# and so on.
 sub db_catalogue 
 {
     my $request_type = shift;
@@ -1588,6 +1731,9 @@ sub db_catalogue
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_odbc_catalogue');
+# Used to query the DBI catalogue and return metadata
+# like lists of tables, columns, stored procedures 
+# and so on.
 sub db_odbc_catalogue 
 {
     # A reference page for some of the function available can be found here:

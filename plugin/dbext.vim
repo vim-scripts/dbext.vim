@@ -1,19 +1,17 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       16.00
+" Version:       17.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2012 Jun 11
+" Last Modified: 2012 Oct 04
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 " Contributors:  Joerg Schoppet <joerg dot schoppet at web dot de>
 "                Hari Krishna Dara <hari_vim at yahoo dot com>
 "                Ron Aaron
-"
-" SourceForge:  $Revision: 1.38 $
 "
 " Help:         :h dbext.txt 
 "
@@ -38,7 +36,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext = 1600
+let g:loaded_dbext = 1700
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -50,6 +48,10 @@ endif
 
 if !exists('g:dbext_rows_affected')
     let g:dbext_rows_affected = 0
+endif
+
+if !exists('g:dbext_map_prefix')
+    let g:dbext_map_prefix = '<Leader>s'
 endif
 
 " Commands {{{
@@ -222,134 +224,112 @@ if !exists(':DBResultsToggleResize')
 end
 "}}}
 " Mappings {{{
-if !hasmapto('<Plug>DBExecVisualSQL') && !hasmapto('<Leader>se', 'v')
-    xmap <unique> <Leader>se <Plug>DBExecVisualSQL
+if maparg(g:dbext_map_prefix.'e', 'x') == ''
+    exec 'xmap <unique> '.g:dbext_map_prefix.'e <Plug>DBExecVisualSQL'
 endif
-if !hasmapto('<Plug>DBExecVisualTopXSQL') && !hasmapto('<Leader>sE', 'v')
-    xmap <unique> <Leader>sE <Plug>DBExecVisualTopXSQL
+if maparg(g:dbext_map_prefix.'E', 'x') == ''
+    exec 'xmap <unique> '.g:dbext_map_prefix.'E <Plug>DBExecVisualTopXSQL'
 endif
-if !hasmapto('<Plug>DBExecSQLUnderCursor') && !hasmapto('<Leader>se', 'n')
-    nmap <unique> <Leader>se <Plug>DBExecSQLUnderCursor
+if maparg(g:dbext_map_prefix.'e', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'e <Plug>DBExecSQLUnderCursor'
 endif
-if !hasmapto('<Plug>DBExecSQLUnderTopXCursor') && !hasmapto('<Leader>sE', 'n')
-    nmap <unique> <Leader>sE <Plug>DBExecSQLUnderTopXCursor
+if maparg(g:dbext_map_prefix.'E', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'E <Plug>DBExecSQLUnderTopXCursor'
 endif
-if !hasmapto('<Plug>DBExecSQL') && !hasmapto('<Leader>sq', 'n')
-    nmap <unique> <Leader>sq <Plug>DBExecSQL
+if maparg(g:dbext_map_prefix.'q', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'q <Plug>DBExecSQL'
 endif
-if !hasmapto('DBExecRangeSQL')
-    if !hasmapto('<Leader>sea', 'n')
-        nmap <unique> <silent> <Leader>sea :1,$DBExecRangeSQL<CR>
-    endif
-    if !hasmapto('<Leader>sel', 'n')
-        nmap <unique> <silent> <Leader>sel :.,.DBExecRangeSQL<CR>
-    endif
-    if !hasmapto('<Leader>sep', 'n')
-        nmap <unique> <silent> <Leader>sep :'<,'>DBExecRangeSQL<CR>
-    endif
+if maparg(g:dbext_map_prefix.'ea', 'n') == ''
+    exec 'nmap <unique> <silent> '.g:dbext_map_prefix.'ea :1,$DBExecRangeSQL<CR>'
 endif
-if !hasmapto('<Plug>DBSelectFromTable')
-    if !hasmapto('<Leader>st', 'n')
-        nmap <unique> <Leader>st <Plug>DBSelectFromTable
-    endif
-    if !hasmapto('<Leader>st', 'v')
-        xmap <unique> <silent> <Leader>st
-                    \ :<C-U>exec 'DBSelectFromTable "'.DB_getVisualBlock().'"'<CR>
-    endif
+if maparg(g:dbext_map_prefix.'el', 'n') == ''
+    exec 'nmap <unique> <silent> '.g:dbext_map_prefix.'el :.,.DBExecRangeSQL<CR>'
 endif
-if !hasmapto('<Plug>DBSelectFromTableWithWhere') && !hasmapto('<Leader>stw', 'n')
-    nmap <unique> <Leader>stw <Plug>DBSelectFromTableWithWhere
+if maparg(g:dbext_map_prefix.'ep', 'n') == ''
+    exec 'nmap <unique> <silent> '.g:dbext_map_prefix."ep :'<,'>".'DBExecRangeSQL<CR>'
 endif
-if !hasmapto('<Plug>DBSelectFromTableAskName') && !hasmapto('<Leader>sta', 'n')
-    nmap <unique> <Leader>sta <Plug>DBSelectFromTableAskName
+if maparg(g:dbext_map_prefix.'t', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'t <Plug>DBSelectFromTable'
 endif
-if !hasmapto('<Plug>DBSelectFromTopXTable') && !hasmapto('<Leader>sT')
-    if !hasmapto('<Leader>sT', 'n')
-        nmap <unique> <Leader>sT <Plug>DBSelectFromTopXTable
-    endif
-    if !hasmapto('<Leader>sT', 'v')
-        xmap <unique> <silent> <Leader>sT
-                    \ :<C-U>exec 'DBSelectFromTableTopX "'.DB_getVisualBlock().'"'<CR>
-    endif
+if maparg(g:dbext_map_prefix.'t', 'x') == ''
+    " This concatenation should result in this xmap command:
+    " xmap <unique> <silent> <Leader>st :<C-U>exec 'DBSelectFromTable "'.DB_getVisualBlock().'"'<CR>
+    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'t :<C-U>exec '."'".'DBSelectFromTable "'."'".'.DB_getVisualBlock().'."'".'"'."'".'<CR>'
 endif
-if !hasmapto('<Plug>DBDescribeTable') && !hasmapto('<Leader>sdt')
-    if !hasmapto('<Leader>sdt', 'n')
-        nmap <unique> <Leader>sdt <Plug>DBDescribeTable
-    endif
-    if !hasmapto('<Leader>sdt', 'v')
-        xmap <unique> <silent> <Leader>sdt
-                    \ :<C-U>exec 'DBDescribeTable "'.DB_getVisualBlock().'"'<CR>
-    endif
+if maparg(g:dbext_map_prefix.'tw', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'tw <Plug>DBSelectFromTableWithWhere'
 endif
-if !hasmapto('<Plug>DBDescribeTableAskName') && !hasmapto('<Leader>sdta', 'n')
-    nmap <unique> <Leader>sdta <Plug>DBDescribeTableAskName
+if maparg(g:dbext_map_prefix.'ta', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'ta <Plug>DBSelectFromTableAskName'
 endif
-if !hasmapto('<Plug>DBDescribeProcedure') && !hasmapto('<Leader>sdp')
-    if !hasmapto('<Leader>sdp', 'n')
-        nmap <unique> <Leader>sdp <Plug>DBDescribeProcedure
-    endif
-    if !hasmapto('<Leader>sdp', 'v')
-        xmap <unique> <silent> <Leader>sdp
-                    \ :<C-U>exec 'DBDescribeProcedure "'.DB_getVisualBlock().'"'<CR>
-    endif
+if maparg(g:dbext_map_prefix.'T', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'T <Plug>DBSelectFromTopXTable'
 endif
-if !hasmapto('<Plug>DBDescribeProcedureAskName') && !hasmapto('<Leader>sdpa', 'n')
-    nmap <unique> <Leader>sdpa <Plug>DBDescribeProcedureAskName
+if maparg(g:dbext_map_prefix.'T', 'x') == ''
+    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'T :<C-U>exec '."'".'DBSelectFromTableTopX "'."'".'.DB_getVisualBlock().'."'".'"'."'".'<CR>'
 endif
-if !hasmapto('<Plug>DBPromptForBufferParameters') && !hasmapto('<Leader>sbp', 'n')
-    nmap <unique> <Leader>sbp <Plug>DBPromptForBufferParameters
+if maparg(g:dbext_map_prefix.'dt', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'dt <Plug>DBDescribeTable'
 endif
-if !hasmapto('<Plug>DBListColumn') && !hasmapto('<Leader>slc')
-    if !hasmapto('<Leader>slc', 'n')
-        nmap <unique> <Leader>slc <Plug>DBListColumn
-    endif
-    if !hasmapto('<Leader>slc', 'v')
-        xmap <unique> <silent> <Leader>slc
-                    \ :<C-U>exec 'DBListColumn "'.DB_getVisualBlock().'"'<CR>
-    endif
+if maparg(g:dbext_map_prefix.'dt', 'x') == ''
+    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'dt :<C-U>exec '."'".'DBDescribeTable "'."'".'.DB_getVisualBlock().'."'".'"'."'".'<CR>'
 endif
-if !hasmapto('<Plug>DBListTable') && !hasmapto('<Leader>slt', 'n')
-    nmap <unique> <Leader>slt <Plug>DBListTable
+if maparg(g:dbext_map_prefix.'dta', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'dta <Plug>DBDescribeTableAskName'
 endif
-if !hasmapto('<Plug>DBListProcedure') && !hasmapto('<Leader>slp', 'n')
-    nmap <unique> <Leader>slp <Plug>DBListProcedure
+if maparg(g:dbext_map_prefix.'dp', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'dp <Plug>DBDescribeProcedure'
 endif
-if !hasmapto('<Plug>DBListView') && !hasmapto('<Leader>slv', 'n')
-    nmap <unique> <Leader>slv <Plug>DBListView
+if maparg(g:dbext_map_prefix.'dp', 'x') == ''
+    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'dp :<C-U>exec '.'"'.'DBDescribeProcedure "'."'".'.DB_getVisualBlock().'."'".'"'."'".'<CR>'
 endif
-if !hasmapto('<Plug>DBListColumn') && !hasmapto('<Leader>stcl')
-    if !hasmapto('<Leader>stcl', 'n')
-        nmap <unique> <Leader>stcl <Plug>DBListColumn
-    endif
-    if !hasmapto('<Leader>stcl', 'v')
-        xmap <unique> <silent> <Leader>stcl
-                    \ :<C-U>exec 'DBListColumn "'.DB_getVisualBlock().'"'<CR>
-    endif
+if maparg(g:dbext_map_prefix.'dpa', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'dpa <Plug>DBDescribeProcedureAskName'
 endif
-if !hasmapto('<Plug>DBHistory') && !hasmapto('<Leader>sh', 'n')
-    nmap <unique> <Leader>sh <Plug>DBHistory
+if maparg(g:dbext_map_prefix.'bp', 'n')
+    exec 'nmap <unique> '.g:dbext_map_prefix.'bp <Plug>DBPromptForBufferParameters'
 endif
-if !hasmapto('<Plug>DBOrientationToggle') && !hasmapto('<Leader>so', 'n')
-    nmap <unique> <Leader>so <Plug>DBOrientationToggle
+if maparg(g:dbext_map_prefix.'lc', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'lc <Plug>DBListColumn'
 endif
-if !hasmapto('DBVarRangeAssign')
-    if !hasmapto('<Leader>sas', 'n')
-        nmap <unique> <silent> <Leader>sas :1,$DBVarRangeAssign<CR>
-    endif
-    if !hasmapto('<Leader>sal', 'n')
-        nmap <unique> <silent> <Leader>sal :.,.DBVarRangeAssign<CR>
-    endif
-    if !hasmapto('<Leader>sap', 'n')
-        nmap <unique> <silent> <Leader>sap :'<,'>DBVarRangeAssign<CR>
-    endif
-    if !hasmapto('<Leader>sa', 'v')
-        xmap <unique> <silent> <Leader>sa :DBVarRangeAssign<CR>
-    endif
+if maparg(g:dbext_map_prefix.'lc', 'x') == ''
+    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'lc :<C-U>exec '.'"'.'DBListColumn "'."'".'.DB_getVisualBlock().'."'".'"'."'".'<CR>'
 endif
-if !hasmapto('DBListVar')
-    if !hasmapto('<Leader>slr', 'n')
-        nmap <unique> <silent> <Leader>slr :DBListVar<CR>
-    endif
+if maparg(g:dbext_map_prefix.'lt', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'lt <Plug>DBListTable'
+endif
+if maparg(g:dbext_map_prefix.'lp', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'lp <Plug>DBListProcedure'
+endif
+if maparg(g:dbext_map_prefix.'lv', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'lv <Plug>DBListView'
+endif
+if maparg(g:dbext_map_prefix.'tcl', 'n')
+    exec 'nmap <unique> '.g:dbext_map_prefix.'tcl <Plug>DBListColumn'
+endif
+if maparg(g:dbext_map_prefix.'tcl', 'x') == ''
+    exec 'xmap <unique> <silent> <Leader>stcl :<C-U>exec '."'".'DBListColumn "'."'".'.DB_getVisualBlock().'."'".'"'."'".'<CR>'
+endif
+if maparg(g:dbext_map_prefix.'h', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'h <Plug>DBHistory'
+endif
+if maparg(g:dbext_map_prefix.'o', 'n') == ''
+    exec 'nmap <unique> '.g:dbext_map_prefix.'o <Plug>DBOrientationToggle'
+endif
+if maparg(g:dbext_map_prefix.'as', 'n') == ''
+    exec 'nmap <unique> <silent> '.g:dbext_map_prefix.'as :1,$DBVarRangeAssign<CR>'
+endif
+if maparg(g:dbext_map_prefix.'al', 'n') == ''
+    exec 'nmap <unique> <silent> '.g:dbext_map_prefix.'al :.,.DBVarRangeAssign<CR>'
+endif
+if maparg(g:dbext_map_prefix.'ap', 'n') == ''
+    exec 'nmap <unique> <silent> '.g:dbext_map_prefix.'ap :'."'<,'>".'DBVarRangeAssign<CR>'
+endif
+if maparg(g:dbext_map_prefix.'a', 'x') == ''
+    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'a :DBVarRangeAssign<CR>'
+endif
+if maparg(g:dbext_map_prefix.'lr', 'n') == ''
+    exec 'nmap <unique> <silent> '.g:dbext_map_prefix.'lr :DBListVar<CR>'
 endif
 "}}}
 " Menus {{{

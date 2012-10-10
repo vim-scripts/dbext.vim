@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2012 Jun 11
+*dbext.txt*	For Vim version 7.0.  Last change: 2012 Oct 09
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki 
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 16.00
+	  	dbext.vim version 17.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -71,6 +71,30 @@ Homepage: http://vim.sourceforge.net/script.php?script_id=356
 ==============================================================================
 1. Getting Started					*dbext-getting-started*
 
+The following different databases are supported by dbext:
+    Sybase SQL Anywhere
+    Sybase UltraLite
+    Sybase ASE
+    SAP HANA
+    Oracle 
+    Oracle RDB 
+    SQL Server 
+    MySQL
+    PostgreSQL
+    DB2 
+    Firebird
+    Ingres
+    Interbase
+    SQLite
+
+If you have a Perl enabled Vim and install the required packages then any of
+the databases supported by DBI or ODBC are also included.
+
+NOTE: Connecting through the Perl interface is much faster than they other
+database types.  SQL Anywhere is suported either way, I always connect to it
+via DBI as once the shared library is loaded the access is nearly instant and 
+a new database connect need not be made on each request.
+
 If you are looking for a tutorial that will take you through the
 features and the "best way" to use this plugin start here |dbext-tutorial|.
 This tutorial is a must before beginning to use dbext.
@@ -92,6 +116,47 @@ David Fishburn
 ==============================================================================
 2. What's New						*dbext-new*
 
+Version 17.00
+
+ New Features
+ ------------
+ - Added new database type, the SAP HANA in memory database.
+ - Added new option, ignore_variable_regex, which is used when parsing your 
+   statement for replacable input parameters (i.e. placeholders for prepared
+   statements).  Certain variables need to be skipped (for example when
+   running a CREATE PROCEDURE statement) to leave the logic inside the stored
+   procedure intact.  This option allows the user finer control over the regex
+   used to decide which SQL syntax should be skipped.
+ - Added new option, statement_starts_line, which is used when deciding if
+   the query should be parsed for input parameters.  Certain filetypes assume 
+   the statements can be embedded within strings (like in Java, PHP, Perl and
+   so on).
+ - When parsing PHP and Java files, leading and trailing quotes are stripped 
+   automatically when executing the query, which could lead to incorrect
+   results.  First check if there is a leading quote.  If so, then only strip
+   the corresponding closing quote.
+ - Updated documentation describing the default regex for variable_def_regex.
+ - Added new option g:dbext_map_prefix which defaults to <Leader>s, this allows 
+   you to customize the start of all the default maps (Daniel Hahler).
+
+ Bug Fixes
+ ---------
+ - The default value for variable_def_regex, did not properly escape 
+   the $, which lead to some query parameters being skipped when 
+   executing SQL.
+ - It was impossible to search and replace input parameters within 
+   a query if the parameter was enclosed in single quotes.  The above 
+   new features were required to make this possible (Joshua Dennis).
+ - DBCompleteTable, DBCompleteProcedure, DBCompleteView would always
+   recreate the object list.  If it has already been created, it should
+   simply reuse what was available.  To force the recreation you add 
+   the bang to the command: DBCompleteTable!, DBCompleteProcedure!, 
+   DBCompleteView!.
+ - Even with the checks it was possible for dbext to report:
+   E227: mapping already exists for ... when creating maps where the 
+   mapping already exists (Daniel Hahler).
+
+
 Version 16.00
 
  Bug Fixes
@@ -104,7 +169,7 @@ Version 16.00
 Version 15.00
 
  New Features
- ---------
+ ------------
  - A new database confirguration parameter, g:dbext_default_DBTYPE_extra, is 
    available to allow the user to customize command line parameters passed to
    the database binary used to execute the statement.  This can be overriden
@@ -122,7 +187,7 @@ Version 15.00
 Version 14.00
 
  New Features
- ---------
+ ------------
  - For Oracle connection profiles, support this form of server name, 
    srvname=(description=(address=(protocol=TCP)(host=dbhost.our.domain.com)(port=1521))(connect_data=(server=dedicated)(service_name=gps03tst.our.domain.com)))
    (Fredrik Acosta).
@@ -149,7 +214,7 @@ Version 14.00
 Version 13.00
 
  New Features
- ---------
+ ------------
  - Added new command, DBDisconnectAll, for DBI/ODBC.
  - DBDisconnect for DBI/ODBC now can accept an optional parameter 
    for the buffer you wish disconnected.
@@ -174,8 +239,9 @@ Version 13.00
 
 Version 12.00
 
+
  New Features
- ---------
+ ------------
  - A number of changes around the Oracle formating instructions.
    Support for packages when describing certain objects.
    These changes were provided by Sergey Khorev.
@@ -651,7 +717,7 @@ Version 2.30
    installed in the database.  System views are used instead.
  - Support for MySQL 5.0 has been added, which includes stored procedures
    and views (as much as the beta allowed).
- - For Postgress SQL you can now optionally enter an owner name to filter by
+ - For PostgreSQL you can now optionally enter an owner name to filter by
    when showing list of objects (tables, procedures, views).
 
  Bug Fixes
@@ -786,6 +852,7 @@ Version 2.00
         Sybase Adaptive Server Anywhere
         Sybase UltraLite
         Sybase Adaptive Server Enterprise
+        SAP HANA
  When using a Perl enabled Vim ( :echo has('perl') ):
         DBI
         ODBC
@@ -894,7 +961,8 @@ Version 2.00
     db_type
 <       - The database type specified for the buffer which caused the
           Result buffer to be updated.  It will be one of the following:
-          ASA,ASE,DB2,INGRES,INTERBASE,MYSQL,ORA,PGSQL,SQLSRV,SQLITE >
+          ASA,ASE,DB2,INGRES,INTERBASE,MYSQL,ORA,PGSQL,SQLSRV,SQLITE,
+          RDB,ULTRALITE,FIREBIRD,HANA >
     buf_nr
 <       - The buffer number of the result window    
  Here is a very simple example which will:
@@ -975,6 +1043,107 @@ Version 2.00
 <       - List of variables and rules on how to search and prompt for variable
           names within a statement that starts with any of the words listed in
           dbext_parse_statements. >
+    dbext_default_variable_def_regex
+<       - List of regexes (comma separated) used to find input parameters to 
+          prompt the user for possible replacement when executing the query 
+          against the database.  Default value is: >
+          '\(\w\|'."'".'\)\@<!?\(\w\|'."'".'\)\@<!,\zs\(@\|:\a\|\$\)\w\+\>'
+<
+        - This is two different regex expressions.  The first one finds the 
+          question marks and the second one finds any variables
+          beginning with "@,:,$". >
+                \(\w\|'\)\@<!?\(\w\|'\)\@<!
+                    \(\w\|'\)    - Beginning of a word character or a single quote
+                    \@<!         - If the above is true do NOT match
+                    ?            - Match a question mark
+                    \(\w\|'\)    - Beginning of a word character or a single quote
+                    \@<!         - If the above is true do NOT match
+                    - In otherwords, find a question mark on its own which 
+                      is not surround in quotes and not embedded in a word 
+                      SELECT c1 FROM t1 WHERE c2 = ?    -- match this
+                      SELECT c1 FROM t1 WHERE c2 = '?'  -- do not match this
+                      SELECT c1 FROM t1 WHERE c2 = da?  -- do not match this
+
+                \zs\(@\|:\|$\)\w\+\>
+                    \zs          - Start matching now
+                    \(@\|:\|$\)  - Match a @ or : or $ character
+                    \w\+         - Match at least one or as many word characters as possible
+                    \>           - and end on a word boundary
+                    - In otherwords, find these types
+                      SELECT c1 FROM t1 WHERE c2 = @myVar
+                      SELECT c1 FROM t1 WHERE c2 = :hostVar
+                      SELECT c1 FROM t1 WHERE c2 = $placeHolder
+<
+        - These values can be updated via your .vimrc or using DBSetOption.
+          When using DBSetOption, if the value begins with "," it will append 
+          to the existing setting.  Without a leading comma, the value will 
+          be replaced (for the current buffer).   This example will add 
+          to the default values and also look for variables that begin 
+          with p_ or lv_.  >
+            autocmd BufRead *.sql DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>
+>
+    dbext_default_ignore_variable_regex
+<       - List of regexes (comma separated) used to find input parameters to 
+          prompt the user for possible replacement when executing the query 
+          against the database.  Default value is: >
+          '\(in\|out\|inout\|declare\|set\|variable\|''\|/\|@\)'
+<
+        - The regex checks the strings before the variable found by variable_def_regex. 
+          If this is part of a parameter definition:
+            IN       @variable CHAR(1)
+            OUT      @variable CHAR(1)
+            INOUT    @variable CHAR(1)
+            DECLARE  @variable CHAR(1)
+            VARIABLE @variable CHAR(1)  -- CREATE VARIABLE @variable
+          Or part of a string:
+            '@variable'
+          Or part of path:
+            /@variable'
+          Or a global variable:
+            SET @@variable = ...
+          Or the definition of a global variable:
+            CREATE VARIABLE variable ...
+          If so, ignore the match and do not prompt to replace the variable with 
+          an input parameter.
+
+        - These values can be updated via your .vimrc or using DBSetOption.
+          When using DBSetOption, if the value begins with "," it will append 
+          to the existing setting.  Without a leading comma, the value will 
+          be replaced (for the current buffer).   In this example we are 
+          removing the check to see the variable is enclosed in single quotes. >
+            DBSetOption ignore_variable_regex = \(in\|out\|inout\|declare\|set\|variable\|/\|@\)
+>
+    dbext_default_statement_starts_line
+<       - A buffer local variable which is used to check whether the query
+          must start at the beginning of the line.  This is useful for SQL
+          files, which can have for example CREATE PROCDEDURE statements that
+          you will exeucte.  These procedures can have embedded SELECT
+          statements.  These statements we do not want to check for input
+          parameters, as changing them changes the meaning of the stored
+          procedure.  For Java and PHP files, queries are often built up by
+          concatenating strings together.  So, we still want to prompt for the
+          variables in these cases, yet the SELECT may not start at the
+          beginning of the line.  Consider the following examples: >
+            CREATE PROECURE sp_test( @p1 INT )
+            BEGIN
+                DECLARE lv_id INT;
+                SET lv_id = @p1;
+            END;
+<
+        - Due to this being a CREATE PROCEDURE, we do not want to prompt
+          for any any of the potential input parameters.  For SQL files 
+          the statement_starts_line is 1, since we will only prompt for 
+          input parameters if the statement begins with values listed 
+          in the query_statements option.  >
+
+            String sql = "SELECT c1 FROM T1 " 
+                       + " WHERE c2 = @p2   ";
+<
+        - When visually selecting the two lines and executing, dbext
+          finds the @p2 and prompts for a value before executing.
+          In this case statement_starts_line is 0, since we are assigning
+          the statement to a String.
+>
     dbext_default_replace_title 
 <       - Changes the title of the buffer to show connection information.
           This is useful if you are using a scratch buffer to test statements, 
@@ -1561,6 +1730,20 @@ Version 2.00
         dbext_default_DB2_extra                = ''
         dbext_default_DB2_db2cmd_bin           = 'db2cmd'
         dbext_default_DB2_db2cmd_cmd_options   = '-c -w -i -t db2 -s'
+        dbext_default_FIREBIRD_bin             = 'isql'
+        dbext_default_FIREBIRD_cmd_options     = ''
+        dbext_default_FIREBIRD_cmd_terminator  = ';'
+        dbext_default_FIREBIRD_version         = '5'
+        dbext_default_FIREBIRD_extra           = ''
+        dbext_default_ULTRALITE_bin            = 'dbisql'
+        dbext_default_ULTRALITE_cmd_header     = ''
+        dbext_default_ULTRALITE_cmd_terminator = ';'
+        dbext_default_ULTRALITE_cmd_options    = '-nogui -ul'
+        dbext_default_ULTRALITE_extra          = ''
+        dbext_default_HANA_bin                 = 'hdbsql'
+        dbext_default_HANA_cmd_terminator      = ''
+        dbext_default_HANA_cmd_options         = ''
+        dbext_default_HANA_extra               = ''
 
     dbext_default_MYSQL_version
 <       - MySQL version 5 supports stored procedures, views and new system
@@ -2118,7 +2301,7 @@ To specify the type of database you connect to most often, you can place the
 
  Here are some sample profiles I maintain.  These can help when trying to
  setup your own: >
-    " SQL Anywhere (Normal, DBI and ODBC)
+    " ASA - SQL Anywhere (Normal, DBI and ODBC)
     let g:dbext_default_profile_cons = 'type=ASA:dsnname=cons'
     let g:dbext_default_profile_ASA_DBI = 'type=DBI:user=dba:passwd=sql:driver=SQLAnywhere:conn_parms=:driver_parms=AutoCommit=1;PrintError=0'
     let g:dbext_default_profile_ASA_DBI_demo10 = 'type=DBI:user=dba:passwd=sql:driver=SQLAnywhere:conn_parms=ENG=demo10;DBN=demo:driver_parms=AutoCommit=0'
@@ -2144,7 +2327,7 @@ To specify the type of database you connect to most often, you can place the
     " Different form of Oracle server name
     let g:dbext_default_profile_ORA_Extended = 'type=ORA:user=scott:passwd=tiger:srvname=(description=(address=(protocol=TCP)(host=localhost)(port=1521))(connect_data=(server=dedicated)(service_name=10gR2)))'
 
-    " Postgress
+    " PostgreSQL
     let g:dbext_default_profile_PG = 'type=PGSQL:user=postgres'
     
     " Microsoft SQL Server
@@ -2153,6 +2336,17 @@ To specify the type of database you connect to most often, you can place the
     
     " SQLite
     let g:dbext_default_profile_POPFile = 'type=SQLITE:SQLITE_bin=C:\Programs\POPFile\sqlite.exe:dbname=C:\Programs\POPFile\popfile.db'
+
+    " Firebird
+    let g:dbext_default_profile_Firebird = 'type=FIREBIRD:user=sysdba:passwd=masterkey:dbname=C:\Programs\Firebird\Firebird_2_1\examples\empbuild\EMPLOYEE.FDB'
+
+    " ULTRALITE
+    let g:dbext_default_profile_UL_CustDB = 'type=ULTRALITE:user=dba:passwd=sql:dbname='.expand('$SQLANYSAMP11\ultralite\custdb\custdb.udb')
+
+    " HANA
+    " The instance ID is specified via the extra parameter
+    let g:dbext_default_profile_HANA_MySrv = 'type=HANA:user=SYSTEM:passwd=manager:host=myhost:extra=-i 60'
+
 <
 9.5 Connection information in modelines           *dbext-connect-modelines*
                                                   *dbext-modelines*
@@ -2209,7 +2403,8 @@ To specify the type of database you connect to most often, you can place the
      // dbext:variable_def_regex=,\<\(p_\|lv_\)\w\+\>
 <
  Executing :DBGetOption variable_def_regex will display the new values 
- notice the , separating 3 different regexes: >
+ notice the , separating 3 different regexes.  The regex used here is 
+ explained further in this file, keep looking for variable_def_regex. >
      variable_def_regex = \(\w\|'\)\@<!?\(\w\|'\)\@<!,\zs\(@\|:\|$\)\w\+\>,\<\(p_\|lv_\)\w\+\>
 
 
@@ -3160,7 +3355,26 @@ To specify the type of database you connect to most often, you can place the
  finds the question marks and the second one finds any variables
  beginning with "@,:,$". >
         \(\w\|'\)\@<!?\(\w\|'\)\@<!
+            \(\w\|'\)    - Beginning of a word character or a single quote
+            \@<!         - If the above is true do NOT match
+            ?            - Match a question mark
+            \(\w\|'\)    - Beginning of a word character or a single quote
+            \@<!         - If the above is true do NOT match
+            - In otherwords, find a question mark on its own which 
+              is not surround in quotes and not embedded in a word 
+              SELECT c1 FROM t1 WHERE c2 = ?    -- match this
+              SELECT c1 FROM t1 WHERE c2 = '?'  -- do not match this
+              SELECT c1 FROM t1 WHERE c2 = da?  -- do not match this
+
         \zs\(@\|:\|$\)\w\+\>
+            \zs          - Start matching now
+            \(@\|:\|$\)  - Match a @ or : or $ character
+            \w\+         - Match at least one or as many word characters as possible
+            \>           - and end on a word boundary
+            - In otherwords, find these types
+              SELECT c1 FROM t1 WHERE c2 = @myVar
+              SELECT c1 FROM t1 WHERE c2 = :hostVar
+              SELECT c1 FROM t1 WHERE c2 = $placeHolder
 <
  These are just standard Vim regular expressions which you can
  test on your own by doing a find.  Once you have them correct you
