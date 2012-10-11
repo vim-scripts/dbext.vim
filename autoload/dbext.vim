@@ -2251,7 +2251,7 @@ function! s:DB_DB2_execSql(str)
 
         let cmd = dbext_bin .  ' ' . dbext#DB_getWType("db2cmd_cmd_options")
         let cmd = cmd . ' ' .  s:DB_option('', dbext#DB_getWTypeDefault("extra"), ' ') .
-                    \ s:DB_option('-t', dbext#DB_getWType("cmd_terminator"), ' ') .
+                    \ '-t ' .
                     \ '-f ' . s:dbext_tempfile
     endif
 
