@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2012 Oct 09
+*dbext.txt*	For Vim version 7.0.  Last change: 2012 Nov 27
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki 
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 17.00
+	  	dbext.vim version 18.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -115,6 +115,22 @@ David Fishburn
 
 ==============================================================================
 2. What's New						*dbext-new*
+
+Version 18.00
+
+ New Features
+ ------------
+ - Added support for parsing C# files (Raul Segura Acevedo).
+
+ Bug Fixes
+ ---------
+ - Changed the Oracle calls to SQLPlus from using single quotes to using 
+   double quotes (David Sweeney).
+ - The <Leader>sbp and <Leader>tcl mapping were missing with version 17.00.
+ - The DBI interface could report: "E15: Invalid expression" when retrieving 
+   table lists from DB2, but this could also affect other SQL commands 
+   that returned strings surrounded in double quotes (Charles McGarvey).
+
 
 Version 17.00
 

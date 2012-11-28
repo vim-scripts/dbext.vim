@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       17.00
+" Version:       18.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2012 Oct 04
+" Last Modified: 2012 Oct 29
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -36,7 +36,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext = 1700
+let g:loaded_dbext = 1800
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -286,7 +286,7 @@ endif
 if maparg(g:dbext_map_prefix.'dpa', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'dpa <Plug>DBDescribeProcedureAskName'
 endif
-if maparg(g:dbext_map_prefix.'bp', 'n')
+if maparg(g:dbext_map_prefix.'bp', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'bp <Plug>DBPromptForBufferParameters'
 endif
 if maparg(g:dbext_map_prefix.'lc', 'n') == ''
@@ -304,7 +304,7 @@ endif
 if maparg(g:dbext_map_prefix.'lv', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'lv <Plug>DBListView'
 endif
-if maparg(g:dbext_map_prefix.'tcl', 'n')
+if maparg(g:dbext_map_prefix.'tcl', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'tcl <Plug>DBListColumn'
 endif
 if maparg(g:dbext_map_prefix.'tcl', 'x') == ''

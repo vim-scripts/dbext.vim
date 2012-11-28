@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       17.00
+" Version:       18.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2012 Sep 29
+" Last Modified: 2012 Oct 31
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -38,7 +38,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 1700
+let g:loaded_dbext_auto = 1800
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -2924,11 +2924,11 @@ function! s:DB_ORA_execSql(str)
 
     let cmd = dbext_bin .  
                 \ ' ' . dbext#DB_getWType("cmd_options") .
-                \ s:DB_option(" '", s:DB_get("user"), '') .
+                \ s:DB_option(' "', s:DB_get("user"), '') .
                 \ s:DB_option('/', s:DB_get("passwd"), '') .
                 \ s:DB_option('@', s:DB_get("srvname"), '') .
                 \ s:DB_option(' ', dbext#DB_getWTypeDefault("extra"), '') .
-                \ "' @" . s:dbext_tempfile
+                \ '" @' . s:dbext_tempfile
     let result = s:DB_runCmd(cmd, output, "")
 
     return result
@@ -6982,6 +6982,7 @@ function! dbext#DB_parseQuery(query)
         " let query = s:DB_parseSQL(a:query)
         return s:DB_parseHostVariables(a:query)
     elseif matchstr( l:filetype, "java" ) == "java" || 
+                \ matchstr( l:filetype, "cs" ) == "cs"  || 
                 \ matchstr( l:filetype, "jsp" ) == "jsp"  || 
                 \ matchstr( l:filetype, "html" ) == "html"  || 
                 \ matchstr( l:filetype, "javascript" ) == "javascript" 
