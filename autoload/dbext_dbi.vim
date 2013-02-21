@@ -4,10 +4,10 @@
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       17.00
+" Version:       18.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2012 Jun 26
+" Last Modified: 2012 Oct 29
 " Created:       2007-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 "
@@ -119,7 +119,7 @@
 if exists("g:loaded_dbext_dbi") 
    finish
 endif
-let g:loaded_dbext_dbi = 1700
+let g:loaded_dbext_dbi = 1800
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -507,8 +507,8 @@ sub db_escape
 {
     my $escaped = shift;
     if( defined($escaped) ) {
-        $escaped =~ s/"/\\"/g;
         $escaped =~ s/\\/\\\\/g;
+        $escaped =~ s/"/\\"/g;
         $escaped =~ s/\n/\\n/g;
     }
 
