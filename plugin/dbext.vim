@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       18.00
+" Version:       19.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2012 Oct 29
+" Last Modified: 2013 Jan 21
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -36,7 +36,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext = 1800
+let g:loaded_dbext = 1900
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -253,8 +253,7 @@ if maparg(g:dbext_map_prefix.'t', 'n') == ''
 endif
 if maparg(g:dbext_map_prefix.'t', 'x') == ''
     " This concatenation should result in this xmap command:
-    " xmap <unique> <silent> <Leader>st :<C-U>exec 'DBSelectFromTable "'.DB_getVisualBlock().'"'<CR>
-    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'t :<C-U>exec '."'".'DBSelectFromTable "'."'".'.DB_getVisualBlock().'."'".'"'."'".'<CR>'
+    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'t :<C-U>exec '.'"'."DBSelectFromTable '".'".DB_getVisualBlock()."'."'".'"'.'<CR>'
 endif
 if maparg(g:dbext_map_prefix.'tw', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'tw <Plug>DBSelectFromTableWithWhere'
@@ -266,13 +265,13 @@ if maparg(g:dbext_map_prefix.'T', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'T <Plug>DBSelectFromTopXTable'
 endif
 if maparg(g:dbext_map_prefix.'T', 'x') == ''
-    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'T :<C-U>exec '."'".'DBSelectFromTableTopX "'."'".'.DB_getVisualBlock().'."'".'"'."'".'<CR>'
+    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'T :<C-U>exec '.'"'."DBSelectFromTableTopX '".'".DB_getVisualBlock()."'."'".'"'.'<CR>'
 endif
 if maparg(g:dbext_map_prefix.'dt', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'dt <Plug>DBDescribeTable'
 endif
 if maparg(g:dbext_map_prefix.'dt', 'x') == ''
-    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'dt :<C-U>exec '."'".'DBDescribeTable "'."'".'.DB_getVisualBlock().'."'".'"'."'".'<CR>'
+    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'dt :<C-U>exec '.'"'."DBDescribeTable '".'".DB_getVisualBlock()."'."'".'"'.'<CR>'
 endif
 if maparg(g:dbext_map_prefix.'dta', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'dta <Plug>DBDescribeTableAskName'
@@ -281,7 +280,7 @@ if maparg(g:dbext_map_prefix.'dp', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'dp <Plug>DBDescribeProcedure'
 endif
 if maparg(g:dbext_map_prefix.'dp', 'x') == ''
-    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'dp :<C-U>exec '.'"'.'DBDescribeProcedure "'."'".'.DB_getVisualBlock().'."'".'"'."'".'<CR>'
+    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'dp :<C-U>exec '.'"'."DBDescribeProcedure '".'".DB_getVisualBlock()."'."'".'"'.'<CR>'
 endif
 if maparg(g:dbext_map_prefix.'dpa', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'dpa <Plug>DBDescribeProcedureAskName'
@@ -293,7 +292,7 @@ if maparg(g:dbext_map_prefix.'lc', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'lc <Plug>DBListColumn'
 endif
 if maparg(g:dbext_map_prefix.'lc', 'x') == ''
-    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'lc :<C-U>exec '.'"'.'DBListColumn "'."'".'.DB_getVisualBlock().'."'".'"'."'".'<CR>'
+    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'lc :<C-U>exec '.'"'."DBListColumn '".'".DB_getVisualBlock()."'."'".'"'.'<CR>'
 endif
 if maparg(g:dbext_map_prefix.'lt', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'lt <Plug>DBListTable'
@@ -308,7 +307,8 @@ if maparg(g:dbext_map_prefix.'tcl', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'tcl <Plug>DBListColumn'
 endif
 if maparg(g:dbext_map_prefix.'tcl', 'x') == ''
-    exec 'xmap <unique> <silent> <Leader>stcl :<C-U>exec '."'".'DBListColumn "'."'".'.DB_getVisualBlock().'."'".'"'."'".'<CR>'
+    " exec 'xmap <unique> <silent> <Leader>stcl :<C-U>exec '."'".'DBListColumn "'."'".'.DB_getVisualBlock().'."'".'"'."'".'<CR>'
+    exec 'xmap <unique> <silent> '.g:dbext_map_prefix.'tcl :<C-U>exec '.'"'."DBListColumn '".'".DB_getVisualBlock()."'."'".'"'.'<CR>'
 endif
 if maparg(g:dbext_map_prefix.'h', 'n') == ''
     exec 'nmap <unique> '.g:dbext_map_prefix.'h <Plug>DBHistory'
@@ -355,6 +355,8 @@ if has("gui_running") && has("menu") && g:dbext_default_menu_mode != 0
     exec 'noremenu  <script> '.menuRoot.'.Select\ Table<TAB>'.leader.'st  :DBSelectFromTable<CR>'
     exec 'inoremenu <script> '.menuRoot.'.Select\ Table<TAB>'.leader.'st  <C-O>:DBSelectFromTable<CR>'
     exec 'vnoremenu <script> '.menuRoot.'.Select\ Table<TAB>'.leader.'st  :<C-U>exec ''DBSelectFromTable "''.DB_getVisualBlock().''"''<CR>'
+    exec 'noremenu  <script> '.menuRoot.'.Select\ Table\ Map<TAB>'.leader.'st   :call feedkeys(",st")<CR>'
+    exec 'vnoremenu <script> '.menuRoot.'.Select\ Table\ Map<TAB>'.leader.'st   :silent <C-U>call feedkeys("gv,st")<CR>'
     exec 'noremenu  <script> '.menuRoot.'.Select\ Table\ TopX<TAB>'.leader.'sT  :DBSelectFromTableTopX<CR>'
     exec 'inoremenu <script> '.menuRoot.'.Select\ Table\ TopX<TAB>'.leader.'sT  <C-O>:DBSelectFromTableTopX<CR>'
     exec 'vnoremenu <script> '.menuRoot.'.Select\ Table\ TopX<TAB>'.leader.'sT  :<C-U>exec ''DBSelectFromTableTopX "''.DB_getVisualBlock().''"''<CR>'

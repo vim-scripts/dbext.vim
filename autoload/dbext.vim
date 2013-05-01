@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       18.00
+" Version:       19.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2012 Oct 31
+" Last Modified: 2013 Apr 29
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -38,7 +38,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 1800
+let g:loaded_dbext_auto = 1900
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -133,6 +133,7 @@ function! s:DB_buildLists()
     call add(s:conn_params_mv, 'driver')
     call add(s:conn_params_mv, 'conn_parms')
     call add(s:conn_params_mv, 'driver_parms')
+    call add(s:conn_params_mv, 'cmd_terminator')
 
     " Saved connection parameters
     let s:saved_conn_params_mv = []
@@ -152,6 +153,7 @@ function! s:DB_buildLists()
     call add(s:saved_conn_params_mv, 'saved_driver')
     call add(s:saved_conn_params_mv, 'saved_conn_parms')
     call add(s:saved_conn_params_mv, 'saved_driver_parms')
+    call add(s:saved_conn_params_mv, 'saved_cmd_terminator')
 
     " Configuration parameters
     let s:config_params_mv = []
@@ -541,10 +543,19 @@ function! s:DB_set(name, value)
             " Now set the connection parameters from the profile
             if s:DB_parseProfile(value) == -1
                 return -1
+            else
+                return 0
             endif
         endif
 
-        if index(s:script_params_mv, a:name) > -1
+        if index(s:db_params_mv, tolower(a:name)) > -1
+            " Only when the database type has been specified
+            " as these parameters are reset often when changing
+            " profiles
+            if b:dbext_type != ''
+                call s:DB_setWType(tolower(a:name), value)
+            endif
+        elseif index(s:script_params_mv, a:name) > -1
             let s:dbext_{a:name} = value
         else
             let b:dbext_{a:name} = value
@@ -1299,16 +1310,19 @@ function! s:DB_promptForParameters(...)
             endif
 
             let diag_prompt = s:DB_getDefault("prompt_" . param)
-            let l:old_value = s:DB_get(param, no_default)
-            let l:new_value = s:DB_getInput( 
-                        \ diag_prompt,
-                        \ l:old_value,
-                        \ "-1"
-                        \ )
+            let l:new_value = '-1'
+            if diag_prompt != ''
+                let l:old_value = s:DB_get(param, no_default)
+                let l:new_value = s:DB_getInput( 
+                            \ diag_prompt,
+                            \ l:old_value,
+                            \ "-1"
+                            \ )
+            endif
         endif
         " If the user cancelled the input, break from the loop
         " this is a new 602 feature
-        if l:new_value == "-1"
+        if l:new_value == '-1'
             let retval = l:new_value
             break
         elseif l:new_value !=# l:old_value
@@ -2235,7 +2249,7 @@ function! s:DB_DB2_execSql(str)
         let cmd = cmd . 
                     \ s:DB_option(' ', dbext#DB_getWTypeDefault("extra"), ' ') .
                     \ s:DB_option('-d ', s:DB_get("dbname"), ' ') .
-                    \ s:DB_option('-l ', dbext#DB_getWType("cmd_terminator"), ' ').
+                    \ ((dbext#DB_getWType("cmd_terminator")!='')?(s:DB_option('-l ', dbext#DB_getWType("cmd_terminator"), ' ')):' ') .
                     \ ' -f ' . s:dbext_tempfile
 
     else
@@ -2280,7 +2294,7 @@ function! s:DB_DB2_execSql(str)
 
         let cmd = dbext_bin .  ' ' . dbext#DB_getWType("db2cmd_cmd_options")
         let cmd = cmd . ' ' .  s:DB_option('', dbext#DB_getWTypeDefault("extra"), ' ') .
-                    \ s:DB_option('-t', dbext#DB_getWType("cmd_terminator"), ' ') .
+                    \ ((dbext#DB_getWType("cmd_terminator")!='')?(s:DB_option('-t', dbext#DB_getWType("cmd_terminator"), ' ')):' ') .
                     \ '-f ' . s:dbext_tempfile
     endif
 
@@ -3089,9 +3103,10 @@ function! s:DB_PGSQL_check_pgpass()
         call s:DB_warningMsg( 
                     \ "dbext:PostgreSQL requires a '".
                     \ dbext#DB_getWType("pgpass").
-                    \ "' file in order to authenticate.  ".
-                    \ 'This file is missing.  '.
-                    \ "The binary '".
+                    \ "' file in order to authenticate. ".
+                    \ "This file is missing. If you are using ".
+                    \ "a local connection, you can create an ".
+                    \ "empty .pgpass file.  The binary '".
                     \ dbext#DB_getWType("bin").
                     \ "' does not accept commandline passwords."
                     \ )
@@ -5477,12 +5492,12 @@ function! s:DB_getLoginScript(filename)
         endif
 
         if custom_login_script_dir == ''
-            let filename = expand('$VIM').'/'.filename
+            let filename = expand('$VIM').'/'.matchstr(a:filename, '\f\+')
             " Check if the filename is readable
             if filereadable(filename)
                 let sqlf = readfile(filename)
             else
-                let filename = expand('$HOME').'/'.filename
+                let filename = expand('$HOME').'/'.matchstr(a:filename, '\f\+')
                 if filereadable(filename)
                     let sqlf = readfile(filename)
                 else
@@ -5496,7 +5511,7 @@ function! s:DB_getLoginScript(filename)
             endif
         endif
 
-        if len(sqlf) > 0 
+        if !empty(sqlf)
             let sql = join(sqlf, "\n")."\n"
         endif
     endif
@@ -7055,7 +7070,7 @@ function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
         " The above query gathers the preceeding text to make the above
         " determination
         " if inout !~? '\(in\|out\|inout\|declare\|set\|variable\|''\|/\|@\)'
-        if inout !~? s:DB_get('ignore_variable_regex')
+        if s:DB_get('ignore_variable_regex') !~? inout
             " Check if the variable name is preceeded by a comment character.
             " If so, ignore and continue.
             if strpart(str, 0, (index-1)) !~ '\(--\|\/\/\)\s*$'
@@ -7487,7 +7502,7 @@ function! s:DB_parseJava(query)
     " These can be single or double quotes
     let leading_quote_regex = '\%(^[\t "]*\)\?'
     let leading_quote = matchstr( query, leading_quote_regex )
-    if leading_quote != ''
+    if substitute(leading_quote, '\s\+', '', 'g') != ''
         let query = substitute(query, 
                     \ leading_quote_regex,
                     \ '', 
@@ -7738,6 +7753,7 @@ function! s:DB_parseProfile(value)
     let profile_name = "g:dbext_default_profile_" . a:value
 
     if exists(profile_name)
+        let b:dbext_profile = a:value
         let profile_value = g:dbext_default_profile_{a:value}
     else
         let rc = -1
