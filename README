@@ -3,19 +3,22 @@ This is a mirror of http://www.vim.org/scripts/script.php?script_id=356
 This plugin contains functions/mappings/commands to enable Vim to access several databases. 
 
 Current databases supported are: 
-Mysql, 
-PostgreSQL, 
-Ingres, 
-Oracle, 
-Oracle Rdb (VMS), 
-Sybase Adaptive Server Anywhere, 
-Sybase Adaptive Server Enterprise, 
-Microsoft SQL Server, 
-DB2, 
-Interbase, 
-SQLite, 
-SAP HANA,
 ODBC / Perl DBI
+Mysql
+Oracle 
+Oracle Rdb (VMS)
+SAP HANA
+SAP Sybase SQL Anywhere (SA/ASA)
+SAP Sybase IQ (ASA)
+SAP Sybase Adaptive Server Enterprise (ASE)
+SAP Sybase UltraLite (UL)
+Microsoft SQL Server
+IBM DB2
+Interbase 
+SQLite
+PostgreSQL
+Ingres
+Firebird
  
 For Perl's DBI layer if the database you are using is not *natively* supported by dbext, but has a DBI interface, dbext's standard feature set is available.  For those already using dbext, the DBI interface should provide a performance boost when running statements against your database.  DBI also provides an ODBC bridge, therefore any ODBC compliant database is also accessible.
 
@@ -36,6 +39,29 @@ If you dislike reading docs, then at a minimum follow the tutorial.  It will giv
 Connection Profiles
 -----------------------------
 You can create as many profiles as you like in your vimrc.  Each profile specifies various connection information.  Each buffer can be connected to a different database.   The plugin will automatically prompt the user for connection information.  If you have defined profiles in your vimrc, for ease of use,  you can choose from a numbered list.
+
+Adding connection profiles is the best way to use dbext, :h dbext.txt has lots of examples of different profiles for different databases.
+     let g:dbext_default_profile_myASA = 'type=ASA:user=DBA:passwd=SQL'
+     let g:dbext_default_profile_mySQLServer = 'type=SQLSRV:integratedlogin=1:srvname=mySrv:dbname=myDB'
+     let g:dbext_default_profile_mySQL = 'type=MYSQL:user=root:passwd=whatever:dbname=mysql'
+     let g:dbext_default_profile_mySQL_DBI = 'type=DBI:user=root:passwd=whatever:driver=mysql:conn_parms=database=mysql;host=localhost'
+     let g:dbext_default_profile_myORA = 'type=ORA:srvname=zzz42ga:user=john:passwd=whatever'
+
+Assuming you work on many different projects, you can automatically have dbext choose the correct database connection profile by adding autocmds that use the filesystem path to choose the correct profile:
+
+     augroup project1
+         au!
+         " Automatically choose the correct dbext profile
+         autocmd BufRead */projectX/sql/* DBSetOption profile=myASA
+     augroup end
+
+     augroup project2
+         au!
+         " Automatically choose the correct dbext profile
+         autocmd BufRead */projectY/* DBSetOption profile=myORA
+     augroup end
+
+Or from the menu or the maps created you can choose a profile at any time.
 
 SQL History
 -----------

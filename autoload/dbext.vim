@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       19.00
+" Version:       20.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2013 Apr 29
+" Last Modified: 2013 Sep 18
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -38,7 +38,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 1900
+let g:loaded_dbext_auto = 2000
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -60,11 +60,12 @@ let s:dbext_tempfile = s:dbext_tempfile.(s:dbext_tempfile =~ '^/' ? '/' : '\').'
 let s:dbext_prev_sql     = ''
 let s:dbext_result_count = 0
 " Store previous buffer information so we can return to it when we 
-" " Store previous buffer information so we can return to it when we 
-" close the Result window
 " close the Result window
 let s:dbext_buffer_last_winnr = -1
 let s:dbext_buffer_last       = -1
+" Define previous window and buffer numbers
+" let s:dbext_prev_winnr        = 0
+" let s:dbext_prev_bufnr        = 0
 " }}}
 
 " Build internal lists {{{
@@ -217,6 +218,7 @@ function! s:DB_buildLists()
     " DBI configuration parameters
     let s:config_dbi_mv = []
     call add(s:config_dbi_mv, 'DBI_max_rows')
+    call add(s:config_dbi_mv, 'DBI_max_column_width')
     call add(s:config_dbi_mv, 'DBI_disconnect_onerror')
     call add(s:config_dbi_mv, 'DBI_commit_on_disconnect')
     call add(s:config_dbi_mv, 'DBI_split_on_pattern')
@@ -340,7 +342,8 @@ function! dbext#DB_execFuncWCheck(name,...)
     let use_defaults = 1
     if s:DB_get("buffer_defaulted") != 1
         let rc = s:DB_resetBufferParameters(use_defaults)
-        if rc == -1
+        if rc == -1 && a:name != 'promptForParameters'
+        " if rc == -1
             call s:DB_warningMsg( "dbext:A valid database type must be chosen" )
             return -1
         endif
@@ -536,6 +539,16 @@ function! s:DB_set(name, value)
             " from being set to "@askb", so the user would never 
             " be prompted for a value.
             let value = toupper(value)
+            let b:dbext_{a:name} = value
+
+            if value != ''
+                " If we are setting the database type, default 
+                " all the database specific options to the database 
+                " defaults.
+                for param in s:db_params_mv
+                    call s:DB_setWType(param, s:DB_getDefault(b:dbext_{a:name}.'_'.param))
+                endfor
+            endif
         endif
         " Profile will have to be retrieved from your vimrc
         " and each option must be processed
@@ -552,7 +565,7 @@ function! s:DB_set(name, value)
             " Only when the database type has been specified
             " as these parameters are reset often when changing
             " profiles
-            if b:dbext_type != ''
+            if exists('b:dbext_type') && b:dbext_type != ''
                 call s:DB_setWType(tolower(a:name), value)
             endif
         elseif index(s:script_params_mv, a:name) > -1
@@ -573,7 +586,14 @@ function! s:DB_set(name, value)
         if a:name == 'DBI_commit_on_disconnect'
             " Special case since this option must be set
             " both in the DBI layer and the dbext plugin
-            call s:DB_DBI_setOption(a:name, a:value)
+            " Check the type, as we may be resetting the 
+            " variables to default values.
+            " Changed to not use s:DB_get since this triggered 
+            " a PromptForParameters during defaulting
+            " if s:DB_get('type') =~ '\<DBI\>\|\<ODBC\>'
+            if exists('b:dbext_type') && b:dbext_type =~ '\<DBI\>\|\<ODBC\>'
+                call s:DB_DBI_setOption(a:name, a:value)
+            endif
         endif
     elseif index(s:saved_conn_params_mv, a:name) > -1
         " Store these parameters as script variables
@@ -582,7 +602,10 @@ function! s:DB_set(name, value)
     else
         if index(s:db_dbi_mv, a:name) > -1
             let rc = 0
-            if s:DB_get('type') =~ '\<DBI\>\|\<ODBC\>'
+            " Changed to not use s:DB_get since this triggered 
+            " a PromptForParameters during defaulting
+            " if s:DB_get('type') =~ '\<DBI\>\|\<ODBC\>'
+            if exists('b:dbext_type') && b:dbext_type =~ '\<DBI\>\|\<ODBC\>'
                 let rc = s:DB_DBI_setOption(a:name, a:value)
             endif
             return rc
@@ -668,7 +691,11 @@ function! dbext#DB_listOption(...)
         endif
         let opt_name    = param_mv
         try
-            let opt_value   = opt_name . ' = ' . s:DB_get(opt_name)
+            if index(s:db_params_mv, opt_name) > -1
+                let opt_value   = opt_name . ' = ' . dbext#DB_getWTypeDefault(opt_name)
+            else
+                let opt_value   = opt_name . ' = ' . s:DB_get(opt_name)
+            endif
         catch
             call s:DB_errorMsg('Failed to get:'.opt_name)
         endtry
@@ -719,7 +746,7 @@ function! dbext#DB_listOption(...)
         " Retrieve the name of option
         let opt_name = matchstr(l:global_vars, '\w\+', index)
         if strlen(opt_name) > 0
-            let opt_value = matchstr(l:global_vars, '\s*\zs[^'."\<C-J>".']\+', 
+            let opt_value = matchstr(l:global_vars, '\s*#\?\zs[^'."\<C-J>".']\+', 
                         \ (index + strlen(opt_name))  )
             if opt_name !~ 'profile_'
                 let option_list = option_list . opt_name . ' = ' . opt_value . "\n"
@@ -728,6 +755,14 @@ function! dbext#DB_listOption(...)
         let index = index + strlen(opt_name)+ strlen(opt_value) + 1
         let index = match(l:global_vars, dbext_default_prefix, index)
     endwhile
+
+    let option_list = option_list .
+                \ "-------------------------------\n" .
+                \ "** dbext Component Versions   **\n" .
+                \ "-------------------------------\n"
+    let option_list = option_list . "plugin/dbext.vim = " . (exists('g:loaded_dbext') ? g:loaded_dbext : "unknown") . "\n"
+    let option_list = option_list . "autoload/dbext.vim = " . (exists('g:loaded_dbext_auto') ? g:loaded_dbext_auto : "unknown") . "\n"
+    let option_list = option_list . "autoload/dbext_dbi.vim = " . (exists('g:loaded_dbext_dbi') ? g:loaded_dbext_dbi : "unknown") . "\n"
 
     let option_list = option_list .
                 \ "-------------------------------\n" .
@@ -775,7 +810,7 @@ function! s:DB_get(name, ...)
     endif
 
     if exists("b:dbext_prompting_user") && b:dbext_prompting_user != 1
-        if retval =~? "@ask"
+        if retval =~? "^@ask"
             let retval = s:DB_promptForParameters(a:name)
         endif
     endif
@@ -939,7 +974,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "RDB_cmd_terminator"      |return (exists("g:dbext_default_RDB_cmd_terminator")?g:dbext_default_RDB_cmd_terminator.'':";\n")
     elseif a:name ==# "RDB_SQL_Top_pat"         |return (exists("g:dbext_default_RDB_SQL_Top_pat")?g:dbext_default_RDB_SQL_Top_pat.'':'\(.*\)')
     elseif a:name ==# "RDB_SQL_Top_sub"         |return (exists("g:dbext_default_RDB_SQL_Top_sub")?g:dbext_default_RDB_SQL_Top_sub.'':'\1 LIMIT to @dbext_topX rows ')
-    elseif a:name ==# "SQLITE_bin"              |return (exists("g:dbext_default_SQLITE_bin")?g:dbext_default_SQLITE_bin.'':'sqlite')
+    elseif a:name ==# "SQLITE_bin"              |return (exists("g:dbext_default_SQLITE_bin")?g:dbext_default_SQLITE_bin.'':'sqlite3')
     elseif a:name ==# "SQLITE_cmd_header"       |return (exists("g:dbext_default_SQLITE_cmd_header")?g:dbext_default_SQLITE_cmd_header.'':".mode column\n.headers ON\n")
     elseif a:name ==# "SQLITE_cmd_options"      |return (exists("g:dbext_default_SQLITE_cmd_options")?g:dbext_default_SQLITE_cmd_options.'':'')
     elseif a:name ==# "SQLITE_cmd_terminator"   |return (exists("g:dbext_default_SQLITE_cmd_terminator")?g:dbext_default_SQLITE_cmd_terminator.'':';')
@@ -978,6 +1013,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "inputdialog_cancel_support"       |return (exists("g:dbext_default_inputdialog_cancel_support")?g:dbext_default_inputdialog_cancel_support.'':((v:version>=602)?'1':'0'))
     " DBI Settings
     elseif a:name ==# "DBI_max_rows"             |return (exists("g:dbext_default_DBI_max_rows")?g:dbext_default_DBI_max_rows.'':'300')
+    elseif a:name ==# "DBI_max_column_width"     |return (exists("g:dbext_default_DBI_max_column_width")?g:dbext_default_DBI_max_column_width.'':'0')
     elseif a:name ==# "DBI_disconnect_onerror"   |return (exists("g:dbext_default_DBI_disconnect_onerror")?g:dbext_default_DBI_disconnect_onerror.'':'1')
     elseif a:name ==# "DBI_commit_on_disconnect" |return (exists("g:dbext_default_DBI_commit_on_disconnect")?g:dbext_default_DBI_commit_on_disconnect.'':'1')
     elseif a:name ==# "DBI_split_on_pattern"     |return (exists("g:dbext_default_DBI_split_on_pattern")?g:dbext_default_DBI_split_on_pattern.'':"\n".'\s*\<go\>\s*'."\n")
@@ -994,32 +1030,35 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "DBI_table_type_ASAny"             |return (exists("g:dbext_default_dbi_table_type_ASAny")?g:dbext_default_dbi_table_type_ASAny.'':'%TABLE%')
     elseif a:name ==# "DBI_view_type_ASAny"              |return (exists("g:dbext_default_dbi_view_type_ASAny")?g:dbext_default_dbi_table_type_ASAny.'':'%VIEW%')
     " Create additional SQL statements for the DBI layer to support listing procedures which is not supported by DBI
-    elseif a:name ==# "DBI_list_proc_SQLAnywhere"  |return (exists("g:dbext_default_DBI_list_proc_SQLAnywhere")?g:dbext_default_DBI_list_proc_SQLAnywhere.'':'select p.proc_name, u.user_name from SYS.SYSPROCEDURE as p, SYS.SYSUSERPERM as u where p.creator = u.user_id and p.proc_name like ''dbext_replace_name%'' and u.user_name like ''dbext_replace_owner%'' order by proc_name')
-    elseif a:name ==# "DBI_list_proc_ASAny"        |return (exists("g:dbext_default_DBI_list_proc_ASAny")?g:dbext_default_DBI_list_proc_ASAny.'':'select p.proc_name, u.user_name from SYS.SYSPROCEDURE as p, SYS.SYSUSERPERM as u  where p.creator = u.user_id and p.proc_name like ''%'' and u.user_name like ''%''  order by proc_name')
+    elseif a:name ==# "DBI_list_proc_SQLAnywhere"  |return (exists("g:dbext_default_DBI_list_proc_SQLAnywhere")?g:dbext_default_DBI_list_proc_SQLAnywhere.'':'select p.proc_name, u.user_name from SYS.SYSPROCEDURE as p, SYS.SYSUSERPERM as u where p.creator = u.user_id and p.proc_name like ''dbext_replace_name%'' and u.user_name like ''dbext_replace_owner%'' order by p.proc_name')
+    elseif a:name ==# "DBI_list_proc_ASAny"        |return (exists("g:dbext_default_DBI_list_proc_ASAny")?g:dbext_default_DBI_list_proc_ASAny.'':'select p.proc_name, u.user_name from SYS.SYSPROCEDURE as p, SYS.SYSUSERPERM as u  where p.creator = u.user_id and p.proc_name like ''%'' and u.user_name like ''%''  order by p.proc_name')
     elseif a:name ==# "DBI_list_proc_Oracle"       |return (exists("g:dbext_default_DBI_list_proc_Oracle")?g:dbext_default_DBI_list_proc_Oracle.'':'select object_name, owner from all_objects  where object_type IN (''PROCEDURE'', ''PACKAGE'', ''FUNCTION'') and object_name LIKE ''dbext_replace_name%'' order by object_name')
     elseif a:name ==# "DBI_list_proc_Sybase"       |return (exists("g:dbext_default_DBI_list_proc_Sybase")?g:dbext_default_DBI_list_proc_Sybase.'':'select convert(varchar,o.name), convert(varchar,u.name)   from sysobjects o, sysusers u  where o.uid=u.uid    and o.type=''P''    and o.name like ''dbext_replace_name%''  order by o.name')
     elseif a:name ==# "DBI_list_proc_DB2"          |return (exists("g:dbext_default_DBI_list_proc_DB2")?g:dbext_default_DBI_list_proc_DB2.'':'select CAST(procname AS VARCHAR(40)) AS procname      , CAST(procschema AS VARCHAR(15)) AS procschema      , CAST(definer AS VARCHAR(15)) AS definer      , parm_count      , deterministic      , fenced      , result_sets   from syscat.procedures  where procname like ''dbext_replace_name%''  order by procname')
     elseif a:name ==# "DBI_list_proc_mysql"        |return (exists("g:dbext_default_DBI_list_proc_mysql")?g:dbext_default_DBI_list_proc_mysql.'':'SELECT specific_name, routine_schema    FROM INFORMATION_SCHEMA.ROUTINES  WHERE specific_name  like ''dbext_replace_name%''    AND routine_schema like ''dbext_replace_owner%'' ')
     elseif a:name ==# "DBI_list_proc_PGSQL"        |return (exists("g:dbext_default_DBI_list_proc_PGSQL")?g:dbext_default_DBI_list_proc_PGSQL.'':'SELECT p.proname, pg_get_userbyid(u.usesysid)   FROM pg_proc p, pg_user u  WHERE p.proowner = u.usesysid    AND u.usename  like ''dbext_replace_owner%''    AND p.proname  like ''dbext_replace_name%''  ORDER BY p.proname')
     elseif a:name ==# "DBI_list_proc_SQLSRV"       |return (exists("g:dbext_default_DBI_list_proc_SQLSRV")?g:dbext_default_DBI_list_proc_SQLSRV.'':'select convert(varchar,o.name) proc_name, convert(varchar,u.name) proc_owner   from sysobjects o, sysusers u  where o.uid=u.uid    and o.xtype=''P''    and o.name like ''dbext_replace_name%''  order by o.name')
+    elseif a:name ==# "DBI_list_proc_HANA"         |return (exists("g:dbext_default_DBI_list_proc_HANA")?g:dbext_default_DBI_list_proc_HANA.'':'select p.PROCEDURE_NAME, p.SCHEMA_NAME from SYS.PROCEDURES as p where p.PROCEDURE_NAME like ''dbext_replace_name%'' and p.SCHEMA_NAME like ''dbext_replace_owner%'' order by p.PROCEDURE_NAME')
     " Create additional SQL statements for the DBI layer to support creating a dictionary for procedures which is not supported by DBI
-    elseif a:name ==# "DBI_dict_proc_SQLAnywhere"  |return (exists("g:dbext_default_DBI_dict_proc_SQLAnywhere")?g:dbext_default_DBI_dict_proc_SQLAnywhere.'':'select u.user_name ||''.''|| p.proc_name from SYS.SYSPROCEDURE as p, SYS.SYSUSERPERM as u  where p.creator = u.user_id order by u.user_name, proc_name')
-    elseif a:name ==# "DBI_dict_proc_ASAny"        |return (exists("g:dbext_default_DBI_dict_proc_ASAny")?g:dbext_default_DBI_dict_proc_ASAny.'':'select u.user_name ||''.''|| p.proc_name from SYS.SYSPROCEDURE as p, SYS.SYSUSERPERM as u  where p.creator = u.user_id order by u.user_name, proc_name')
+    elseif a:name ==# "DBI_dict_proc_SQLAnywhere"  |return (exists("g:dbext_default_DBI_dict_proc_SQLAnywhere")?g:dbext_default_DBI_dict_proc_SQLAnywhere.'':'select u.user_name ||''.''|| p.proc_name from SYS.SYSPROCEDURE as p, SYS.SYSUSERPERM as u  where p.creator = u.user_id order by u.user_name, p.proc_name')
+    elseif a:name ==# "DBI_dict_proc_ASAny"        |return (exists("g:dbext_default_DBI_dict_proc_ASAny")?g:dbext_default_DBI_dict_proc_ASAny.'':'select u.user_name ||''.''|| p.proc_name from SYS.SYSPROCEDURE as p, SYS.SYSUSERPERM as u  where p.creator = u.user_id order by u.user_name, p.proc_name')
     elseif a:name ==# "DBI_dict_proc_Oracle"       |return (exists("g:dbext_default_DBI_dict_proc_Oracle")?g:dbext_default_DBI_dict_proc_Oracle.'':'select owner||''.''||object_name from all_objects where object_type IN (''PROCEDURE'', ''PACKAGE'', ''FUNCTION'') order by object_name')
     elseif a:name ==# "DBI_dict_proc_Sybase"       |return (exists("g:dbext_default_DBI_dict_proc_Sybase")?g:dbext_default_DBI_dict_proc_Sybase.'':'select convert(varchar,u.name)||''.''||convert(varchar,o.name)   from sysobjects o, sysusers u  where o.uid=u.uid    and o.type=''P'' order by o.name')
     elseif a:name ==# "DBI_dict_proc_DB2"          |return (exists("g:dbext_default_DBI_dict_proc_DB2")?g:dbext_default_DBI_dict_proc_DB2.'':'select CAST(procname AS VARCHAR(40)) AS procname from syscat.procedures order by procname')
     elseif a:name ==# "DBI_dict_proc_mysql"        |return (exists("g:dbext_default_DBI_dict_proc_mysql")?g:dbext_default_DBI_dict_proc_mysql.'':'SELECT CONCAT_WS(''.'', routine_schema,specific_name) FROM INFORMATION_SCHEMA.ROUTINES  WHERE specific_name  like ''%''    AND routine_schema like ''%'' ')
     elseif a:name ==# "DBI_dict_proc_PGSQL"        |return (exists("g:dbext_default_DBI_dict_proc_PGSQL")?g:dbext_default_DBI_dict_proc_PGSQL.'':'SELECT pg_get_userbyid(u.usesysid)||''.''||p.proname  FROM pg_proc p, pg_user u  WHERE p.proowner = u.usesysid  ORDER BY p.proname ')
     elseif a:name ==# "DBI_dict_proc_SQLSRV"       |return (exists("g:dbext_default_DBI_dict_proc_SQLSRV")?g:dbext_default_DBI_dict_proc_SQLSRV.'':'select convert(varchar,u.name)+''.''+convert(varchar,o.name)   from sysobjects o, sysusers u  where o.uid=u.uid    and o.xtype=''P'' order by o.name ')
+    elseif a:name ==# "DBI_dict_proc_HANA"         |return (exists("g:dbext_default_DBI_dict_proc_HANA")?g:dbext_default_DBI_dict_proc_HANA.'':'select p.SCHEMA_NAME ||''.''|| p.PROCEDURE_NAME from SYS.PROCEDURES as p where order by p.SCHEMA_NAME, p.PROCEDURE_NAME')
     " Create additional SQL statements for the DBI layer to support describing a procedure which is not supported by DBI
-    elseif a:name ==# "DBI_desc_proc_SQLAnywhere"  |return (exists("g:dbext_default_DBI_desc_proc_SQLAnywhere")?g:dbext_default_DBI_desc_proc_SQLAnywhere.'':'select *   from SYS.SYSPROCPARMS as pp  where pp.parmtype = 0    and pp.procname = ''dbext_replace_name''   ')
-    elseif a:name ==# "DBI_desc_proc_ASAny"        |return (exists("g:dbext_default_DBI_desc_proc_ASAny")?g:dbext_default_DBI_desc_proc_ASAny.'':'select *   from SYS.SYSPROCPARMS as pp  where pp.parmtype = 0    and pp.procname = ''dbext_replace_name''   ')
+    elseif a:name ==# "DBI_desc_proc_SQLAnywhere"  |return (exists("g:dbext_default_DBI_desc_proc_SQLAnywhere")?g:dbext_default_DBI_desc_proc_SQLAnywhere.'':'select * from SYS.SYSPROCPARMS as pp  where pp.parmtype = 0    and pp.procname = ''dbext_replace_name''   ')
+    elseif a:name ==# "DBI_desc_proc_ASAny"        |return (exists("g:dbext_default_DBI_desc_proc_ASAny")?g:dbext_default_DBI_desc_proc_ASAny.'':'select * from SYS.SYSPROCPARMS as pp  where pp.parmtype = 0    and pp.procname = ''dbext_replace_name''   ')
     elseif a:name ==# "DBI_desc_proc_Oracle"       |return (exists("g:dbext_default_DBI_desc_proc_Oracle")?g:dbext_default_DBI_desc_proc_Oracle.'':'select object_name, owner from all_objects  where object_type IN (''PROCEDURE'', ''PACKAGE'', ''FUNCTION'') and object_name LIKE ''dbext_replace_name%'' order by object_name')
     elseif a:name ==# "DBI_desc_proc_Sybase"       |return (exists("g:dbext_default_DBI_desc_proc_Sybase")?g:dbext_default_DBI_desc_proc_Sybase.'':'exec sp_help dbext_replace_owner.dbext_replace_name ')
     elseif a:name ==# "DBI_desc_proc_DB2"          |return (exists("g:dbext_default_DBI_desc_proc_DB2")?g:dbext_default_DBI_desc_proc_DB2.'':'select ordinal      , CAST(parmname AS VARCHAR(40)) AS parmname      , CAST(typename AS VARCHAR(10)) AS typename      , length      , scale      , CAST(nulls AS VARCHAR(1)) AS nulls      , CAST(procschema AS VARCHAR(30)) AS procschema   from syscat.procparms  where procname = ''dbext_replace_name%''   order by ordinal   ')
     elseif a:name ==# "DBI_desc_proc_mysql"        |return (exists("g:dbext_default_DBI_desc_proc_mysql")?g:dbext_default_DBI_desc_proc_mysql.'':'describe dbext_replace_owner.dbext_replace_name ')
     elseif a:name ==# "DBI_desc_proc_PGSQL"        |return (exists("g:dbext_default_DBI_desc_proc_PGSQL")?g:dbext_default_DBI_desc_proc_PGSQL.'':'SELECT p.*   FROM pg_proc p, pg_type t, pg_language l  WHERE p.proargtypes = t.oid    AND p.prolang = t.oid    AND p.proname = ''dbext_replace_name''   ORDER BY p.pronargs  ')
     elseif a:name ==# "DBI_desc_proc_SQLSRV"       |return (exists("g:dbext_default_DBI_desc_proc_SQLSRV")?g:dbext_default_DBI_desc_proc_SQLSRV.'':'exec sp_help dbext_replace_owner.dbext_replace_name')
+    elseif a:name ==# "DBI_desc_proc_HANA"         |return (exists("g:dbext_default_DBI_desc_proc_HANA")?g:dbext_default_DBI_desc_proc_HANA.'':'select * from SYS.PROCEDURE_PARAMETERS as pp  where pp.PROCEDURE_NAME = ''dbext_replace_name'' order by pp.POSITION ')
     else                                           |return ''
     endif
 endfunction
@@ -1126,6 +1165,7 @@ endfunction
 function! s:DB_resetBufferParameters(use_defaults)
     let no_defaults  = 0
     let retval       = -2
+    let type         = ''
 
     " Reset configuration parameters to defaults
     for param in s:config_params_mv
@@ -1136,20 +1176,50 @@ function! s:DB_resetBufferParameters(use_defaults)
     " setup their connection information.
     silent! doautocmd User dbextPreConnection
 
+    " Set all connection parameters
+    let b:all_params_mv = []
+    call extend(b:all_params_mv, s:conn_params_mv)
+    call extend(b:all_params_mv, s:config_dbi_mv)
+
+    " let type = s:DB_get("type", no_defaults)
+    " DF  " If a database type has been chosen setup it's
+    " DF  " specific defaults
+    " DF  let type = s:DB_get("type", no_defaults)
+    " DF  if type != "" 
+    " DF              " \ && a:use_defaults == 1
+    " DF              " \ && retval == -2
+    " DF      for param in s:db_params_mv
+    " DF          call add(b:all_params_mv, type.'_'.param)
+    " DF      endfor
+    " DF  endif
+
+    " if s:DB_get('type', no_defaults) =~ '\<DBI\>\|\<ODBC\>'
+    "     " Set all DBI parameters
+    "     call extend(b:all_params_mv, s:config_dbi_mv)
+    " endif
+
     " Reset connection parameters to either blanks or defaults
     " depending on what was passed into this function
     " Loop through and prompt the user for all buffer
     " connection parameters.
     " Calling this function can be nested, so we must generate
     " a unique IterCreate name.
-    for param in s:conn_params_mv
+    for param in b:all_params_mv
         if a:use_defaults == 0
             call s:DB_set(param, "")
         else
+            " DF if type != "" 
+            " DF     let value = dbext#DB_getWType(param)
+            " DF else
+            " DF     let value = s:DB_getDefault(param)
+            " DF endif
             " Only set the buffer variable if the default value
             " is not '@ask'
-            if s:DB_getDefault(param) !=? '@ask'
-                let value = s:DB_get(param)
+            let value = s:DB_getDefault(param)
+            if value !~? '^@ask'
+                if value == ''
+                    let value = s:DB_get(param)
+                endif
                 if value == -1 
                     let retval = value
                     break
@@ -1160,10 +1230,6 @@ function! s:DB_resetBufferParameters(use_defaults)
         endif
     endfor
 
-    " if retval == -1 
-    "     return retval
-    " endif
-
     " If a database type has not been chosen, do prompt
     " for connection information
     if s:DB_get("type", no_defaults) == "" 
@@ -1172,11 +1238,6 @@ function! s:DB_resetBufferParameters(use_defaults)
         call s:DB_promptForParameters()
     endif
 
-    " if s:DB_get('filetype') == ''
-    "     let s:DB_set('filetype') = &filetype
-    " endif
-
-    " call s:DB_validateBufferParameters()
     let retval = s:DB_validateBufferParameters()
 
     return retval
@@ -1229,9 +1290,10 @@ function! s:DB_promptForParameters(...)
 
     " call s:DB_set('prompting_user', 1)
     let b:dbext_prompting_user = 1
-    let no_default = 1
-    let param_prompted = 0
-    let param_value = ''
+    let no_default             = 1
+    let use_defaults           = 1
+    let param_prompted         = 0
+    let param_value            = ''
 
     " The retval is only set when an optional parameter name 
     " is passed in from DB_get
@@ -1343,7 +1405,9 @@ function! s:DB_promptForParameters(...)
             if param == "profile"
                 " If using the DBI layer, drop any connections which may be active
                 " before switching profiles
-                if s:DB_get('type') =~ '\<DBI\>\|\<ODBC\>'
+                " Do not use DB_get as this can trigger a prompt if type is unset
+                " if s:DB_get('type') =~ '\<DBI\>\|\<ODBC\>'
+                if exists('b:dbext_type') && b:dbext_type =~ '\<DBI\>\|\<ODBC\>'
                     call dbext#DB_disconnect()
                 endif
 
@@ -1369,10 +1433,11 @@ function! s:DB_promptForParameters(...)
                 else
                     call s:DB_set(param, "") 
                 endif
+                " call s:DB_resetBufferParameters(use_defaults)
             else
                 " Force string comparison
-                if l:old_value.'' ==? '@ask'
-                    " If the default value is @ask, then do not set the 
+                if l:new_value.'' =~? '^@ask'
+                    " If the new value is @ask, then do not set the 
                     " buffer parameter, just return the value.
                     " The next time we execute something, we will be
                     " prompted for this value again.
@@ -1380,7 +1445,6 @@ function! s:DB_promptForParameters(...)
                 endif
 
                 call s:DB_set(param, l:new_value) 
-
             endif
         endif
     endfor
@@ -3508,12 +3572,11 @@ function! s:DB_SQLSRV_execSql(str)
 
     if has("win32") && s:DB_get("integratedlogin") == 1
         let cmd = cmd .  ' -E'
-    else
-        let cmd = cmd . ' -U ' .  s:DB_get("user") .
-                \ ' -P' . s:DB_get("passwd") 
     endif
 
     let cmd = cmd . 
+                \ s:DB_option(' -U ', s:DB_get("user"), ' ') .
+                \ s:DB_option(' -P',  s:DB_get("passwd"), ' ') .
                 \ s:DB_option(' -H ', s:DB_get("host"), ' ') .
                 \ s:DB_option(' -S ', s:DB_get("srvname"), ' ') .
                 \ s:DB_option(' -d ', s:DB_get("dbname"), ' ') .
@@ -4785,6 +4848,8 @@ function! s:DB_ODBC_describeProcedure(procedure_name)
         let driver = 'DB2'
     elseif rdbms =~? 'postgres'
         let driver = 'PGSQL'
+    elseif rdbms =~? 'HDB'
+        let driver = 'HANA'
     else
         call s:DB_warningMsg(
                     \ 'dbext:Please report this ODBC driver ['.
@@ -4959,6 +5024,8 @@ function! s:DB_ODBC_getListProcedure(proc_prefix)
         let driver = 'DB2'
     elseif rdbms =~? 'postgres'
         let driver = 'PGSQL'
+    elseif rdbms =~? 'HDB'
+        let driver = 'HANA'
     else
         call s:DB_warningMsg(
                     \ 'dbext:Please report this ODBC driver ['.
@@ -5144,6 +5211,8 @@ function! s:DB_ODBC_getDictionaryProcedure() "{{{
         let driver = 'DB2'
     elseif rdbms =~? 'postgres'
         let driver = 'PGSQL'
+    elseif rdbms =~? 'HDB'
+        let driver = 'HANA'
     else
         call s:DB_warningMsg(
                     \ 'dbext:Please report this ODBC driver ['.
@@ -5718,6 +5787,11 @@ endfunction
 
 function! dbext#DB_getQueryUnderCursor()
     let use_defaults = 1
+
+    " Record current buffer to return to the correct one
+    let s:dbext_prev_winnr = winnr()
+    let s:dbext_prev_bufnr = bufnr('%')
+
     " In order to parse a statement, we must know what database type
     " we are dealing with to choose the correct cmd_terminator
     if s:DB_get("buffer_defaulted") != 1
@@ -5799,8 +5873,11 @@ function! dbext#DB_getQueryUnderCursor()
         " In the above case, we would stop even though the ; was
         " not the command terminator.
 
-        " Start visual mode, find the terminator (should be at end of line)
-        exe 'silent! norm! v/'.dbext_cmd_terminator."\\s*$/e\n".'"zy``'
+        " Start visual mode and find 
+        "   1.  the terminator (should be at end of line) \s*$
+        "   2.  or find a blank line \n\n
+        "   3.  or end of file \%$
+        exe 'silent! norm! v/\('.dbext_cmd_terminator.'\s*$\|\n\n\|\%$\)/e'."\n".'"zy``'
 
         if line("'<") == line("'>") &&
                     \ col("'<") == col("'>")
@@ -5976,6 +6053,9 @@ function! dbext#DB_DictionaryCreate( drop_dict, which ) "{{{
 
     let temp_file = "-1"
 
+    let l:prev_use_result_buffer = s:DB_get('use_result_buffer')
+    call s:DB_set('use_result_buffer', 0)
+    
     " In order to parse a statement, we must know what database type
     " we are dealing with to choose the correct cmd_terminator
     if s:DB_get("buffer_defaulted") != 1
@@ -5992,9 +6072,6 @@ function! dbext#DB_DictionaryCreate( drop_dict, which ) "{{{
         call s:DB_set('DBI_max_rows', 0)
     endif
 
-    let l:prev_use_result_buffer = s:DB_get('use_result_buffer')
-    call s:DB_set('use_result_buffer', 0)
-    
     " Check if the dictionary has already been created, if so 
     " return the current temporary file holding it
     let temp_file = s:DB_get("dict_".which_dict."_file")
@@ -6962,9 +7039,13 @@ function! s:DB_addToResultBuffer(output, do_clear)
     " Store the line count of the result buffer
     let s:dbext_result_count = line('$')
 
-    " Return to original window
-    " exec cur_winnr."wincmd w"
-    exec s:dbext_prev_winnr."wincmd w"
+    if exists('s:dbext_prev_winnr')
+        " Return to original window
+        " exec cur_winnr."wincmd w"
+        exec s:dbext_prev_winnr."wincmd w"
+    else
+        call s:DB_warningMsg("dbext: No previous window")
+    endif
 
     return
 endfunction "}}}
@@ -7065,12 +7146,37 @@ function! s:DB_searchReplace(str, exp_find_str, exp_get_value, count_matches)
         " Or the definition of a global variable
         "   CREATE VARIABLE variable ...
         " If so, ignore the match
+        " Regex
+        "    \(       - Start multiple matches
+        "       \<    - Start word boundary
+        "       \w\+  - Match any word character
+        "       \ze   - Stop the match 
+        "       \s*   - Match can be followed by spaces or tabs
+        "       $     - And ends at the end of the line
+        "    \|       - OR
+        "       ''    - empty string
+        "       \ze   - Stop the match 
+        "       $     - And ends at the end of the line
+        "    \|       - OR
+        "       /     - Literal
+        "       \ze   - Stop the match 
+        "       $     - And ends at the end of the line
+        "    \|       - OR
+        "       ?     - Literal
+        "       \ze   - Stop the match 
+        "       $     - And ends at the end of the line
+        "    \|       - OR
+        "       @     - Literal
+        "       \ze   - Stop the match 
+        "       $     - And ends at the end of the line
+        "    \)       - End multiiple matches
+        "
         let inout = matchstr(strpart(str, 0, index), '\(\<\w\+\ze\s*$\|''\ze$\|/\ze$\|@\ze$\)')
 
         " The above query gathers the preceeding text to make the above
         " determination
         " if inout !~? '\(in\|out\|inout\|declare\|set\|variable\|''\|/\|@\)'
-        if s:DB_get('ignore_variable_regex') !~? inout
+        if inout == '' || s:DB_get('ignore_variable_regex') !~? inout 
             " Check if the variable name is preceeded by a comment character.
             " If so, ignore and continue.
             if strpart(str, 0, (index-1)) !~ '\(--\|\/\/\)\s*$'

@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2013 Apr 29
+*dbext.txt*	For Vim version 7.0.  Last change: 2013 Sep 24
 
 
                 	  VIM REFERENCE MANUAL 
@@ -7,7 +7,7 @@
                      Peter Bagyinszki 
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 19.00
+	  	dbext.vim version 20.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -116,6 +116,45 @@ David Fishburn
 ==============================================================================
 2. What's New						*dbext-new*
 
+Version 20.00 (September 24, 2013)
+
+ New Features
+ ------------
+ - Added new DBI/ODBC option DBI_max_column_width to restrict the width 
+   displayed in the DBI result window (Luke Mauldin).
+ - Improved the pattern used to find the query under the cursor.  Besides
+   finding the command terminator, it will also look for the first blank
+   line or the end of the file (Jason Quirk).
+ - The dbext menu now uses the maps rather than calls to the commands.
+   A new option will control this behaviour, g:dbext_map_or_cmd.
+ - Changed the default SQLite binary to be sqlite3 instead of sqlite 
+   (Greg Kapfhammer).
+ - Added a profile example for using the "sqsh" binary to connect to 
+   SQL Server instead of "osql" (Brian Iván Martínez).
+ - The cmd_terminator displayed under Connection Options in the DBGetOption
+   output was always blank.
+ - Improved support for SAP HANA database, pulling objects from the system
+   catalogue.
+
+ Bug Fixes
+ ---------
+ - Controlling the DBI max rows (:DBSetOption DBI_max_rows=100) and DBI
+   column separator did not work on a per buffer basis.
+ - Undefined variable, s:dbext_prev_winnr, was reported when using DBI/ODBC
+   connections through the sqlComplete plugin and completing objects 
+   which require an active database connection (i.e. Tables, 
+   Procedures, ...) which had failed to connect to the database.
+ - dbext was not prompting for ? parameters in PHP files.  This also
+   affected all languages (Jérémie).
+ - Changing a database's global cmd terminator was not necessarily
+   picked up when using that database type (Jason Quirk).
+ - ODBC or DBI could report an error about using length() instead
+   of scalar() (Micah Duke).
+ - Various errors on Linux with DBI (Micah Duke).
+ - Using the console version of Vim displayed a number of "debug" messages 
+   during initialization.
+
+
 Version 19.00 (April 29, 2013)
 
  New Features
@@ -144,6 +183,7 @@ Version 19.00 (April 29, 2013)
    Or while within a buffer:
       DBSetOption cmd_terminator=
       DBSetOption cmd_terminator=;
+
 
 Version 18.00 (Nov 28, 2012)
 
@@ -1758,7 +1798,7 @@ Version 2.00 (Jul 11, 2004)
         dbext_default_SQLITE_extra             = ''
         dbext_default_SQLSRV_bin               = "osql"
         dbext_default_SQLSRV_cmd_header        = ""
-        dbext_default_SQLSRV_cmd_terminator    = ""
+        dbext_default_SQLSRV_cmd_terminator    = "\ngo\n"
         dbext_default_SQLSRV_cmd_options       = '-w 10000 -r -b -n'
         dbext_default_SQLSRV_extra             = ''
         dbext_default_ORA_bin                  = "sqlplus"
@@ -2131,6 +2171,11 @@ Version 2.00 (Jul 11, 2004)
  also specify the following to disable the default mappings: >
         let g:dbext_default_usermaps = 0
 <    
+ By default the dbext menu will use the default mappings to execute commands.
+ You can change the behaviour to use the dbext commands instead by setting
+ the following option: >
+        let g:dbext_map_or_cmd = 'cmd'
+<    
  Commands
     (In addition to the above mappings)
     DBExecSQL             - Enter any command you want sent to the database
@@ -2398,7 +2443,12 @@ To specify the type of database you connect to most often, you can place the
     
     " Microsoft SQL Server
     let g:dbext_default_profile_SQLSRV        = 'type=SQLSRV:user=sa:passwd=whatever:host=localhost:replace_title=1'
-     let g:dbext_default_profile_mySQLServer  = 'type=SQLSRV:integratedlogin=1:dbname=myDB'
+    let g:dbext_default_profile_mySQLServer  = 'type=SQLSRV:integratedlogin=1:dbname=myDB'
+    " This SQL Server example uses sqsh to connect instead of the default osql
+    " binary by using the SQLSRV_bin connection parameter. Since this binary
+    " requires different parameters than osql, the "extra" connection option
+    " is used to add additional switches.
+    let g:dbext_default_profile_SQLSRV_sqsh='type=SQLSRV:user=User:passwd=Pass:host=Ip:SQLSRV_bin=sqsh:SQLSRV_cmd_options=:extra=-SFreetdsProfile -D dbname'
     
     " SQLite
     let g:dbext_default_profile_POPFile = 'type=SQLITE:SQLITE_bin=C:\Programs\POPFile\sqlite.exe:dbname=C:\Programs\POPFile\popfile.db'
@@ -2412,7 +2462,7 @@ To specify the type of database you connect to most often, you can place the
     " HANA
     " The instance ID is specified via the extra parameter
     let g:dbext_default_profile_HANA_MySrv = 'type=HANA:user=SYSTEM:passwd=manager:host=myhost:extra=-i 60'
-
+    let g:dbext_default_profile_ODBC_MySrv = 'type=ODBC:user=SYSTEM:passwd=manager:dsnname=My_HANA_DSN'
 <
 9.5 Connection information in modelines           *dbext-connect-modelines*
                                                   *dbext-modelines*
@@ -2552,15 +2602,32 @@ To specify the type of database you connect to most often, you can place the
 >
     " Since I repeatedly need to edit stored procedures, the CREATE PROCEDURE
     " statement is preceeded by an IF ... END IF block which will drop
-    " the procedure or it uses the CREATE OR REPLACE syntax.  
+    " the procedure or it uses the CREATE OR REPLACE syntax.  A third alternative
+    " is an ALTER PROCEDURE statement.
     " This function will visually select the IF block to the END; statement
-    " of the stored procedure and execute it.  Or check for the 
+    " of the stored procedure and execute it.  Or check for the
     " CREATE OR REPLACE and stop there and look to the end.
-    function! SQLExecuteIfCreateReplace()
+    " Here are the 3 structures this will look for (all from column 0):
+    " Case 1:
+    "     IF ..
+    "     END IF;
+    "     CREATE PROCEDURE
+    "     BEGIN
+    "     END;
+    " Case 2:
+    "     CREATE OR REPLACE PROCEDURE
+    "     BEGIN
+    "     END;
+    " Case 3:
+    "     ALTER PROCEDURE
+    "     BEGIN
+    "     END;
+    "
+    function! SQLExecuteIfCreateReplace() 
         let l:old_sel = &sel
         let &sel = 'inclusive'
         let saveWrapScan=&wrapscan
-        let saveSearch=@/ 
+        let saveSearch=@/
         let l:reg_z = @z
         let &wrapscan=0
         let @z = ''
@@ -2569,24 +2636,27 @@ To specify the type of database you connect to most often, you can place the
         let endLine = 0
         let curLine = line(".")
         let curCol  = virtcol(".")
-    
+
         " Must default the command terminator
         let l:dbext_cmd_terminator = ";"
-    
+
         try
             " Search backwards and do NOT wrap
             " Find the line beginning with an IF clause
             "     IF EXISTS( SELECT 1 ...
             " or find an or replace clause
             "     CREATE OR REPLACE PROCEDURE ...
-            " And execute it until we find an 
-            "     END 
+            " or find an ALTER PROCEDURE
+            "     CREATE OR REPLACE PROCEDURE ...
+            " And execute it until we find an
+            "     END
             " at the beginning of a line.
-            let startLine = search('\c\(^\<if\>\|\<or\s\+replace\>\)', 'bcnW' )
-    
+            let startLine = search('\c\(^\<if\>\|^\<alter\s\+procedure\>\|\<or\s\+replace\>\)', 'bcnW' )
+
             if startLine > 0
                 " Search forward and visually select all lines
                 " until we find an END; clause
+                " exe 'silent! norm! V/^END'.l:dbext_cmd_terminator."\s*$\n\<esc>"
                 let endLine = search('^END'.l:dbext_cmd_terminator.'\s*$', 'cnW')
                 exec startLine.','.endLine.'DBExecRangeSQL'
             endif
@@ -2599,7 +2669,7 @@ To specify the type of database you connect to most often, you can place the
             let &wrapscan=saveWrapScan
             let &sel = l:old_sel
         endtry
-    endfunction
+    endfunction 
 <
  The mapping I use to trigger the function is <Leader>sbe using the 
  mnemonic sql - begin - end
