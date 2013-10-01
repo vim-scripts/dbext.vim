@@ -4,10 +4,10 @@
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       19.00
+" Version:       20.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2013 Apr 29
+" Last Modified: 2013 Sep 02
 " Created:       2007-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 "
@@ -119,7 +119,7 @@
 if exists("g:loaded_dbext_dbi") 
    finish
 endif
-let g:loaded_dbext_dbi = 1900
+let g:loaded_dbext_dbi = 2000
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -138,11 +138,14 @@ function! dbext_dbi#DBI_initialize()
     if !exists("dbext_dbi_sql")
        let g:dbext_dbi_sql = ""
     endif
-    if !exists("dbext_dbi_max_rows")
-       let g:dbext_dbi_max_rows = 300
+    if !exists("dbext_default_DBI_max_rows")
+       let g:dbext_default_DBI_max_rows = 300
     endif
-    if !exists("dbext_default_dbi_column_delimiter")
-       let g:dbext_default_dbi_column_delimiter = "  "
+    if !exists("dbext_default_DBI_max_column_width")
+       let g:dbext_default_DBI_max_column_width = 0
+    endif
+    if !exists("dbext_default_DBI_column_delimiter")
+       let g:dbext_default_DBI_column_delimiter = "  "
     endif
     if !exists("dbext_dbi_trace_level")
        let g:dbext_dbi_trace_level = 0
@@ -230,7 +233,7 @@ endif
 " (db_format_array) then place in the global variable @result_set.
 "
 " Then I ask dbext for the column separator
-" (dbext_default_dbi_column_delimiter, which defaults to 3 blank spaces).
+" (dbext_default_DBI_column_delimiter, which defaults to 3 blank spaces).
 "
 " Then db_format_array() loops through the array, @result_set and using the
 " array of column maximums builds an appropriate length string so all columns
@@ -279,10 +282,19 @@ my $test_inc      = 0;
 my $conn_inc      = 0;
 my $dbext_dbi_sql = "";
 my $col_sep_vert  = "  ";
+my $col_max_width = 0;
 my $debug         = 0;
-my $inside_vim    = 0;
 my $native_err    = 0;
+my $inside_vim    = 0;
 
+eval {
+    VIM::Eval(1);
+};
+if ($@) {
+    $inside_vim = 0;
+} else {
+    $inside_vim = 1;
+}
 
 # Sets a Vim variable to a value.  Will worry about 
 # escaping strings when necessary.
@@ -371,13 +383,21 @@ sub db_vim_eval
     my $val;
 
     if( ! $inside_vim ) {
+        # This sub asks Vim for certain values.
+        # If we are running this as a Perl program outside of Vim
+        # then we cannot get Vim to evaluate what we need.
+        # So, for some of the values that we need to tweak to test 
+        # we can return some default values for them.
         if( $cmd eq "bufnr('%')" ) {
             return 1;
         }
-        if( $cmd eq "g:dbext_dbi_max_rows" ) {
+        if( $cmd eq "g:dbext_default_DBI_max_rows" || $cmd eq "b:dbext_DBI_max_rows" ) {
             return 10;
         }
-        if( $cmd eq "g:dbext_default_dbi_column_delimiter" ) {
+        if( $cmd eq "g:dbext_default_DBI_max_column_width" || $cmd eq "b:dbext_DBI_max_column_width" ) {
+            return 0;
+        }
+        if( $cmd eq "g:dbext_default_DBI_column_delimiter" || $cmd eq "b:dbext_DBI_column_delimiter" ) {
             return "\t";
         }
     }
@@ -466,8 +486,11 @@ sub db_vim_print
     my $line_nbr      = shift;
     my $line_txt      = shift;
     my $printed_lines = 0;
-    my $max_col_width = $result_max_col_width + 2;
+    my $max_col_width = 2;
 
+    if( defined $result_max_col_width ) {
+        $max_col_width += $result_max_col_width;
+    }
     if ( ! defined($line_nbr) ) {
         db_echo('db_vim_print invalid line number');
         return -1;
@@ -499,7 +522,10 @@ sub db_vim_print
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_get_defaults');
 sub db_get_defaults 
 {
-    $col_sep_vert = db_vim_eval('g:dbext_default_dbi_column_delimiter');
+    $max_rows      = db_vim_eval('g:dbext_default_DBI_max_rows');
+    $col_sep_vert  = db_vim_eval('g:dbext_default_DBI_column_delimiter');
+    $col_max_width = db_vim_eval('g:dbext_default_DBI_max_column_width');
+    db_debug("db_get_defaults:max rows[$max_rows] col separator[$col_sep_vert] max col width[$col_max_width]");
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_escape');
@@ -726,9 +752,19 @@ sub db_get_connection
         return undef;
     }
 
+    # Each time a buffer is requested, look up any specific
+    # settings for this buffer.  Since this is single threaded 
+    # this approach is fine and allows for the settings to be 
+    # changed at anytime.
+    $max_rows      = db_vim_eval('b:dbext_DBI_max_rows');
+    $col_sep_vert  = db_vim_eval('b:dbext_DBI_column_delimiter');
+    $col_max_width = db_vim_eval('b:dbext_DBI_max_column_width');
+    db_debug("db_get_connection:max rows[$max_rows] col separator[$col_sep_vert] max col width[$col_max_width]");
+
     db_debug('db_get_connection:returning:'.$bufnr);
     $conn_local = $connections{$bufnr}->{'conn'};
     $driver     = $connections{$bufnr}->{'driver'};
+    $connections{$bufnr}->{LastRequest} = localtime;
     return ($conn_local, $driver);
 }
 
@@ -1042,18 +1078,20 @@ sub db_set_connection_option
     } else {
         # Use global connection object
         # This expecting a boolean value (ie AutoCommit)
-        $conn_local->{$option} = $value;
-        #    or die $DBI::errstr;
-        db_debug("db_set_connection_option ConnLocal->Opt[$option] Val:[".$conn_local->{$option}."]");
+        if( defined $conn_local->{$option} ) {
+            $conn_local->{$option} = $value;
+            #    or die $DBI::errstr;
+            db_debug("db_set_connection_option ConnLocal->Opt[$option] Val:[".$conn_local->{$option}."]");
 
-        my( $level, $err, $msg, $state ) = db_check_error($driver);
-        if ( ! $msg eq "" ) {
-            $msg = "$level. DBSO:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"");
-            db_set_vim_var('g:dbext_dbi_msg', $msg);
-            if ( $level eq "E" ) {
-                db_set_vim_var('g:dbext_dbi_result', -1);
-                db_debug("db_query:$msg - exiting");
-                return -1;
+            my( $level, $err, $msg, $state ) = db_check_error($driver);
+            if ( ! $msg eq "" ) {
+                $msg = "$level. DBSO:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"");
+                db_set_vim_var('g:dbext_dbi_msg', $msg);
+                if ( $level eq "E" ) {
+                    db_set_vim_var('g:dbext_dbi_result', -1);
+                    db_debug("db_query:$msg - exiting");
+                    return -1;
+                }
             }
         }
     }
@@ -1075,6 +1113,9 @@ sub db_query
     }
 
     $debug         = db_is_debug();
+    # Check for any updated default values
+    db_get_defaults();
+
     # db_debug("db_query:SQL:".$sql);
     if ( length($sql) == 0 ) {
         $sql       = db_vim_eval('g:dbext_dbi_sql');
@@ -1094,7 +1135,7 @@ sub db_query
  
     ($conn_local, $driver) = db_get_connection();
     my $sth = undef;
-    $conn_local->{LastRequest} = localtime;
+    #$conn_local->{LastRequest} = localtime;
 
     $sth = $conn_local->prepare( $sql );
     # db_echo( "db_query:25".DBI::errstr );
@@ -1131,6 +1172,7 @@ sub db_query
 
 
     my $row_count = $sth->execute;
+    $row_count = 0 unless defined $row_count;
     db_debug("db_query:rowcount[$row_count] executed[$sql]");
     if ( $row_count eq "0E0" || $row_count lt "0" ) {
         # 0E0 - Special case which means no rows were affected
@@ -1180,11 +1222,13 @@ sub db_format_results
     my @table;
     my @headers;
 
+    return -1 unless defined $sth;
+
     ($conn_local, $driver) = db_get_connection();
 
     # Check if the NUM_OF_FIELDS is > 0.
     # In mysql a COMMIT does not provide a result set.
-    if (  $sth->{NUM_OF_FIELDS} > 0 ) {
+    if ( defined $sth->{NUM_OF_FIELDS} && $sth->{NUM_OF_FIELDS} > 0 ) {
         # Add the column list to the array
         push @headers,[ @{$sth->{NAME}} ];
         # Set the initial length of the columns
@@ -1192,6 +1236,10 @@ sub db_format_results
             $temp_length = length($col_name);
             $temp_length = ($temp_length > $min_col_width ? $temp_length : $min_col_width);
             $max_col_width = ( $temp_length > $max_col_width ? $temp_length : $max_col_width );
+            if (  $col_max_width > 0 ) {
+                # $col_max_width is set via g:dbext_DBI_max_column_width
+                $max_col_width = ( $max_col_width > $col_max_width ? $col_max_width : $max_col_width );
+            }
             $col_length[$i] = $temp_length;
             $i++;
         }
@@ -1206,12 +1254,15 @@ sub db_format_results
             foreach my $col ( @{$row} ) {
                 $temp_length = length((defined($col)?$col:""));
                 $col_length[$i] = ( $temp_length > $col_length[$i] ? $temp_length : $col_length[$i] );
+                if (  $col_max_width > 0 ) {
+                    # $col_max_width is set via g:dbext_DBI_max_column_width
+                    $col_length[$i] = ( $col_length[$i] > $col_max_width ? $col_max_width : $col_length[$i] );
+                }
                 $i++;
             }
 
             # Cap the number of rows displayed.
             $row_count++;
-            $max_rows = db_vim_eval("g:dbext_dbi_max_rows");
             if ( $max_rows > 0 && $row_count >= $max_rows ) {
                 db_debug('Bailing on row count:'.$max_rows);
                 last;
@@ -1253,7 +1304,7 @@ sub db_format_results
     $result_max_col_width = $max_col_width;
 
     db_debug("db_format_results H:".Dumper(@result_headers));
-    db_debug('db_format_results:R count:'.length(@result_set));
+    db_debug('db_format_results:R count:'.scalar(@result_set));
     db_debug("db_format_results R:".Dumper(@result_set));
     db_format_array();
 
@@ -1305,12 +1356,14 @@ sub db_format_array()
         foreach my $col2 ( @{$row2} ) {
             $val = (defined($col2)?$col2:"NULL");
             # Remove any unprintable characters 
-            $val =~ tr/\x80-\xFF/ /d;
+            #$val =~ tr/\x80-\xFF/ /d;
+            $val =~ tr/\x80-\xFF/ /;
             # Remove the NULL character since Vim will treat this as 
             # the end of the line
             # For more of these see:
             #    http://www.asciitable.com/
-            $val =~ tr/\x00/ /d;
+            #$val =~ tr/\x00/ /d;
+            $val =~ tr/\x00/ /;
             $fragment = substr ($val.(' ' x $result_col_length[$i]), 0, $result_col_length[$i]);
             $col2 = $fragment;
             $i++;
@@ -1399,7 +1452,11 @@ sub db_print_results
     } else {
         my @formatted_headers;
         my $col_nbr = 0;
-        my $max_col_width = $result_max_col_width + 1;
+        my $max_col_width = 1;
+
+        if( defined $result_max_col_width ) {
+            $max_col_width += $result_max_col_width;
+        }
         $i = 0;
         db_debug("db_print_results: Vertical, looping for col_length");
         while ($i < scalar(@result_col_length) ) {
@@ -1502,7 +1559,11 @@ sub db_results_variable
     } else {
         my @formatted_headers;
         my $col_nbr = 0;
-        my $max_col_width = $result_max_col_width + 1;
+        my $max_col_width = 1;
+
+        if( defined $result_max_col_width ) {
+            $max_col_width += $result_max_col_width;
+        }
         $i = 0;
         while ($i < scalar(@result_col_length) ) {
             $fragment = "";
@@ -1595,7 +1656,11 @@ sub db_results_list
     } else {
         my @formatted_headers;
         my $col_nbr = 0;
-        my $max_col_width = $result_max_col_width + 1;
+        my $max_col_width = 1;
+
+        if( defined $result_max_col_width ) {
+            $max_col_width += $result_max_col_width;
+        }
         $i = 0;
         while ($i < scalar(@result_col_length) ) {
             $fragment = "";
