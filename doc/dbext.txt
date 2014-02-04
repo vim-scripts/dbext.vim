@@ -2073,7 +2073,7 @@ Version 2.00 (Jul 11, 2004)
 
     " Describe the table under the cursor
     " sql - describe - table
-    nnoremap <unique> <Leader>sd <Plug>DBDescribeTable
+    nnoremap <unique> <Leader>sdt <Plug>DBDescribeTable
     :DBDescribeTable
 
     " Describe the table prompt for the name
