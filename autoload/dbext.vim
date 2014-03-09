@@ -92,6 +92,8 @@ function! dbext#DB_buildLists()
     call add(s:db_types_mv, 'SQLSRV')
     " SQLite (fishburn)
     call add(s:db_types_mv, 'SQLITE')
+    " Crate
+    call add(s:db_types_mv, 'CRATE')
     " Oracle Rdb (stern)
     call add(s:db_types_mv, 'RDB')
     " SAP Sybase SQL Anywhere UltraLite (UL) (fishburn)
@@ -991,6 +993,10 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "RDB_cmd_terminator"      |return (exists("g:dbext_default_RDB_cmd_terminator")?g:dbext_default_RDB_cmd_terminator.'':";\n")
     elseif a:name ==# "RDB_SQL_Top_pat"         |return (exists("g:dbext_default_RDB_SQL_Top_pat")?g:dbext_default_RDB_SQL_Top_pat.'':'\(.*\)')
     elseif a:name ==# "RDB_SQL_Top_sub"         |return (exists("g:dbext_default_RDB_SQL_Top_sub")?g:dbext_default_RDB_SQL_Top_sub.'':'\1 LIMIT to @dbext_topX rows ')
+    elseif a:name ==# "CRATE_bin"               |return (exists("g:dbext_default_CRATE_bin")?g:dbext_default_CRATE_bin.'':'crash')
+    elseif a:name ==# "CRATE_cmd_header"        |return (exists("g:dbext_default_CRATE_cmd_header")?g:dbext_default_CRATE_cmd_header.'':"")
+    elseif a:name ==# "CRATE_cmd_options"       |return (exists("g:dbext_default_CRATE_cmd_options")?g:dbext_default_CRATE_cmd_options.'':'')
+    elseif a:name ==# "CRATE_cmd_terminator"    |return (exists("g:dbext_default_CRATE_cmd_terminator")?g:dbext_default_CRATE_cmd_terminator.'':';')
     elseif a:name ==# "SQLITE_bin"              |return (exists("g:dbext_default_SQLITE_bin")?g:dbext_default_SQLITE_bin.'':'sqlite3')
     elseif a:name ==# "SQLITE_cmd_header"       |return (exists("g:dbext_default_SQLITE_cmd_header")?g:dbext_default_SQLITE_cmd_header.'':".mode column\n.headers ON\n")
     elseif a:name ==# "SQLITE_cmd_options"      |return (exists("g:dbext_default_SQLITE_cmd_options")?g:dbext_default_SQLITE_cmd_options.'':'')
@@ -3138,6 +3144,31 @@ function! s:DB_MYSQL_getDictionaryView() "{{{
     return s:DB_MYSQL_stripHeaderFooter(result)
 endfunction "}}}
 "}}}
+
+
+" CRATE exec {{{
+function! s:DB_CRATE_execSql(str)
+
+    let output = dbext#DB_getWType("cmd_header")
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
+
+    exe 'redir! > ' . s:dbext_tempfile
+    silent echo output
+    redir END
+
+    let dbext_bin = s:DB_fullPath2Bin(dbext#DB_getWType("bin"))
+
+    let cmd = dbext_bin .  ' ' . dbext#DB_getWType("cmd_options")
+    let cmd = cmd .
+                \ s:DB_option('--hosts ', s:DB_get("host") . ":" . s:DB_get("port"), '') .
+                \ ' < ' . s:dbext_tempfile
+    let result = s:DB_runCmd(cmd, output, "")
+
+    return result
+endfunction
+
 " SQLITE exec {{{
 function! s:DB_SQLITE_execSql(str)
 
