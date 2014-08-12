@@ -6955,6 +6955,7 @@ function! s:DB_addToResultBuffer(output, do_clear)
     " the data may be lined up for columns
     setlocal nomodified
     setlocal nowrap
+    setlocal go+=b
     setlocal noswapfile
     setlocal nonumber
     " Go to top of output
