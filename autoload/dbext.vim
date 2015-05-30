@@ -7367,7 +7367,8 @@ function! dbext#DB_parseQuery(query)
                 \ matchstr( l:filetype, "cs" ) == "cs"  ||
                 \ matchstr( l:filetype, "jsp" ) == "jsp"  ||
                 \ matchstr( l:filetype, "html" ) == "html"  ||
-                \ matchstr( l:filetype, "javascript" ) == "javascript"
+                \ matchstr( l:filetype, "javascript" ) == "javascript" ||
+                \ matchstr( l:filetype, "cpp" ) == "cpp"
         let query = s:DB_parseJava(a:query)
         return s:DB_parseHostVariables(query)
     elseif matchstr( l:filetype, "jproperties" ) == "jproperties"
@@ -7869,9 +7870,14 @@ function! s:DB_parsePHP(query)
 endfunction
 "}}}
 
-" Java, JSP, JavaScript Parser {{{
+" Java, JSP, JavaScript, C++ Parser {{{
 function! s:DB_parseJava(query)
     let query = a:query
+
+    " Strip stand alone quotes at the begin and end (string continuation in
+    " C++)
+    let query = substitute(query, '\v"\s*\n\s*"', ' ', 'g')
+
     " Remove any newline characters
     let query = substitute(query, "\n", ' ', 'g')
 
