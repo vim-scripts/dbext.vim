@@ -6580,11 +6580,11 @@ function! dbext#DB_auBufDelete(del_buf_nr) "{{{
         silent! exec cur_buf.'buffer'
 
         " Switch back value of 'bufhidden' and syntax
-        if !empty(cur_bufhidden)
+        "if !empty(cur_bufhidden)
             exec "setlocal bufhidden=".cur_bufhidden
             exec "setlocal syntax=".cur_syntax
             exec "setlocal filetype=".cur_filetype
-        endif
+        "endif
     endif
 endfunction "}}}
 "}}}
