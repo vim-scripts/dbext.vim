@@ -110,7 +110,7 @@ SQL can be used from a variety of languages.  Each development language (PHP, Pe
 different filetypes, so that it can understand and correctly parse a SQL statement.
 
 The current supported languages are:
-        PHP, Java, JSP, JavaScript, JProperties, Perl, SQL, Vim
+        PHP, Java, JSP, JavaScript, JProperties, C++, Perl, SQL, Vim
 
 For example assume you had the following Java code:
 String mySQL = 
