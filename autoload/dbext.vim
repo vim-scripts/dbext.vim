@@ -6222,7 +6222,9 @@ function! s:DB_pad(side, length, value)
 endfunction
 
 function! s:DB_getInput(prompt, default_value, cancel_value)
-    if s:DB_get('inputdialog_cancel_support') == 1
+    if a:prompt == "[O] User password: "
+        let val = inputsecret( a:prompt, a:default_value )
+    elseif s:DB_get('inputdialog_cancel_support') == 1
         let val = inputdialog( a:prompt, a:default_value, a:cancel_value )
     else
         let val = inputdialog( a:prompt, a:default_value )
