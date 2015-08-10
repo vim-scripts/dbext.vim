@@ -7,7 +7,7 @@
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       21.00
+" Version:       22.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       David Fishburn <dfishburn dot vim at gmail dot com>
 " Last Modified: 2015 Jan 06
@@ -61,6 +61,8 @@
 "        "C:\Program Files (x86)\Microsoft Visual Studio 9.0\Common7\Tools\vsvars32.bat"
 "        or
 "        "C:\Program Files (x86)\Microsoft Visual Studio 10.0\Common7\Tools\vsvars32.bat"
+"        or
+"        "C:\Program Files (x86)\Microsoft Visual Studio 12.0\Common7\Tools\vsvars32.bat"
 "            perl Makefile.PL
 "            nmake
 "            nmake test
@@ -131,7 +133,7 @@
 if exists("g:loaded_dbext_dbi")
    finish
 endif
-let g:loaded_dbext_dbi = 2100
+let g:loaded_dbext_dbi = 2200
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -166,7 +168,7 @@ endfunction
 
 call dbext_dbi#DBI_initialize()
 
-if !has('perl')
+if ! has('perl')
     let g:loaded_dbext_dbi = -1
     let g:loaded_dbext_dbi_msg = 'Vim does not have perl support enabled'
     finish
@@ -673,15 +675,22 @@ sub db_commit
 {
     my $conn_local;
     my $driver;
+    my $bufnr        = shift;
+
+    if( ! defined($bufnr) ) {
+        db_debug('db_commit:$bufnr undefined');
+        $bufnr        = db_vim_eval("bufnr('%')");
+        db_debug("db_commit:looking up $bufnr");
+    }
 
     db_debug("Committing connection");
-    if ( ! db_is_connected() ) {
+    if ( ! db_is_connected($bufnr) ) {
         db_set_vim_var("g:dbext_dbi_result", -1);
         db_set_vim_var("g:dbext_dbi_msg", 'You are not connected to a database');
         return -1;
     }
 
-    ($conn_local, $driver) = db_get_connection();
+    ($conn_local, $driver) = db_get_connection($bufnr);
 
     my $rc = $conn_local->commit;
     db_set_vim_var("g:dbext_dbi_result", $rc);
@@ -693,15 +702,23 @@ sub db_rollback
 {
     my $conn_local;
     my $driver;
+    my $bufnr        = shift;
+
+    if( ! defined($bufnr) ) {
+        db_debug('db_rollback:$bufnr undefined');
+        $bufnr        = db_vim_eval("bufnr('%')");
+        db_debug("db_rollback:looking up $bufnr");
+    }
+
 
     db_debug("Rolling back connection");
-    if ( ! db_is_connected() ) {
+    if ( ! db_is_connected($bufnr) ) {
         db_set_vim_var("g:dbext_dbi_result", -1);
         db_set_vim_var("g:dbext_dbi_msg", 'You are not connected to a database');
         return -1;
     }
 
-    ($conn_local, $driver) = db_get_connection();
+    ($conn_local, $driver) = db_get_connection($bufnr);
 
     my $rc = $conn_local->rollback;
     db_set_vim_var("g:dbext_dbi_result", $rc);
@@ -709,7 +726,7 @@ sub db_rollback
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_is_connected');
-# Returns a 1 is this buffer already has an existing connection
+# Returns a 1 if this buffer already has an existing connection
 sub db_is_connected
 {
     my $bufnr        = shift;
@@ -768,15 +785,22 @@ sub db_get_connection
     # settings for this buffer.  Since this is single threaded
     # this approach is fine and allows for the settings to be
     # changed at anytime.
-    $max_rows      = db_vim_eval('b:dbext_DBI_max_rows');
-    $col_sep_vert  = db_vim_eval('b:dbext_DBI_column_delimiter');
-    $col_max_width = db_vim_eval('b:dbext_DBI_max_column_width');
-    db_debug("db_get_connection:max rows[$max_rows] col separator[$col_sep_vert] max col width[$col_max_width]");
 
+    # $max_rows      = db_vim_eval('b:dbext_DBI_max_rows');
+    # $col_sep_vert  = db_vim_eval('b:dbext_DBI_column_delimiter');
+    # $col_max_width = db_vim_eval('b:dbext_DBI_max_column_width');
+
+    $max_rows      = db_vim_eval("getbufvar(".$bufnr.", 'dbext_DBI_max_rows', g:dbext_default_DBI_max_rows)");
+    $col_sep_vert  = db_vim_eval("getbufvar(".$bufnr.", 'dbext_DBI_column_delimiter', g:dbext_default_DBI_column_delimiter)");
+    $col_max_width = db_vim_eval("getbufvar(".$bufnr.", 'dbext_DBI_max_column_width', g:dbext_default_DBI_max_column_width)");
+
+    db_debug("db_get_connection:max rows[$max_rows] col separator[$col_sep_vert] max col width[$col_max_width]");
     db_debug('db_get_connection:returning:'.$bufnr);
+
     $conn_local = $connections{$bufnr}->{'conn'};
     $driver     = $connections{$bufnr}->{'driver'};
     $connections{$bufnr}->{LastRequest} = localtime;
+
     return ($conn_local, $driver);
 }
 
@@ -1024,6 +1048,7 @@ db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_get_connection_option');
 sub db_get_connection_option
 {
     my $option = shift;
+    my $bufnr  = shift;
     my $conn_local;
     my $driver;
 
@@ -1035,14 +1060,14 @@ sub db_get_connection_option
         return -1;
     }
 
-    if ( ! db_is_connected() ) {
-        db_debug("You are not connected to a database");
-        db_set_vim_var('g:dbext_dbi_msg', "You are not connected to a database");
+    if ( ! db_is_connected($bufnr) ) {
+        db_debug("You are not connected to a database".$bufnr);
+        db_set_vim_var('g:dbext_dbi_msg', "You are not connected to a database:".$bufnr);
         db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
     }
 
-    ($conn_local, $driver) = db_get_connection();
+    ($conn_local, $driver) = db_get_connection($bufnr);
     if ( ! defined($conn_local->{$option}) ) {
         db_debug("Option[$option] does not exist");
         db_set_vim_var('g:dbext_dbi_msg', "Option[".$option."] does not exist");

@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2015 Feb 01
+*dbext.txt*	For Vim version 7.0.  Last change: 2015 Aug 02
 
 
                 	  VIM REFERENCE MANUAL
@@ -7,7 +7,7 @@
                      Peter Bagyinszki
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 21.00
+	  	dbext.vim version 22.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -117,6 +117,52 @@ David Fishburn
 ==============================================================================
 2. What's New						*dbext-new*
 
+Version 22.00 (August 2, 2015)
+
+ New Features
+ ------------
+ - Overhauled the prompting for SQL statement variable substitution (i.e. host
+   variables, named parameters, question marks, ...).  The actions and user
+   interface are hopefully more clear, useful and efficient.  For a full
+   updated tutorial on how it works see :h dbext-tutorial-variables
+ - Saved variables can now hold multiple values for the same parameter,
+   see :h dbext-tutorial-variables for how it works.
+ - Added C++ language support for variables (pull #12) (Anatolii Sakhnik).
+ - Added the ability to specify special characters (i.e. "\t") for column
+   delimiters when using ODBC or DBI database types (Michael Krnac).
+ - Added new option, "passwd_use_secret", which is used when entering a
+   password, if the value should be masked.  When using a GUI version of Vim,
+   the prompt is not displayed in a dialog unlike the other parameters.  This
+   option is OFF (0) by default. (pull #13) (petteja)
+ - Added new option, "strip_into", which is used when executing statements
+   which have variable assignments using the INTO clause.  To test these
+   queries, you need to remove the INTO clause so that when they execute the
+   query you can see the result set returned.  This was on for all databases,
+   but for TransactSQL or TSQL databases like SQLSRV and ASE, stripping the
+   INTO clause may be the wrong action.  Now it can be controlled using this
+   setting.  This can also be set / overridden using DBSetOption strip_into=1
+   or as part of a dbext profile.
+ - Added new option, "strip_at_variables", which is executing statements which
+   have variable assignments in the SELECT list instead of the INTO clause.  
+   To test these queries, you need to remove the assignments when they execute
+   to see the result set returned.  This was on for all databases, but for
+   TransactSQL or TSQL databases like SQLSRV and ASE, stripping the variable
+   assignments in the SELECT list is required. This can be controlled via this 
+   setting.  This can also be set / overridden using 
+   DBSetOption strip_at_variables=1 or as part of a dbext profile.
+
+ Bug Fixes
+ ---------
+ - Minor correction to DBSetVar example (Cedric Simon).
+ - When deleting a buffer, all syntax highlighting of your existing
+   buffer is sometimes lost, which was a problem with one of the
+   dbext autocmds (Anatolii Sakhnik).
+ - Update Postgres get column list join conditions (pull #9) (Dickson S. Guedes).
+ - dbext autocmd for checking for modelines messed up the jumplist (Justin M.
+   Keyes)
+
+
+
 Version 21.00 (February 1, 2015)
 
  New Features
@@ -168,7 +214,7 @@ Version 20.00 (September 24, 2013)
  - Controlling the DBI max rows (:DBSetOption DBI_max_rows=100) and DBI
    column separator did not work on a per buffer basis.
  - Undefined variable, s:dbext_prev_winnr, was reported when using DBI/ODBC
-   connections through the sqlComplete plugin and completing objects
+   connections through the sqlcomplete plugin and completing objects
    which require an active database connection (i.e. Tables,
    Procedures, ...) which had failed to connect to the database.
  - dbext was not prompting for ? parameters in PHP files.  This also
@@ -1130,6 +1176,10 @@ Version 2.00 (Jul 11, 2004)
               select,update,delete,insert,create,grant,alter,call,exec,merge,with
 <         This can be updated via your vimrc using: >
               let dbext_default_query_statements = 'select,update';
+    dbext_default_passwd_use_secret
+<       - When entering a password, if the value should be masked.  When using
+          a GUI version of Vim, the prompt is not displayed in a dialog unlike 
+          the other parameters.  This option is OFF (0) by default. >
     dbext_default_parse_statements
 <       - Which statements are parsed for input parameters (See |dbext-newdb|) >
     dbext_default_prompt_for_variables
@@ -1146,13 +1196,18 @@ Version 2.00 (Jul 11, 2004)
 <       - This is used internally by dbext.  Each time a query is executed
           and the user is prompted for variables, if you press "Ok" without
           entering anything, you are prompted asking whether you want to:
-                1.  Skip the replacement for this string
-                2.  Replace it with a blank
-                3.  Stop prompting for just this query
-                4.  Never prompt for variables (including subsequent queries)
+                1.  Stop prompting for this variable
+                2.  Replace it with a blank or supplied value
+                3.  Ignore this match (leave as is)
+                4.  Never ask for variables (including subsequent queries)
                 5.  Abort the query and do NOT execute it
-        - If option 3 is chosen, dbext sets this variable and resets it for
-          the next query. >
+         The next time a query is executed, and you have saved values
+         you will be asked if you want to use the saved values.
+         If you say "No", you will be asked for each one as usual,
+         but the default value will be the previously used value.
+         If you say "Yes", you will not be prompted and the query will be
+         exeucted with the previously saved values (unless there are
+         additional new variables). >
     dbext_default_display_cmd_line
 <       - When the command is run, the results are displayed in the Result
           buffer, setting display_cmd_line = 1, will also display the command
@@ -1261,6 +1316,94 @@ Version 2.00 (Jul 11, 2004)
           finds the @p2 and prompts for a value before executing.
           In this case statement_starts_line is 0, since we are assigning
           the statement to a String.
+>
+    dbext_default_strip_at_variables
+<       - A buffer local variable which is used when executing SELECT 
+          statements.  This setting is OFF by default and ON for SQLSRV and
+          ASE databases.  Most databases support the INTO clause which is used
+          to store column values into locally declared
+          variables.  TransactSQL does not use the INTO clause, you assign
+          local variables values by using an assignment (=) statement in the
+          SELECT list.
+          Consider the following stored procedures which demonstrates
+          TransactSQL syntax for assigning the variables: >
+            CREATE PROECURE sp_test( @p1 INT )
+            BEGIN
+                DECLARE @fname VARCHAR(30);
+                DECLARE @lname VARCHAR(30);
+                
+                -- TransactSQL syntax
+                SELECT @fname = FirstName, @lname = Surname
+                  FROM Customer
+                 WHERE ID = @p1
+            END;
+<
+        - If you visually selected the SELECT statement in this procedure
+          to test it, you will get a syntax error indicating "@fname" is 
+          not defined.  When the procedure executes, the variable is defined
+          and will execute correctly.
+        - The "strip_at_variables" is enabled for all SQLSRV and ASE databases
+          which use TransactSQL syntax.  When strip_at_variables = 1, 
+          and visually selecting the statement and executing, the variable
+          assignments are stripped so that the developer can see the result set
+          returned by the query (instead of a syntax error): >
+                SELECT FirstName, Surname
+                  FROM Customer
+                 WHERE ID = @p1
+<
+        - It may be necessary to toggle this setting on and off based
+          on the types of statements you are executing.  This can be
+          done using the DBSetOption command: >
+            :DBSetOption strip_at_variables=1
+<
+        - This setting can be controlled via a profile as well: >
+            let g:dbext_default_profile_SQLSRV = 'type=SQLSRV:user=sa:passwd=Leader:strip_at_variables=0'
+>
+    dbext_default_strip_into
+<       - A buffer local variable which is used when executing SELECT 
+          statements.  This setting is ON by default and OFF for SQLSRV and
+          ASE databases.  Most databases support the INTO
+          clause which is used to store column values into locally declared
+          variables.  Consider the following stored procedures: >
+            CREATE PROECURE sp_test( @p1 INT )
+            BEGIN
+                DECLARE @fname VARCHAR(30);
+                DECLARE @lname VARCHAR(30);
+                
+                SELECT FirstName, Surname
+                  INTO @fname, @lname
+                  FROM Customer
+                 WHERE ID = @p1
+            END;
+<
+        - If you visually selected the SELECT statement in this procedure
+          to test it, you will get a syntax error indicating "@fname" is 
+          not defined.  When the procedure executes, the variable is defined
+          and will execute correctly.
+        - The "strip_into" is enabled for all databases other than SQLSRV
+          and ASE which use TransactSQL syntax.  When strip_into = 1, 
+          and visually selecting the statement and executing, the INTO
+          clause is stripped so that the developer can see the result set
+          returned by the query (instead of a syntax error): >
+                SELECT FirstName, Surname
+                  FROM Customer
+                 WHERE ID = @p1
+<
+        - For SQLSRV databases, the INTO clause is used to create a 
+          temporary table and return the results from it.  So for this
+          database, we do not want to strip the INTO clause.  Consider
+          this SQL statement: >
+            SELECT * 
+              INTO dbo.Table_backup 
+              FROM dbo.Table;
+<
+        - It may be necessary to toggle this setting on and off based
+          on the types of statements you are executing.  This can be
+          done using the DBSetOption command: >
+            :DBSetOption strip_into=1
+<
+        - This setting can be controlled via a profile as well: >
+            let g:dbext_default_profile_SQLSRV = 'type=SQLSRV:user=sa:passwd=Leader:strip_into=0'
 >
     dbext_default_replace_title
 <       - Changes the title of the buffer to show connection information.
@@ -1450,7 +1593,7 @@ Version 2.00 (Jul 11, 2004)
           stored procedures since each statement within the procedure
           is terminated with a ";".  That would send the entire procedure
           as individual statements which would result in syntax errors. >
-            :let  g:dbext_default_DBI_split_on_pattern = ';'
+            :let g:dbext_default_DBI_split_on_pattern = ';'
             :DBSetOption DBI_split_on_pattern=';'
             :DBSetOption DBI_split_on_pattern=     " Resets back to the default
     dbext_default_DBI_cmd_terminator
@@ -1484,7 +1627,7 @@ Version 2.00 (Jul 11, 2004)
             read /temp/my.sql;
     dbext_default_DBI_orientation
 <       - By default, result sets returned by the database are displayed
-          in a tablular format: >
+          in a tabular format: >
                 ID   GivenName  Surname
                 ---  ---------  ------------
                 101  Michaels   Devlin
@@ -1686,6 +1829,7 @@ Version 2.00 (Jul 11, 2004)
           From within a profile (set within your vimrc): >
               let g:dbext_default_profile_mysql = 'type=MYSQL:user=root:passwd=:dbname=mysql:extra=-t'
               let g:dbext_default_profile_mysql_local = 'type=MYSQL:user=root:passwd=whatever:dbname=mysql:extra=--batch --raw --silent'
+              let g:dbext_default_profile_mysql_no_password = "type=MYSQL:user=root:dbname=mysql:extra=--password='' "
 <
           This has the net result of creating the following command line: >
               dbisql -c "UID=dba;PWD=sql;CON=myconn"
@@ -2144,9 +2288,9 @@ Version 2.00 (Jul 11, 2004)
     :DBListVar
 
     " Assigns a buffer SQL variable
-    :DBSetVar set @var1 = '3'
+    :DBSetVar @var1 = '3'
     " Removes a buffer SQL variable
-    :DBSetVar set @var1 =
+    :DBSetVar @var1 =
     " Executes a SQL statement to assign a SQL variable using
     " the current line
     " sal - assign - line
@@ -2455,6 +2599,7 @@ To specify the type of database you connect to most often, you can place the
     " MySQL
     let g:dbext_default_profile_mysql_local = 'type=MYSQL:user=root:passwd=whatever:dbname=mysql:extra=-t'
     let g:dbext_default_profile_mysql_local = 'type=MYSQL:user=root:passwd=whatever:dbname=mysql:extra=--batch --raw --silent'
+    let g:dbext_default_profile_mysql_local = "type=MYSQL:user=root:dbname=mysql:extra=--password='' "
     let g:dbext_default_profile_mysql_local_DBI = 'type=DBI:user=root:passwd=whatever:driver=mysql:conn_parms=database=mysql;host=localhost'
     let g:dbext_default_profile_mysql_local_ODBC = 'type=ODBC:user=root:passwd=whatever:dsnname=mysql'
 
@@ -2476,6 +2621,7 @@ To specify the type of database you connect to most often, you can place the
     " requires different parameters than osql, the "extra" connection option
     " is used to add additional switches.
     let g:dbext_default_profile_SQLSRV_sqsh='type=SQLSRV:user=User:passwd=Pass:host=Ip:SQLSRV_bin=sqsh:SQLSRV_cmd_options=:extra=-SFreetdsProfile -D dbname'
+    let g:dbext_default_profile_SQLSRV_noStripVariables = 'type=SQLSRV:user=sa:passwd=Leader:host='.expand($COMPUTERNAME).':strip_at_variables=0'
 
     " SQLite
     let g:dbext_default_profile_POPFile = 'type=SQLITE:SQLITE_bin=C:\Programs\POPFile\sqlite.exe:dbname=C:\Programs\POPFile\popfile.db'
@@ -2726,7 +2872,7 @@ To specify the type of database you connect to most often, you can place the
  |dbext-integration|.
 
 ==============================================================================
-12. Listing Ojects in the Database                     	*dbext-list-objects*
+12. Listing Objects in the Database                     	*dbext-list-objects*
 
  Many times you just want to see what is available in a given database.
  DBListTable, DBListProcedure, DBListView will display a list of objects
@@ -2893,8 +3039,6 @@ To specify the type of database you connect to most often, you can place the
               next time you need it.
 
     a       - Toggle the autoclose feature.
-              the results and essentially want to hide it until the
-              next time you need it.
 
     dd      - To remove statements from the history you can press "dd"
               as you would delete a line in a regular Vim buffer.
@@ -3015,7 +3159,7 @@ To specify the type of database you connect to most often, you can place the
  "Result".  This buffer is readonly, you will not be prompted to save it when
  exiting Vim.  After the buffer has been created, you can move the buffer to a
  location that better suits you.  Assuming you can hide buffers |'hidden'|, if
- you issue a :clo command, you can remove the buffer from the display.  The
+ you issue a :close command, you can remove the buffer from the display.  The
  next time a command is executed, it will be made visible again.  There are
  also some local maps to make this easier.  'q' will close the window for you.
  To see the other buffer specific maps for the result window have a look
@@ -3389,10 +3533,36 @@ To specify the type of database you connect to most often, you can place the
 
  17.10 Host variable replacement                *dbext-tutorial-variables*
  -------------------------------
+ The feature has been added to assist developers _testing_ their queries.
  When writing SQL statements, you can often pass in parameters or host
  variables to be replaced at execution time.  When executing these SQL
- statements, dbext will prompt you for a substitute value for the variable
- and execute the SQL.  This feature is enabled by default.
+ statements to test them you need to replace these variables with actual
+ values.
+
+ As a developer, you can modify the buffer and put in "valid" values that
+ will return SQL rows, but that means modifying the code just to "test".
+
+ You can copy and paste this code into a interactive SQL shell, and then
+ once again, remove the host variables and replace this with actual parameters
+ to ensure your statement will return the rows you are expecting (a
+ successful test).
+
+ This dbext feature, will scan your statement for parameters using the
+ "variable_def_regex" option.  When it finds values that match the regex
+ it will prompt you to temporarily replace the parameter with the supplied
+ value.  This allows you to test the execution of your script without actually
+ modifying your code.
+
+ The prompting is controlled via the "always_prompt_for_variables" option.  By
+ default it is on.  For an explanation of the prompt screens, continue reading
+ through this tutorial.  They are designed for speed and efficiency and
+ allowing you quick access to previously stored variable names for testing.
+
+ Any variables which you have supplied (on a per buffer basis) will be stored
+ for later use.  You can see the list of saved values executing :DBListVar
+ Multiple values for each parameter can be stored and :DBListVar will allow
+ you to remove saved values.  The saving of variables is controlled via
+ the "variable_remember" option.
 
  Place your cursor at the ^ in this statement: >
     SELECT id
@@ -3402,21 +3572,22 @@ To specify the type of database you connect to most often, you can place the
        AND cust_name LIKE ?
        AND id        =    @var_name;
            ^
-<The above statement includes 3 types of default host variables that get
+< The above statement includes 3 types of default host variables that get
  prompted for by dbext.  The regular expression used to find these variables
  can easily be extended to support additional formats.  To extended it further
  keep reading through to the end of |dbext-tutorial-variables|.  With your
- cursor where the ^ indicates, you can either hit \se, or you can visually
- select the entire SELECT statement and hit \se.
+ cursor where the ^ indicates, you can either hit <Leader>se (\se), or you can
+ visually select the entire SELECT statement and hit \se.
 
  Several things happen:
     a) Since you are running a SELECT statement *AND* you provided an INTO
        clause, dbext automatically strips this part of the statement: >
           INTO @cust_variable_id
-<      out of the SQL it sends to the database.  Generally, you would get an
-       error indicating "@cust_variable_id" does not exist.  But since we are
-       trying to test the validity of the SELECT statement, dbext strips the
-       INTO clause so we can see what that SELECT statement will return.
+<      out of the SQL it sends to the database.  If you did not remove the
+      INTO clause, you would generally get an error indicating
+      "@cust_variable_id" does not exist.  Since we are trying to test the
+      validity of the SELECT statement, dbext strips the INTO clause so we can
+      see what that SELECT statement will return.
 
     b) Next, we look for host variables, when one is found, you are prompted
        for a replacement value.  There are very strict rules which dictate how
@@ -3436,12 +3607,12 @@ To specify the type of database you connect to most often, you can place the
              AND cust_name LIKE 'B%'
              AND id        =    1;
 <      This allows you to test your statements without copying the statement
-       into a scratch buffer, and replacing the host variables with values.
+      into a scratch buffer, and replacing the host variables with values.
 
     c) For variables which are not question marks, dbext will also
        temporarily store the value you entered (when prompted) and if you
        were to re-run this statement or run another statement with the
-       same host/variable names, dbext will automatically replace the
+       same host/variable names, dbext can automatically replace the
        variables with values used previously.  These values are stored
        on a per buffer basis.  You can view a list of previously saved
        values by running :DBListVar (or <Leader>slr (slv was already taken)). >
@@ -3451,24 +3622,25 @@ To specify the type of database you connect to most often, you can place the
             ------------------------
             set :host_var_name = '%b'
             set @var_name = 1
+            set @var_name = 2
+            set @var_name = 3
 <       Previously stored variables can be removed by placing your
-        cursor on the line above and hitting 'dd' to remove the variable.
-        If remembering variables is not desired you can set the
-        g:dbext_default_variable_remember = 0 in your .vimrc.
+       cursor on the line above and hitting 'dd' to remove the variable.
+       If remembering variables is not desired you can set the
+       g:dbext_default_variable_remember = 0 in your .vimrc.
 
     d) Variables can also be defined two different ways.
 
        Method 1:
-       You can used the DBSetVar command to both define and remove
-       variables: >
+       You can used the DBSetVar command to define variables: >
             :DBSetVar :myvar1='myvar1'
             :DBSetVar @myvar2='myvar2'
             :DBSetVar @myint3=3
-<      To remove the variable, use DBSetVar with nothing after the = sign. >
-            :DBSetVar @myint3=
-<      DBSetVar supports TAB completion.
+
+<      DBSetVar supports TAB completion. >
             :DBSetVar <Tab>
             :DBSetVar @m<Tab>
+<
        Will allow you to move through all currently defined variables and
        their values allowing you to easily change the value (while saving
        some typing!).
@@ -3479,9 +3651,18 @@ To specify the type of database you connect to most often, you can place the
             set :myvar4 = 'myvar4';
             set @myvar5 = 'myvar5';
             set @myint6 = 6;
+
 <      If your cursor is on one of these lines you can use <Leader>sal
        (sql - assign - line), or you can visually select all 3 lines
        and use <Leader>sa or :'<,'>DBVarRangeAssign.
+
+    e) Variables can be removed
+
+      To remove a specific variable assignment use :DBSetVar! >
+            :DBSetVar! @var_name=2
+<      To remove the variable and all previous values, use DBSetVar! with the variable name >
+            :DBSetVar @var_name
+<
 
  dbext can be extended via the |.vimrc| to search for additional formats
  of variables.  By default it searches for variables of these formats: >
@@ -3514,7 +3695,7 @@ To specify the type of database you connect to most often, you can place the
         :DBGetOption variable_def_regex
             \(\w\|'\)\@<!?\(\w\|'\)\@<!,\zs\(@\|:\|$\)\w\+\>
 <
- This is actually 2 different regex expressions.  The first one
+ This is 2 different regex expressions.  The first one
  finds the question marks and the second one finds any variables
  beginning with "@,:,$". >
         \(\w\|'\)\@<!?\(\w\|'\)\@<!
@@ -3564,13 +3745,154 @@ To specify the type of database you connect to most often, you can place the
  dbext's current variable_def_regex for this buffer.  This |autocmd| can be
  added to your |.vimrc|: >
         autocmd BufRead */MyProjectDir/* DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>
+        autocmd BufRead */MyProjectDir/* if exists('g:loaded_dbext') | exec 'DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>' | endif
 <
  Or if you simply wanted to extended the existing defaults, you can
  retrieve the existing setting using dbext's DB_listOption function and
  concatenate the new regex separated by a comma: >
         autocmd BufRead */MyProjectDir2/* DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>
+        autocmd BufRead */MyProjectDir2/* if exists('g:loaded_dbext') | exec 'DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>' | endif
 <
 
+ Prompt screens and options.
+
+ If dbext detects you have some host variables in your query (and all the
+ options for prompting and saving variables has been enabled) you receive a
+ prompt: >
+    Variables detected in statement.  Choose an action:
+    1. Prompt for variables
+    2. Execute query as is
+    3. Use previously saved values
+    4. Never ask again
+    5. Abort
+<
+ I will leave the first option to the end.
+
+ Option 2:
+    Do not change the query, execute it as is, with all the host parameters in
+    tact (unchanged).
+
+ Option 3:
+    If there are previously saved values (and each variable can have multiple
+    values which are saved in a most recently used List), grab the first one
+    and use that value.  This is designed for quick iteration testing.  While
+    working on a query (trying to "get it right") I will repeatedly execute
+    the query as I build it up.  I don't want to be constantly prompted for
+    the parameters I just used, so just use them again.
+
+ Option 4:
+    If you find the prompts annoying, but do not want to globally turn them
+    off, or you know this type of file, you would always choose option 2, then
+    simply choose this option.  For this buffer, you will never be prompted
+    again and all queries will execute as is.
+    If you want to re-enable the prompts to can execute: >
+        :DBSetOption always_prompt_for_variables = 1
+<
+ Option 5:
+    There was a mistake, and you just don't want to execute the query anymore.
+
+ Option 1:
+    Lets assume we are executing this SQL query: >
+        SELECT *
+          FROM EQUIPMENT AS eq
+         WHERE eq.EQUNR = p_EQUNR
+<
+    And that we have no previously saved values for p_EQUNR and we want to be
+    prompted for parameters beginning with "p_".
+    Executing the query, dbext shows the previous prompt and this time you
+    choose option 1.
+
+    This choice opens a sub prompt. >
+        Choice for [p_EQUNR]
+        1. Use [p_EQUNR]
+        2. Use blank value
+        3. Enter new value
+        4. Show previously saved values
+        [...There are additional options, continue reading...]
+<
+    Option 1
+        Assumes you do not want to change the parameter at all, simply
+        continue to use the same value.  I wanted this default to be "standard" in
+        case you are quickly hitting ENTER through all the prompts.  Nothing
+        changes the query.
+
+    Option 2
+        Simply replace p_EQUNR with a blank value (just remove it completely).
+
+    Option 3
+        Let me choose a new value for p_EQUNR.  A dialog pops up and you enter
+        (with the quotes) 'e'.
+
+        At this point, p_EQUNR is replaced directly with 'e', the query which
+        executes is: >
+            SELECT *
+              FROM EQUIPMENT AS eq
+             WHERE eq.EQUNR = 'e'
+<
+        dbext automatically saves this value, which you can see by running
+        :DBLisVar.
+
+    Option 4
+        If you do not know the values previously saved (though they are
+        shown), but perhaps you want to "remove" some of the previously
+        saved values, this is just a convienent way to run :DBListVar.
+        The saved variable screen is shown and the execution of the
+        statement is aborted.
+
+    Now that we have executed this query once, and chose Option 3 and entered
+    a new value :DBListVar has begun saving our previous values.  This means
+    when we execute this query a 2nd time, our prompt is slightly different: >
+        Choice for [p_EQUNR]
+        1. Use [p_EQUNR]
+        2. Use blank value
+        3. Enter new value
+        4. Show previously saved values
+        5. Use most recent saved value
+        6. Use ['e']
+<
+    Option 5
+        Has been added now that we have a saved value.  Option 5 just says use
+        the most recently saved value for this variable.  Which in this case
+        is 'e', as we only have 1 saved value for p_EQUNR.
+
+    Option 6
+        Is the exact same as choosing option 5, but it does allow you to see
+        what is the most recent value.
+
+    Choose option 3 again, and this time enter 'f'.
+
+    After running the query, run :DBListVar you will see the following output: >
+        ------------------------
+        ** Variable List **
+        Delete line to remove saved value
+        ------------------------
+        set p_EQUNR = 'f'
+        set p_EQUNR = 'e'
+<
+    Executing the query for a 3rd time will show the following prompt: >
+        Choice for [p_EQUNR]
+        1. Use [p_EQUNR]
+        2. Use blank value
+        3. Enter new value
+        4. Show previously saved values
+        5. Use most recent saved value
+        6. Use ['f']
+        7. Use ['e']
+<
+    Now both 'f' (most recent) and 'e' are displayed allowing you to choose
+    which of the saved values to use this time while executing the query.
+
+    Choosing 'e' this time, will move 'e' to the front of the most recently
+    used values, so the prompt the 4th time will show: >
+        6. Use ['e']
+        7. Use ['f']
+<
+    You can pre-add saved values for the buffer by executing the
+    following commands: >
+        DBSetVar p_EQUNR = 'e'
+        DBSetVar p_EQUNR = 'd'
+        DBSetVar p_EQUNR = p_EQUNR
+<
 
  17.11 Filetype support                         *dbext-tutorial-filetype*
  ----------------------
@@ -3723,7 +4045,7 @@ To specify the type of database you connect to most often, you can place the
         DBSetOption DBI_max_rows=5
         DBSetOption DBI_max_rows=
 <
- By default, result sets returned by the database are displayed in a tablular
+ By default, result sets returned by the database are displayed in a tabular
  format: >
         ID   GivenName  Surname
         ---  ---------  ------------

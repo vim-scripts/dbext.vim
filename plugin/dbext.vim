@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
 " Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       21.00
+" Version:       22.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2015 Feb 01
+" Last Modified: 2015 Jul 27
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -36,7 +36,11 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext = 2100
+if v:version < 702
+    echomsg "dbext: Version 22.00 or higher requires Vim7.2 or higher.  Version 21.00 can stil be used with Vim 7.1 and lower."
+    finish
+endif
+let g:loaded_dbext = 2200
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -92,8 +96,8 @@ command! -nargs=* -complete=customlist,dbext#DB_completeSettings DBSetOption :ca
 command! -nargs=* -complete=customlist,dbext#DB_completeSettings DBGetOption :echo DB_listOption(<q-args>)
 command! -range -nargs=0 -bang DBVarRangeAssign <line1>,<line2>call dbext#DB_sqlVarRangeAssignment(<bang>0)
 command! -nargs=0 DBListVar         :call dbext#DB_sqlVarList()
-command! -nargs=1 -bang DBSetVar    :call dbext#DB_sqlVarAssignment(<bang>0, 'set '.<q-args>)
-command! -nargs=* -complete=customlist,dbext#DB_completeVariable DBSetVar :call dbext#DB_sqlVarAssignment(<bang>0, 'set '.<q-args>)
+"command! -nargs=1 -bang DBSetVar    :call dbext#DB_sqlVarAssignment(<bang>0, 'set '.<q-args>)
+command! -nargs=* -bang -complete=customlist,dbext#DB_completeVariable DBSetVar :call dbext#DB_sqlVarAssignment(<bang>0, 'set '.<q-args>)
 
 if !exists(':DBExecVisualSQL')
     command! -nargs=0 -range DBExecVisualSQL :call dbext#DB_execSql(DB_getVisualBlock())
@@ -237,7 +241,7 @@ if !exists(':DBResultsToggleResize')
 end
 "}}}
 " Mappings {{{
-if dbext_default_usermaps != 0
+if g:dbext_default_usermaps != 0
     if maparg(g:dbext_map_prefix.'e', 'x') == ''
         exec 'xmap <unique> '.g:dbext_map_prefix.'e <Plug>DBExecVisualSQL'
     endif
@@ -533,10 +537,49 @@ function! DB_execCmd(name, ...)
     return result
 endfunction
 
+function! DB_checkModeline()
+    " Users can preset connection string options using Vim's modeline
+    " features.
+    " For example, in a SQL file you could have the following:
+    "      -- dbext:profile=ASA_generic,user=bob
+    " See the Help for more details.
+    " This function is a test to see if the autoload/dbext.vim should be
+    " loaded
+    let rc = -1
+    if ((&modeline == '0') || (&modelines < 1))
+        return rc
+    endif
+    let saveSearch = @/
+    let pattern = 'dbext:'
+    let from_bottom_line = ((&modelines > line('$'))?1:(line('$')-&modelines))
+
+    let saveLine = line(".")
+    let saveCol  = col(".")
+    call cursor(1, 1)
+    while search( pattern, 'W' )
+        if( (line(".") >= 1 && line(".") <= &modelines) ||
+                    \ (line(".") >= from_bottom_line)   )
+
+            " There is a dbext modeline, so call the
+            " autoload\dbext functions
+            let rc = dbext#DB_checkModeline()
+            break
+        else
+            if( line(".") < from_bottom_line )
+                call cursor(from_bottom_line, col("."))
+            endif
+        endif
+    endwhile
+
+    let @/ = saveSearch
+    call cursor(saveLine, saveCol)
+    return rc
+endfunction
+
 augroup dbext
     au!
     autocmd BufEnter    * if exists('g:loaded_dbext_auto') != 0 | exec "call dbext#DB_setTitle()" | endif
-    autocmd BufReadPost * if &modeline == 1 | call dbext#DB_checkModeline() | endif
+    autocmd BufReadPost * if &modeline == 1 | :keepjumps call DB_checkModeline() | endif
     autocmd BufDelete   * if exists('g:loaded_dbext_auto') != 0 | exec 'call dbext#DB_auBufDelete( expand("<abuf>") )' | endif
     autocmd VimLeavePre * if exists('g:loaded_dbext_auto') != 0 | exec 'call dbext#DB_auVimLeavePre()' | endif
 augroup END
