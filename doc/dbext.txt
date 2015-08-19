@@ -203,7 +203,7 @@ Version 20.00 (September 24, 2013)
  - Changed the default SQLite binary to be sqlite3 instead of sqlite
    (Greg Kapfhammer).
  - Added a profile example for using the "sqsh" binary to connect to
-   SQL Server instead of "osql" (Brian Iván Martínez).
+   SQL Server instead of "osql" (Brian IvÃ¡n MartÃ­nez).
  - The cmd_terminator displayed under Connection Options in the DBGetOption
    output was always blank.
  - Improved support for SAP HANA database, pulling objects from the system
@@ -218,7 +218,7 @@ Version 20.00 (September 24, 2013)
    which require an active database connection (i.e. Tables,
    Procedures, ...) which had failed to connect to the database.
  - dbext was not prompting for ? parameters in PHP files.  This also
-   affected all languages (Jérémie).
+   affected all languages (JÃ©rÃ©mie).
  - Changing a database's global cmd terminator was not necessarily
    picked up when using that database type (Jason Quirk).
  - ODBC or DBI could report an error about using length() instead
@@ -3744,14 +3744,14 @@ To specify the type of database you connect to most often, you can place the
  a file somewhere under a directory called MyProjectDir.  If so, it sets
  dbext's current variable_def_regex for this buffer.  This |autocmd| can be
  added to your |.vimrc|: >
-        autocmd BufRead */MyProjectDir/* DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>
-        autocmd BufRead */MyProjectDir/* if exists('g:loaded_dbext') | exec 'DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>' | endif
+        autocmd BufRead /MyProjectDir/ DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>
+        autocmd BufRead /MyProjectDir/ if exists('g:loaded_dbext') | exec 'DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>' | endif
 <
  Or if you simply wanted to extended the existing defaults, you can
  retrieve the existing setting using dbext's DB_listOption function and
  concatenate the new regex separated by a comma: >
-        autocmd BufRead */MyProjectDir2/* DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>
-        autocmd BufRead */MyProjectDir2/* if exists('g:loaded_dbext') | exec 'DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>' | endif
+        autocmd BufRead /MyProjectDir2/ DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>
+        autocmd BufRead /MyProjectDir2/ if exists('g:loaded_dbext') | exec 'DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>' | endif
 <
 
  Prompt screens and options.
