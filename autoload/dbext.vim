@@ -3556,10 +3556,10 @@ endfunction
 function! s:DB_PGSQL_getListTable(table_prefix)
     let owner      = s:DB_getObjectOwner(a:table_prefix)
     let table_name = s:DB_getObjectName(a:table_prefix)
-    let query = "select tablename, tableowner " .
+    let query = "select tablename, schemaname " .
                 \ " from pg_tables " .
-                \ "where tableowner != 'pg_catalog' " .
-                \ "  and tableowner like '" . owner . "%' " .
+                \ "where schemaname != 'pg_catalog' " .
+                \ "  and schemaname like '" . owner . "%' " .
                 \ "  and tablename  like '" . table_name . "%' " .
                 \ "order by tablename"
     return s:DB_PGSQL_execSql(query)
@@ -3622,10 +3622,10 @@ endfunction
 
 function! s:DB_PGSQL_getDictionaryTable()
     let result = s:DB_PGSQL_execSql(
-                \ "select ".(s:DB_get('dict_show_owner')==1?"tableowner||'.'||":'')."tablename " .
+                \ "select ".(s:DB_get('dict_show_owner')==1?"schemaname||'.'||":'')."tablename " .
                 \ " from pg_tables " .
-                \ "where tableowner != 'pg_catalog' " .
-                \ "order by ".(s:DB_get('dict_show_owner')==1?"tableowner, ":'')."tablename"
+                \ "where schemaname != 'pg_catalog' " .
+                \ "order by ".(s:DB_get('dict_show_owner')==1?"schemaname, ":'')."tablename"
                 \ )
     return s:DB_PGSQL_stripHeaderFooter(result)
 endfunction
