@@ -3169,6 +3169,46 @@ function! s:DB_CRATE_execSql(str)
     return result
 endfunction
 
+
+function! s:DB_CRATE_trimResult(result)
+    let l = split(a:result, '\n')
+    call remove(l, 0, 2)
+    call remove(l, -2, -1)
+    let result = join(l, '')
+    let result = substitute(result, '\v\| (\w+) +\|', '\1\n', 'g')
+    return result
+endfunction
+
+function! s:DB_CRATE_getListColumn(table_name)
+    let l:prev_use_result_buffer = s:DB_get('use_result_buffer')
+    call s:DB_set('use_result_buffer', 0)
+
+    let query  = "select column_name from information_schema.columns where table_name = '" . a:table_name . "'"
+    let result = s:DB_CRATE_execSql(query)
+
+    call s:DB_set('use_result_buffer', l:prev_use_result_buffer)
+    call s:DB_addToResultBuffer(result, "clear")
+
+    return s:DB_CRATE_trimResult(result)
+endfunction
+
+function! s:DB_CRATE_getListTable(table_prefix)
+    let l:prev_use_result_buffer = s:DB_get('use_result_buffer')
+    call s:DB_set('use_result_buffer', 0)
+
+    let query  = "select table_name from information_schema.tables where table_name like '" . a:table_prefix . "%'"
+    let result = s:DB_CRATE_execSql(query)
+
+    call s:DB_set('use_result_buffer', l:prev_use_result_buffer)
+    call s:DB_addToResultBuffer(result, "clear")
+
+    return s:DB_CRATE_trimResult(result)
+endfunction
+
+function! s:DB_CRATE_getDictionaryTable()
+    return s:DB_CRATE_getListTable('')
+endfunction
+
 " SQLITE exec {{{
 function! s:DB_SQLITE_execSql(str)
 
