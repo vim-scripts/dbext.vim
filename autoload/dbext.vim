@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
-" Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
+" Copyright (C) 2002-16, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       22.00
+" Version:       23.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2015 Aug 02
+" Last Modified: 2015 Dec 30
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -38,7 +38,7 @@ if v:version < 700
     echomsg "dbext: Version 4.00 or higher requires Vim7.  Version 3.50 can stil be used with Vim6."
     finish
 endif
-let g:loaded_dbext_auto = 2200
+let g:loaded_dbext_auto = 2300
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -102,6 +102,8 @@ function! dbext#DB_buildLists()
     call add(s:db_types_mv, 'HANA')
     " SAP Sybase IQ (fishburn)
     call add(s:db_types_mv, 'IQ')
+    " Crate (Mathias Fußenegger)
+    call add(s:db_types_mv, 'CRATE')
 
     " The following are only available with the
     " Perl DBI extension plug.
@@ -1000,6 +1002,10 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "SQLSRV_cmd_terminator"   |return (exists("g:dbext_default_SQLSRV_cmd_terminator")?g:dbext_default_SQLSRV_cmd_terminator.'':"\ngo\n")
     elseif a:name ==# "SQLSRV_SQL_Top_pat"      |return (exists("g:dbext_default_SQLSRV_SQL_Top_pat")?g:dbext_default_SQLSRV_SQL_Top_pat.'':'\(\cselect\)')
     elseif a:name ==# "SQLSRV_SQL_Top_sub"      |return (exists("g:dbext_default_SQLSRV_SQL_Top_sub")?g:dbext_default_SQLSRV_SQL_Top_sub.'':'\1 TOP @dbext_topX ')
+    elseif a:name ==# "CRATE_bin"               |return (exists("g:dbext_default_CRATE_bin")?g:dbext_default_CRATE_bin.'':'crash')
+    elseif a:name ==# "CRATE_cmd_header"        |return (exists("g:dbext_default_CRATE_cmd_header")?g:dbext_default_CRATE_cmd_header.'':"")
+    elseif a:name ==# "CRATE_cmd_options"       |return (exists("g:dbext_default_CRATE_cmd_options")?g:dbext_default_CRATE_cmd_options.'':'')
+    elseif a:name ==# "CRATE_cmd_terminator"    |return (exists("g:dbext_default_CRATE_cmd_terminator")?g:dbext_default_CRATE_cmd_terminator.'':';')
     elseif a:name ==# "prompt_profile"          |return (exists("g:dbext_default_prompt_profile")?g:dbext_default_prompt_profile.'':"" .
                 \ ((has('gui_running') && &guioptions !~# 'c')?("[Optional] Enter profile #:\n".s:prompt_profile_list):
                 \ (s:prompt_profile_list."\n[Optional] Enter profile #: "))
@@ -1008,6 +1014,8 @@ function! s:DB_getDefault(name)
                 \ ((has('gui_running') && &guioptions !~# 'c')?("\nDatabase:".s:prompt_type_list):
                 \ (s:prompt_type_list."\nDatabase: "))
                 \ )
+    elseif a:name ==# "CRATE_SQL_Top_pat"       |return (exists("g:dbext_default_CRATE_SQL_Top_pat")?g:dbext_default_CRATE_SQL_Top_pat.'':'\(.*\)')
+    elseif a:name ==# "CRATE_SQL_Top_sub"       |return (exists("g:dbext_default_CRATE_SQL_Top_sub")?g:dbext_default_CRATE_SQL_Top_sub.'':'\1 LIMIT @dbext_topX ')
     elseif a:name ==# "prompt_integratedlogin"  |return (exists("g:dbext_default_prompt_integratedlogin")?g:dbext_default_prompt_integratedlogin.'':'[Optional] Use Integrated Login: ')
     elseif a:name ==# "prompt_user"             |return (exists("g:dbext_default_prompt_user")?g:dbext_default_prompt_user.'':'[Optional] Database user: ')
     elseif a:name ==# "prompt_passwd"           |return (exists("g:dbext_default_prompt_passwd")?g:dbext_default_prompt_passwd.'':'[O] User password: ')
@@ -1057,7 +1065,7 @@ function! s:DB_getDefault(name)
     elseif a:name ==# "DBI_list_proc_SQLSRV"       |return (exists("g:dbext_default_DBI_list_proc_SQLSRV")?g:dbext_default_DBI_list_proc_SQLSRV.'':'select convert(varchar,o.name) proc_name, convert(varchar,u.name) proc_owner   from sysobjects o, sysusers u  where o.uid=u.uid    and o.xtype=''P''    and o.name like ''dbext_replace_name%''  order by o.name')
     elseif a:name ==# "DBI_list_proc_HANA"         |return (exists("g:dbext_default_DBI_list_proc_HANA")?g:dbext_default_DBI_list_proc_HANA.'':'select p.PROCEDURE_NAME, p.SCHEMA_NAME from SYS.PROCEDURES as p where p.PROCEDURE_NAME like ''dbext_replace_name%'' and p.SCHEMA_NAME like ''dbext_replace_owner%'' order by p.PROCEDURE_NAME')
     " Create additional SQL statements for the DBI layer to support creating a dictionary for procedures which is not supported by DBI
-    elseif a:name ==# "DBI_dict_proc_SQLAnywhere"  |return (exists("g:dbext_default_DBI_dict_proc_SQLAnywhere")?g:dbext_default_DBI_dict_proc_SQLAnywhere.'':'select u.user_name ||''.''|| p.proc_name from SYS.SYSPROCEDURE as p, SYS.SYSUSERPERM as u  where p.creator = u.user_id order by u.user_name, p.proc_name')
+    elseif a:name ==# "DBI_dict_proc_SQLAnywhere"  |return (exists("g:dbext_default_DBI_dict_proc_SQLAnywhere")?g:dbext_default_DBI_dict_proc_SQLAnywhere.'':'select '.(s:DB_get('dict_show_owner')==1?"u.user_name||'.'||":'').'p.proc_name from SYS.SYSPROCEDURE as p, SYS.SYSUSERPERM as u  where p.creator = u.user_id order by u.user_name, p.proc_name')
     elseif a:name ==# "DBI_dict_proc_ASAny"        |return (exists("g:dbext_default_DBI_dict_proc_ASAny")?g:dbext_default_DBI_dict_proc_ASAny.'':'select u.user_name ||''.''|| p.proc_name from SYS.SYSPROCEDURE as p, SYS.SYSUSERPERM as u  where p.creator = u.user_id order by u.user_name, p.proc_name')
     elseif a:name ==# "DBI_dict_proc_Oracle"       |return (exists("g:dbext_default_DBI_dict_proc_Oracle")?g:dbext_default_DBI_dict_proc_Oracle.'':'select owner||''.''||object_name from all_objects where object_type IN (''PROCEDURE'', ''PACKAGE'', ''FUNCTION'') order by object_name')
     elseif a:name ==# "DBI_dict_proc_Sybase"       |return (exists("g:dbext_default_DBI_dict_proc_Sybase")?g:dbext_default_DBI_dict_proc_Sybase.'':'select convert(varchar,u.name)||''.''||convert(varchar,o.name)   from sysobjects o, sysusers u  where o.uid=u.uid    and o.type=''P'' order by o.name')
@@ -1979,10 +1987,29 @@ function! s:DB_ASA_getListColumn(table_name)
 endfunction
 
 function! s:DB_ASA_stripHeaderFooter(result)
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
+    " Standard output format for ASA
+    " table_name         table_id
+    " ---------------------------
+    " ZTSAAP_C_OPKEY     867
+    " 
+    " (1 rows)
+    " 
+    " Execution time: 0.025 seconds
+
     " Strip off column headers ending with a newline
+    "     table_name         table_id
+    "     ---------------------------
     let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
+    " Get the row count:
+    "         (1 rows)
     let g:dbext_rows_affected = matchstr(stripped, '\((\)\?\(First\s\+\)\?\zs\d\+\ze row')
     " Strip off query statistics
+    "        Execution time: 0.025 seconds
     let stripped = substitute( stripped, '\((\)\?\(First\s\+\)\?\d\+ row\_.*', '', '' )
     " Strip off trailing spaces
     " let stripped = substitute( stripped, '\(\<\w\+\>\)\s*', '\1', 'g' )
@@ -2224,6 +2251,11 @@ function! s:DB_IQ_getListColumn(table_name)
 endfunction
 
 function! s:DB_IQ_stripHeaderFooter(result)
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     " Strip off column headers ending with a newline
     let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
     let g:dbext_rows_affected = matchstr(stripped, '\((\)\?\(First\s\+\)\?\zs\d\+\ze row')
@@ -2359,6 +2391,11 @@ function! s:DB_ULTRALITE_getListColumn(table_name)
 endfunction
 
 function! s:DB_ULTRALITE_stripHeaderFooter(result)
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     " Strip off column headers ending with a newline
     let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
     let g:dbext_rows_affected = matchstr(stripped, '\((\)\?\(First\s\+\)\?\zs\d\+\ze row')
@@ -2506,6 +2543,11 @@ function! s:DB_ASE_getListColumn(table_name) "{{{
 endfunction "}}}
 
 function! s:DB_ASE_stripHeaderFooter(result) "{{{
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     " Strip off column headers ending with a newline
     let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
     let g:dbext_rows_affected = matchstr(stripped, '(\zs\d\+\ze row')
@@ -2550,6 +2592,139 @@ function! s:DB_ASE_getDictionaryView() "{{{
     return s:DB_ASE_stripHeaderFooter(result)
 endfunction "}}}
 "}}}
+
+" CRATE {{{
+function! s:DB_CRATE_execSql(str)
+    let output = dbext#DB_getWType("cmd_header")
+    " Check if a login_script has been specified
+    let output = output.s:DB_getLoginScript(s:DB_get("login_script"))
+    let output = output.a:str
+
+    exe 'redir! > ' . s:dbext_tempfile
+    silent echo output
+    redir END
+
+    let dbext_bin = s:DB_fullPath2Bin(dbext#DB_getWType("bin"))
+
+    let cmd = dbext_bin .  ' ' . dbext#DB_getWType("cmd_options")
+    let cmd = cmd .
+                \ s:DB_option('--hosts ', s:DB_get("host") . ":" . s:DB_get("port"), '') .
+                \ ' < ' . s:dbext_tempfile
+                " This fix requires PR with adds support for piping under
+                " windows (crate/crash#99 - https://github.com/crate/crash/pull/99).
+                "\ ' -c "' . join(readfile(s:dbext_tempfile)) . '"'
+    let result = s:DB_runCmd(cmd, output, "")
+
+    return result
+endfunction
+
+function! s:DB_CRATE_describeTable(table_name)
+    return s:DB_CRATE_execSql("show create table " . a:table_name . ";")
+endfunction
+
+function! s:DB_CRATE_describeProcedure(procedure_name)
+    echo 'Feature not yet available'
+    return -1
+endfunction
+
+function! s:DB_CRATE_getListTable(table_prefix)
+    let l:prev_use_result_buffer = s:DB_get('use_result_buffer')
+    call s:DB_set('use_result_buffer', 0)
+
+    let query  = "select table_name from information_schema.tables where table_name like '" . a:table_prefix . "%'"
+    let result = s:DB_CRATE_execSql(query)
+
+    call s:DB_set('use_result_buffer', l:prev_use_result_buffer)
+    call s:DB_addToResultBuffer(result, "clear")
+
+    return s:DB_CRATE_stripHeaderFooter(result)
+endfunction
+
+function! s:DB_CRATE_getListProcedure(proc_prefix)
+    echo 'Feature not yet available'
+    return -1
+endfunction
+
+function! s:DB_CRATE_getListView(view_prefix)
+    echo 'Feature not yet available'
+    return -1
+endfunction
+
+function! s:DB_CRATE_getListColumn(table_name)
+    let l:prev_use_result_buffer = s:DB_get('use_result_buffer')
+    call s:DB_set('use_result_buffer', 0)
+
+    let query  = "select column_name from information_schema.columns where table_name = '" . a:table_name . "'"
+    let result = s:DB_CRATE_execSql(query)
+
+    call s:DB_set('use_result_buffer', l:prev_use_result_buffer)
+    call s:DB_addToResultBuffer(result, "clear")
+
+    return s:DB_CRATE_stripHeaderFooter(result)
+endfunction
+
+function! s:DB_CRATE_stripHeaderFooter(result)
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
+    " Standard output from CRATE
+    "     +--------------------+
+    "     | schema_name        |
+    "     +--------------------+
+    "     | blob               |
+    "     | doc                |
+    "     | information_schema |
+    "     | sys                |
+    "     +--------------------+
+    "      4 rows in set (0.182 sec)
+    " OR
+    "     DROP OK (0.006 sec)
+    " OR
+    "     INSERT OK, 1 row affected (0.160 sec)
+    "
+    " When done, this routine should only return
+    "       blob
+    "       doc
+    "       information_schema
+    "       sys
+
+    " Determine how many rows were affected (if included)
+    let g:dbext_rows_affected = matchstr(a:result, '\d\+\ze row')
+    let g:dbext_rows_affected = (g:dbext_rows_affected == '' ? 0 : g:dbext_rows_affected)
+
+    let l = split(a:result, '\n')
+    if a:result =~ '^+'
+        " Output has a result set, remove first 3 lines
+        call remove(l, 0, 2)
+        " Remove the statistics and the bottom +---+ line
+        call remove(l, -2, -1)
+        let stripped = join(l, '')
+        " Remove leading and trailing column lines
+        let stripped = substitute(stripped, '\v\| (\w+) +\|', '\1\n', 'g')
+    else
+        call filter(l, 'v:val !~ "OK"')
+        let stripped = join(l, '')
+    endif
+    return stripped
+endfunction
+
+function! s:DB_CRATE_getDictionaryTable()
+    return s:DB_CRATE_getListTable('')
+endfunction
+
+function! s:DB_CRATE_getDictionaryProcedure()
+    echo 'Feature not yet available'
+    return -1
+endfunction
+
+function! s:DB_CRATE_getDictionaryView()
+    echo 'Feature not yet available'
+    return -1
+endfunction
+"}}}
+
 " DB2 exec {{{
 function! s:DB_DB2_execSql(str)
     " To create a connection to a DB2 server running on a different machine
@@ -2765,6 +2940,11 @@ function! s:DB_DB2_getListColumn(table_name)
 endfunction
 
 function! s:DB_DB2_stripHeaderFooter(result)
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     if dbext#DB_getWType("use_db2batch") == '1'
         " Strip off column headers ending with a newline
         let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
@@ -2881,6 +3061,11 @@ function! s:DB_INGRES_getListColumn(table_name)
 endfunction
 
 function! s:DB_INGRES_stripHeaderFooter(result)
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     return
 endfunction
 
@@ -2965,6 +3150,11 @@ function! s:DB_INTERBASE_getListColumn(table_name)
 endfunction
 
 function! s:DB_INTERBASE_stripHeaderFooter(result)
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     return
 endfunction
 
@@ -3084,6 +3274,11 @@ function! s:DB_MYSQL_getListColumn(table_name) "{{{
 endfunction "}}}
 
 function! s:DB_MYSQL_stripHeaderFooter(result) "{{{
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     " Strip off separators if using mysqls tabbed output
     let stripped = substitute( a:result, '+[-+]\++\n', '', 'g' )
     " The mysql utility does not return row counts like many
@@ -3199,6 +3394,11 @@ function! s:DB_SQLITE_describeProcedure(procedure_name)
 endfunction
 
 function! s:DB_SQLITE_stripHeaderFooter(result)
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     " Strip off column headers ending with a newline
     let stripped = a:result
     let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
@@ -3409,6 +3609,11 @@ function! s:DB_ORA_getListColumn(table_name) "{{{
 endfunction "}}}
 
 function! s:DB_ORA_stripHeaderFooter(result) "{{{
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     " Strip off column headers ending with a newline
     let stripped = substitute( a:result, '^\_.\{-}[- ]\+\n', '', 'g' )
     let g:dbext_rows_affected = matchstr(stripped, '\zs\d\+\ze\s\+row')
@@ -3556,10 +3761,10 @@ endfunction
 function! s:DB_PGSQL_getListTable(table_prefix)
     let owner      = s:DB_getObjectOwner(a:table_prefix)
     let table_name = s:DB_getObjectName(a:table_prefix)
-    let query = "select tablename, tableowner " .
+    let query = "select tablename, schemaname " .
                 \ " from pg_tables " .
-                \ "where tableowner != 'pg_catalog' " .
-                \ "  and tableowner like '" . owner . "%' " .
+                \ "where schemaname != 'pg_catalog' " .
+                \ "  and schemaname like '" . owner . "%' " .
                 \ "  and tablename  like '" . table_name . "%' " .
                 \ "order by tablename"
     return s:DB_PGSQL_execSql(query)
@@ -3609,6 +3814,11 @@ function! s:DB_PGSQL_getListColumn(table_name)
 endfunction
 
 function! s:DB_PGSQL_stripHeaderFooter(result)
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     " Strip off column headers ending with a newline
     let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
     let g:dbext_rows_affected = matchstr(stripped, '(\zs\d\+\ze rows')
@@ -3622,10 +3832,10 @@ endfunction
 
 function! s:DB_PGSQL_getDictionaryTable()
     let result = s:DB_PGSQL_execSql(
-                \ "select ".(s:DB_get('dict_show_owner')==1?"tableowner||'.'||":'')."tablename " .
+                \ "select ".(s:DB_get('dict_show_owner')==1?"schemaname||'.'||":'')."tablename " .
                 \ " from pg_tables " .
-                \ "where tableowner != 'pg_catalog' " .
-                \ "order by ".(s:DB_get('dict_show_owner')==1?"tableowner, ":'')."tablename"
+                \ "where schemaname != 'pg_catalog' " .
+                \ "order by ".(s:DB_get('dict_show_owner')==1?"schemaname, ":'')."tablename"
                 \ )
     return s:DB_PGSQL_stripHeaderFooter(result)
 endfunction
@@ -3840,6 +4050,11 @@ function! s:DB_RDB_getListView(view_prefix) "{{{
     return s:DB_RDB_execSql( query )
 endfunction "}}}
 function! s:DB_RDB_stripHeaderFooter(result) "{{{
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     " Strip off column headers ending with a newline
     let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
     let g:dbext_rows_affected = matchstr(stripped, '\zs\d\+\ze\s\+row')
@@ -3902,6 +4117,11 @@ function! s:DB_SQLSRV_describeProcedure(procedure_name)
 endfunction
 
 function! s:DB_SQLSRV_stripHeaderFooter(result)
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     " Strip off column headers ending with a newline
     let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
     let g:dbext_rows_affected = matchstr(stripped, '(\zs\d\+\ze\s\+row')
@@ -4092,6 +4312,11 @@ function! s:DB_FIREBIRD_getListColumn(table_name) "{{{
 endfunction "}}}
 
 function! s:DB_FIREBIRD_stripHeaderFooter(result) "{{{
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     " RDB$RELATION_NAME
     " RDB$FIELD_NAME
     " ===============================================================================
@@ -4316,6 +4541,11 @@ function! s:DB_HANA_getListColumn(table_name)
 endfunction
 
 function! s:DB_HANA_stripHeaderFooter(result)
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     let stripped = a:result
     " Strip off column headers ending with a newline
     " let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
@@ -4655,6 +4885,11 @@ function! s:DB_DBI_describeProcedure(procedure_name)
 endfunction
 
 function! s:DB_DBI_stripHeaderFooter(result)
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     " Strip off column headers ending with a newline
     let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
     " Strip off query statistics
@@ -5224,6 +5459,11 @@ function! s:DB_ODBC_describeProcedure(procedure_name)
 endfunction
 
 function! s:DB_ODBC_stripHeaderFooter(result)
+    " This function is used mainly by the dictionary
+    " and column lists.  It should remove all extraneous
+    " information and return only a single result set
+    " with no headers or footer information.
+    "
     " Strip off column headers ending with a newline
     let stripped = substitute( a:result, '\_.*-\s*'."[\<C-J>]", '', '' )
     " Strip off query statistics
@@ -6367,7 +6607,7 @@ function! dbext#DB_DictionaryCreate( drop_dict, which ) "{{{
     if a:drop_dict == 1
         " First check if we are refreshing the table dictionary
         " If so, remove it
-        call s:DB_DictionaryDelete( which_dict, bufnr('%') )
+        call dbext#DB_DictionaryDelete( which_dict, bufnr('%') )
     endif
 
     let temp_file = "-1"
@@ -6431,7 +6671,7 @@ function! dbext#DB_DictionaryCreate( drop_dict, which ) "{{{
 
     return temp_file
 endfunction "}}}
-function! s:DB_DictionaryDelete( which, buf_nr ) "{{{
+function! dbext#DB_DictionaryDelete( which, buf_nr ) "{{{
     let which_dict = tolower(a:which)
     let dict_file = getbufvar(a:buf_nr, "dbext_dict_".which_dict."_file", '')
     if strlen(dict_file) > 0
@@ -6477,9 +6717,9 @@ function! dbext#DB_auVimLeavePre() "{{{
 
     " Delete any temporary dictionary files created
     for buf_nbr in s:dbext_buffers_with_dict_files
-        call s:DB_DictionaryDelete( 'Table', buf_nbr )
-        call s:DB_DictionaryDelete( 'Procedure', buf_nbr )
-        call s:DB_DictionaryDelete( 'View', buf_nbr )
+        call dbext#DB_DictionaryDelete( 'Table', buf_nbr )
+        call dbext#DB_DictionaryDelete( 'Procedure', buf_nbr )
+        call dbext#DB_DictionaryDelete( 'View', buf_nbr )
     endfor
 
     " Remove any persistent connections cleanly
@@ -6519,9 +6759,9 @@ function! dbext#DB_auBufDelete(del_buf_nr) "{{{
         " If the buffer number being deleted is in the script
         " variable that lists all buffers that have temporary dictionary
         " files, then remove the temporary dictionary files
-        call s:DB_DictionaryDelete( 'Table', del_buf )
-        call s:DB_DictionaryDelete( 'Procedure', del_buf )
-        call s:DB_DictionaryDelete( 'View', del_buf )
+        call dbext#DB_DictionaryDelete( 'Table', del_buf )
+        call dbext#DB_DictionaryDelete( 'Procedure', del_buf )
+        call dbext#DB_DictionaryDelete( 'View', del_buf )
     endif
 endfunction "}}}
 "}}}
@@ -9151,13 +9391,21 @@ function! dbext#DB_disconnect(...)
     let bufnr = bufnr + 0
     let idx = index(s:dbext_buffers_connected, bufnr)
     if idx > -1
+        let type = s:DB_get('type')
+        if (type =~ '\<ODBC\>')
+            let driver       = 'ODBC'
+            let conn_parms   = s:DB_get("dsnname")
+        else
+            let driver       = s:DB_get('driver')
+            let conn_parms   = s:DB_get("conn_parms")
+        endif
         " If AutoCommit is on, there is no need to issue commits
         " If AutoCommit is on disconnect, otherwise let the
         " user make the choice since it could interfer
         " with an already running transaction
         exec "perl db_get_connection_option('AutoCommit', ". bufnr . ")"
         if g:dbext_dbi_result == -1
-            call s:DB_runCmd("perl ".driver, "DISCONNECT", g:dbext_dbi_msg)
+            " call s:DB_runCmd("perl ".driver, "DISCONNECT", g:dbext_dbi_msg)
             return -1
         endif
 

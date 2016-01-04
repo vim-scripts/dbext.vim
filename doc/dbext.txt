@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2015 Aug 02
+*dbext.txt*	For Vim version 7.0.  Last change: 2016 Jan 03
 
 
                 	  VIM REFERENCE MANUAL
@@ -7,7 +7,7 @@
                      Peter Bagyinszki
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 22.00
+	  	dbext.vim version 23.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -116,6 +116,25 @@ David Fishburn
 
 ==============================================================================
 2. What's New						*dbext-new*
+
+Version 23.00 (Dec 30, 2015)
+
+ New Features
+ ------------
+ - Added a new database, CrateIO (Mathias Fussenegger)
+ - CRATE native database type and Crate via DBI are supported
+ - Updated the DBI SQLAnywhere procedure list to respect the option of whether
+   to include the object owner names
+ - Added a new public function, DB_DictionaryDelete, to be used by the 
+   OMNI SQL Completion plugin (autoload/sqlcomplete.vim, which is part of Vim)
+
+ Bug Fixes
+ ---------
+ - helptags reported duplicate tag MyProjectDir, updated documentation as a 
+   work around as there is no way to escape the real syntax (pull #3) (mexpolk)
+ - For PGSQL, use the "schemaname" column rather than "tableowner" (pull #15) 
+   (Stefan Litsche)
+
 
 Version 22.00 (August 2, 2015)
 
@@ -1126,7 +1145,7 @@ Version 2.00 (Jul 11, 2004)
 <       - The database type specified for the buffer which caused the
           Result buffer to be updated.  It will be one of the following:
           ASA,ASE,DB2,INGRES,INTERBASE,MYSQL,ORA,PGSQL,SQLSRV,SQLITE,
-          RDB,ULTRALITE,FIREBIRD,HANA >
+          RDB,ULTRALITE,FIREBIRD,HANA,CRATE >
     buf_nr
 <       - The buffer number of the result window
  Here is a very simple example which will:
@@ -1931,59 +1950,20 @@ Version 2.00 (Jul 11, 2004)
     The command terminator is automatically added to a command before it is
     sent to the database.  The command options are also added to the command
     line used to execute the statement. >
-        dbext_default_PGSQL_bin                = 'psql'
-        dbext_default_PGSQL_cmd_header         = ''
-        dbext_default_PGSQL_cmd_terminator     = ''
-        dbext_default_PGSQL_cmd_options        = ''
-        dbext_default_PGSQL_extra              = ''
-        dbext_default_PGSQL_pgpass             = expand('$HOME/.pgpass')
-        dbext_default_MYSQL_bin                = 'isql'
-        dbext_default_MYSQL_cmd_header         = ''
-        dbext_default_MYSQL_cmd_terminator     = ''
-        dbext_default_MYSQL_cmd_options        = ''
-        dbext_default_MYSQL_extra              = '-t'
-        dbext_default_MYSQL_version            = '5'
         dbext_default_ASA_bin                  = 'dbisql'
         dbext_default_ASA_cmd_header           = ''
         dbext_default_ASA_cmd_terminator       = ';'
         dbext_default_ASA_cmd_options          = '-nogui'
         dbext_default_ASA_extra                = ''
-        dbext_default_INGRES_bin               = 'sql'
-        dbext_default_INGRES_cmd_header        = ''
-        dbext_default_INGRES_cmd_terminator    = '\p\g'
-        dbext_default_INGRES_cmd_options       = ''
-        dbext_default_INGRES_extra             = ''
         dbext_default_ASE_bin                  = "isql"
         dbext_default_ASE_cmd_header           = ""
         dbext_default_ASE_cmd_terminator       = "\ngo\n"
         dbext_default_ASE_cmd_options          = '-w 10000'
         dbext_default_ASE_extra                = ''
-        dbext_default_INTERBASE_bin            = ''
-        dbext_default_INTERBASE_cmd_header     = ''
-        dbext_default_INTERBASE_cmd_terminator = ''
-        dbext_default_INTERBASE_cmd_options    = ''
-        dbext_default_INTERBASE_extra          = ''
-        dbext_default_SQLITE_bin               = 'sqlite'
-        dbext_default_SQLITE_cmd_header        = ".mode column\n.headers ON\n"
-        dbext_default_SQLITE_cmd_terminator    = ';'
-        dbext_default_SQLITE_extra             = ''
-        dbext_default_SQLSRV_bin               = "osql"
-        dbext_default_SQLSRV_cmd_header        = ""
-        dbext_default_SQLSRV_cmd_terminator    = "\ngo\n"
-        dbext_default_SQLSRV_cmd_options       = '-w 10000 -r -b -n'
-        dbext_default_SQLSRV_extra             = ''
-        dbext_default_ORA_bin                  = "sqlplus"
-        dbext_default_ORA_cmd_header           =
-                                \ "set pagesize 10000\n" .
-                                \ "set wrap off\n" .
-                                \ "set sqlprompt \"\"\n" .
-                                \ "set sqlprompt \"\"\n" .
-                                \ "set flush off\n" .
-                                \ "set colsep \"\t\"\n" .
-                                \ "set tab off\n\n"
-        dbext_default_ORA_cmd_terminator       = ";"
-        dbext_default_ORA_cmd_options          = '-S'
-        dbext_default_ORA_extra                = ''
+        dbext_default_CRATE_bin                = 'crash'
+        dbext_default_CRATE_cmd_header         = ""
+        dbext_default_CRATE_cmd_options        = ''
+        dbext_default_CRATE_cmd_terminator     = ';'
         dbext_default_DB2_use_db2batch         = 0
         dbext_default_DB2_bin                  = 'db2batch'
         dbext_default_DB2_cmd_header           = ''
@@ -1997,15 +1977,58 @@ Version 2.00 (Jul 11, 2004)
         dbext_default_FIREBIRD_cmd_terminator  = ';'
         dbext_default_FIREBIRD_version         = '5'
         dbext_default_FIREBIRD_extra           = ''
+        dbext_default_HANA_bin                 = 'hdbsql'
+        dbext_default_HANA_cmd_terminator      = ''
+        dbext_default_HANA_cmd_options         = ''
+        dbext_default_HANA_extra               = ''
+        dbext_default_INGRES_bin               = 'sql'
+        dbext_default_INGRES_cmd_header        = ''
+        dbext_default_INGRES_cmd_terminator    = '\p\g'
+        dbext_default_INGRES_cmd_options       = ''
+        dbext_default_INGRES_extra             = ''
+        dbext_default_INTERBASE_bin            = ''
+        dbext_default_INTERBASE_cmd_header     = ''
+        dbext_default_INTERBASE_cmd_terminator = ''
+        dbext_default_INTERBASE_cmd_options    = ''
+        dbext_default_INTERBASE_extra          = ''
+        dbext_default_MYSQL_bin                = 'isql'
+        dbext_default_MYSQL_cmd_header         = ''
+        dbext_default_MYSQL_cmd_terminator     = ''
+        dbext_default_MYSQL_cmd_options        = ''
+        dbext_default_MYSQL_extra              = '-t'
+        dbext_default_MYSQL_version            = '5'
+        dbext_default_ORA_bin                  = "sqlplus"
+        dbext_default_ORA_cmd_header           =
+                                \ "set pagesize 10000\n" .
+                                \ "set wrap off\n" .
+                                \ "set sqlprompt \"\"\n" .
+                                \ "set sqlprompt \"\"\n" .
+                                \ "set flush off\n" .
+                                \ "set colsep \"\t\"\n" .
+                                \ "set tab off\n\n"
+        dbext_default_ORA_cmd_terminator       = ";"
+        dbext_default_ORA_cmd_options          = '-S'
+        dbext_default_ORA_extra                = ''
+        dbext_default_PGSQL_bin                = 'psql'
+        dbext_default_PGSQL_cmd_header         = ''
+        dbext_default_PGSQL_cmd_terminator     = ''
+        dbext_default_PGSQL_cmd_options        = ''
+        dbext_default_PGSQL_extra              = ''
+        dbext_default_PGSQL_pgpass             = expand('$HOME/.pgpass')
+        dbext_default_SQLITE_bin               = 'sqlite'
+        dbext_default_SQLITE_cmd_header        = ".mode column\n.headers ON\n"
+        dbext_default_SQLITE_cmd_terminator    = ';'
+        dbext_default_SQLITE_extra             = ''
+        dbext_default_SQLSRV_bin               = "osql"
+        dbext_default_SQLSRV_cmd_header        = ""
+        dbext_default_SQLSRV_cmd_terminator    = "\ngo\n"
+        dbext_default_SQLSRV_cmd_options       = '-w 10000 -r -b -n'
+        dbext_default_SQLSRV_extra             = ''
         dbext_default_ULTRALITE_bin            = 'dbisql'
         dbext_default_ULTRALITE_cmd_header     = ''
         dbext_default_ULTRALITE_cmd_terminator = ';'
         dbext_default_ULTRALITE_cmd_options    = '-nogui -ul'
         dbext_default_ULTRALITE_extra          = ''
-        dbext_default_HANA_bin                 = 'hdbsql'
-        dbext_default_HANA_cmd_terminator      = ''
-        dbext_default_HANA_cmd_options         = ''
-        dbext_default_HANA_extra               = ''
 
     dbext_default_MYSQL_version
 <       - MySQL version 5 supports stored procedures, views and new system
@@ -2591,10 +2614,23 @@ To specify the type of database you connect to most often, you can place the
     " Sybase ASE
     let g:dbext_default_profile_ASE = 'type=ASE:user=sa:passwd=whatever:srvname=my_server:dbname=ml8'
 
+    " CrateIO
+    let g:dbext_default_profile_CRATE = 'type=CRATE:host=localhost:port=4200:dbname=dummy:bin_path=C:\Crate\crate-0.52.4\bin'
+    let g:dbext_default_profile_CRATE_DBI = 'type=DBI:user=:passwd=:driver=Crate'
+    let g:dbext_default_profile_CRATE_DBI = 'type=DBI:user=:passwd=:driver=Crate:conn_parms=localhost\:4200'
+
     " IBM DB2
     let g:dbext_default_profile_DB2 = 'type=DB2:user=db2admin:passwd=whatever:dbname=SSD:bin_path=C:\Programs\IBM\SQLLIB\BIN'
     let g:dbext_default_profile_DB2_cons_1d = 'type=DB2:user=mlink:passwd=whatever:dbname=db2_2a:host=my_lab_box:port=60000'
     let g:dbext_default_profile_MyDB2 = 'type=DB2:user=me:passwd=mypass:dbname=SSD:cmd_terminator='
+
+    " Firebird
+    let g:dbext_default_profile_Firebird = 'type=FIREBIRD:user=sysdba:passwd=masterkey:dbname=C:\Programs\Firebird\Firebird_2_1\examples\empbuild\EMPLOYEE.FDB'
+
+    " HANA
+    " The instance ID is specified via the extra parameter
+    let g:dbext_default_profile_HANA_MySrv = 'type=HANA:user=SYSTEM:passwd=manager:host=myhost:extra=-i 60'
+    let g:dbext_default_profile_ODBC_MySrv = 'type=ODBC:user=SYSTEM:passwd=manager:dsnname=My_HANA_DSN'
 
     " MySQL
     let g:dbext_default_profile_mysql_local = 'type=MYSQL:user=root:passwd=whatever:dbname=mysql:extra=-t'
@@ -2626,16 +2662,8 @@ To specify the type of database you connect to most often, you can place the
     " SQLite
     let g:dbext_default_profile_POPFile = 'type=SQLITE:SQLITE_bin=C:\Programs\POPFile\sqlite.exe:dbname=C:\Programs\POPFile\popfile.db'
 
-    " Firebird
-    let g:dbext_default_profile_Firebird = 'type=FIREBIRD:user=sysdba:passwd=masterkey:dbname=C:\Programs\Firebird\Firebird_2_1\examples\empbuild\EMPLOYEE.FDB'
-
     " ULTRALITE
     let g:dbext_default_profile_UL_CustDB = 'type=ULTRALITE:user=dba:passwd=sql:dbname='.expand('$SQLANYSAMP11\ultralite\custdb\custdb.udb')
-
-    " HANA
-    " The instance ID is specified via the extra parameter
-    let g:dbext_default_profile_HANA_MySrv = 'type=HANA:user=SYSTEM:passwd=manager:host=myhost:extra=-i 60'
-    let g:dbext_default_profile_ODBC_MySrv = 'type=ODBC:user=SYSTEM:passwd=manager:dsnname=My_HANA_DSN'
 <
 9.5 Connection information in modelines           *dbext-connect-modelines*
                                                   *dbext-modelines*
@@ -3743,15 +3771,16 @@ To specify the type of database you connect to most often, you can place the
  conventions.  This autocmd works by checking if you are opening
  a file somewhere under a directory called MyProjectDir.  If so, it sets
  dbext's current variable_def_regex for this buffer.  This |autocmd| can be
- added to your |.vimrc|: >
-        autocmd BufRead */MyProjectDir/* DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>
-        autocmd BufRead */MyProjectDir/* if exists('g:loaded_dbext') | exec 'DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>' | endif
+ added to your |.vimrc| (NOTE: change the ** to a single * when pasting): >
+        autocmd BufRead **/MyProjectDir/** DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>
+        autocmd BufRead **/MyProjectDir/** if exists('g:loaded_dbext') | exec 'DBSetOption variable_def_regex=\<\(p_\|lv_\)\w\+\>' | endif
 <
  Or if you simply wanted to extended the existing defaults, you can
  retrieve the existing setting using dbext's DB_listOption function and
- concatenate the new regex separated by a comma: >
-        autocmd BufRead */MyProjectDir2/* DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>
-        autocmd BufRead */MyProjectDir2/* if exists('g:loaded_dbext') | exec 'DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>' | endif
+ concatenate the new regex separated by a comma (NOTE: change the ** to a
+ single * when pasting): >
+        autocmd BufRead **/MyProjectDir2/** DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>
+        autocmd BufRead **/MyProjectDir2/** if exists('g:loaded_dbext') | exec 'DBSetOption variable_def_regex=,\<\(p_\|lv_\)\w\+\>' | endif
 <
 
  Prompt screens and options.

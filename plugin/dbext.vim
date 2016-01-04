@@ -1,11 +1,11 @@
 " dbext.vim - Commn Database Utility
-" Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
+" Copyright (C) 2002-16, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
-" Version:       22.00
+" Version:       23.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       Peter Bagyinszki <petike1 at dpg dot hu>
 "                David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2015 Jul 27
+" Last Modified: 2015 Dec 29
 " Based On:      sqlplus.vim (author: Jamis Buck)
 " Created:       2002-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
@@ -40,7 +40,7 @@ if v:version < 702
     echomsg "dbext: Version 22.00 or higher requires Vim7.2 or higher.  Version 21.00 can stil be used with Vim 7.1 and lower."
     finish
 endif
-let g:loaded_dbext = 2200
+let g:loaded_dbext = 2300
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -460,6 +460,9 @@ endfunction
 function! DB_DictionaryCreate( drop_dict, which )
    return dbext#DB_DictionaryCreate( a:drop_dict, a:which )
 endfunction
+function! DB_DictionaryDelete( which )
+   return dbext#DB_DictionaryDelete( a:which, bufnr('%') )
+endfunction
 
 function! DB_listOption(...)
     if a:0 == 0
@@ -498,8 +501,8 @@ endfunction
 function! DB_getVisualBlock() range
     let save = @"
     " Mark the current line to return to
-    let curline     = line("'>")
-    let curcol      = virtcol("'>")
+    let curline     = line("'<")
+    let curcol      = virtcol("'<")
 
     silent normal gvy
     let vis_cmd = @"
@@ -507,7 +510,7 @@ function! DB_getVisualBlock() range
 
     " Return to previous location
     " Accounting for beginning of the line
-    call cursor(curline, curcol)
+    " call cursor(curline, curcol)
 
     return vis_cmd
 endfunction
