@@ -823,7 +823,9 @@ function! s:DB_get(name, ...)
             let retval = s:DB_promptForParameters(a:name)
         endif
     endif
-
+    if a:name == 'passwd'
+        let retval = "'" . retval . "'"
+    endif
     return retval
 endfunction
 
