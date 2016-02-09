@@ -3530,26 +3530,28 @@ function! s:DB_PGSQL_describeTable(table_name)
 endfunction
 
 function! s:DB_PGSQL_describeProcedure(procedure_name)
-    let owner      = s:DB_getObjectOwner(a:procedure_name)
+    let schema     = s:DB_getObjectOwner(a:procedure_name)
     let proc_name  = s:DB_getObjectName(a:procedure_name)
-    let query =   "SELECT p.* ".
-                \ "  FROM pg_proc p, pg_type t, pg_language l " .
-                \ " WHERE p.proargtypes = t.oid " .
-                \ "   AND p.prolang = t.oid " .
-                \ "   AND p.proname = '" . proc_name . "'"
-    " let query =   "SELECT t.typname, t.typdefault, t.typinput " .
-    "             \ "     , t.typoutput, l.lanname " .
-    "             \ "  FROM pg_proc p, pg_type t, pg_language l " .
-    "             \ " WHERE p.proargtypes = t.oid " .
-    "             \ "   AND p.prolang = t.oid " .
-    "             \ "   AND p.proname = '" . proc_name . "'"
+    let query = "SELECT n.nspname as \"Schema\", " .
+                 \ "  p.proname as \"Name\", " .
+                 \ "  pg_catalog.pg_get_function_result(p.oid) as \"Result data type\", " .
+                 \ "  pg_catalog.pg_get_function_arguments(p.oid) as \"Argument data types\", " .
+                 \ " CASE " .
+                 \ "  WHEN p.proisagg THEN 'agg' " .
+                 \ "  WHEN p.proiswindow THEN 'window' " .
+                 \ "  WHEN p.prorettype = 'pg_catalog.trigger'::pg_catalog.regtype THEN 'trigger' " .
+                 \ "  ELSE 'normal' " .
+                 \ " END as \"Type\" " .
+                 \ "  FROM pg_catalog.pg_proc p " .
+                 \ "  LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace " .
+                 \ " WHERE p.proname ~ '^(" . proc_name . ".*)$' "
 
-    if strlen(owner) > 0
+    if strlen(schema) > 0
         let query = query .
-                    \ "   AND pg_get_userbyid(p.proowner) = '".owner."' "
+                    \ "  AND n.nspname ~ '^(" . schema .")$' "
     endif
     let query = query .
-                \ " ORDER BY p.pronargs;            "
+                \ "ORDER BY 1, 2, 4;"
     return s:DB_PGSQL_execSql( query )
 endfunction
 
@@ -3592,15 +3594,16 @@ endfunction
 function! s:DB_PGSQL_getListColumn(table_name)
     let owner      = s:DB_getObjectOwner(a:table_name)
     let table_name = s:DB_getObjectName(a:table_name)
-    let query =   "SELECT a.attname                  " .
-                \ "  FROM pg_class c, pg_attribute a " .
-                \ " WHERE c.oid = a.attrelid         " .
-                \ "   AND a.attnum > 0               " .
+    let query =   "SELECT a.attname " .
+                \ "  FROM pg_class c" .
+                \ "  JOIN pg_attribute a ON c.oid = a.attrelid " .
+                \ "  JOIN pg_namespace n ON c.relnamespace = n.oid " .
+                \ " WHERE a.attnum > 0" .
                 \ "   AND c.relname = '" . table_name . "'"
 
     if strlen(owner) > 0
         let query = query .
-                    \ "   AND pg_get_userbyid(c.relowner) = '".owner."' "
+                    \ "   AND n.nspname  = '".owner."' "
     endif
     let query = query .
                 \ " ORDER BY a.attnum;            "
