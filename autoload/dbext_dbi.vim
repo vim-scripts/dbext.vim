@@ -1,5 +1,5 @@
 " dbext.vim - Commn Database Utility
-" Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
+" Copyright (C) 2002-16, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
 " File:          dbext_dbi.vim
 " Copyright (C) 2002-10, Peter Bagyinszki, David Fishburn
@@ -7,7 +7,7 @@
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       22.00
+" Version:       23.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       David Fishburn <dfishburn dot vim at gmail dot com>
 " Last Modified: 2015 Jan 06
@@ -91,6 +91,13 @@
 "            install DBD::DB2
 "            quit
 "
+"    Installing the CrateIO DBI module
+"        Make sure your DB2_HOME directory has been set
+"        cd Perl_Root_dir\bin
+"        perl -MCPAN -e shell
+"            install DBD::Crate
+"            quit
+"
 "    Installing the binary MySQL DBI module
 "        cd Perl_Root_dir\bin
 "        ppm-shell.bat
@@ -133,7 +140,7 @@
 if exists("g:loaded_dbext_dbi")
    finish
 endif
-let g:loaded_dbext_dbi = 2200
+let g:loaded_dbext_dbi = 2300
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -289,7 +296,7 @@ my %connections;
 my @result_headers;
 my @result_set;
 my @result_col_length;
-my $result_max_col_width;
+my $result_max_col_width = 0;
 my $max_rows      = 300;
 my $min_col_width = 4;   # First NULL
 my $test_inc      = 0;
@@ -749,16 +756,18 @@ sub db_is_connected
         }
     }
     if( defined($conn_local) ) {
-        db_debug('db_is_connected:conn exists');
-        if( $conn_local->{Active} ) {
-            db_debug('db_is_connected:seems active');
-            $is_connected = 1;
-        } else {
-            db_debug('db_is_connected:disconnected');
-        }
+        db_debug('db_is_connected:conn exists checking validity');
+        $is_connected = 1;
+        #if( $conn_local->{Active} ) {
+        #    db_debug('db_is_connected:existing conn seems active');
+        #    $is_connected = 1;
+        #} else {
+        #    db_debug('db_is_connected:existing conn not valid, disconnected');
+        #}
     } else {
-        db_debug('db_is_connected:NO conn');
+        db_debug('db_is_connected:NO existing conn');
     }
+    db_debug("db_is_connected:returning:$is_connected");
     db_set_vim_var("g:dbext_dbi_result", $is_connected);
     return $is_connected;
 }
@@ -796,6 +805,7 @@ sub db_get_connection
 
     db_debug("db_get_connection:max rows[$max_rows] col separator[$col_sep_vert] max col width[$col_max_width]");
     db_debug('db_get_connection:returning:'.$bufnr);
+    db_debug("db_get_connection:".Dumper($connections{$bufnr}));
 
     $conn_local = $connections{$bufnr}->{'conn'};
     $driver     = $connections{$bufnr}->{'driver'};
@@ -887,25 +897,26 @@ sub db_connect
     # $debug         = db_is_debug();
     # db_debug("Connect: driver:$driver parms:$conn_parms U:$uid P:$pwd");
 
-    db_debug('db_connected:checking for existing connection');
+    db_debug('db_connect:checking for existing connection');
     if ( db_is_connected() ) {
+        db_debug('db_connect:Already connected');
         return 0;
     }
 
     if ( ! defined($driver) ) {
-        # db_echo("Invalid driver:$driver");
+        db_debug("db_connect:Invalid driver:$driver");
         db_set_vim_var("g:dbext_dbi_msg", 'E. Invalid driver:'.$driver);
         db_set_vim_var("g:dbext_dbi_result", -1);
         return -1;
     }
     if ( ! defined($uid) ) {
-        # db_echo("Invalid userid:$uid");
+        db_debug("db_connect:Invalid userid:$uid");
         db_set_vim_var("g:dbext_dbi_msg", 'E. Invalid userid:'.$uid);
         db_set_vim_var("g:dbext_dbi_result", -1);
         return -1;
     }
     if ( ! defined($pwd) ) {
-        # db_echo("Invalid password:$pwd");
+        db_debug("db_connect:Invalid password:$pwd");
         db_set_vim_var("g:dbext_dbi_msg", 'E. Invalid password:'.$pwd);
         db_set_vim_var("g:dbext_dbi_result", -1);
         return -1;
@@ -913,7 +924,7 @@ sub db_connect
 
     my $DATA_SOURCE = "DBI:$driver:$conn_parms";
 
-    db_debug('db_connected:connecting to:'.$DATA_SOURCE);
+    db_debug('db_connect:connecting to:'.$DATA_SOURCE);
     # Use global connection object
     eval {
         # LongReadLen sets the maximum size of a BLOB that
@@ -937,6 +948,7 @@ sub db_connect
     };
 
     if ($@) {
+        db_debug("db_connect:Cannot connect to data source:".$DATA_SOURCE." using:".$uid." E:".$@);
         db_set_vim_var('g:dbext_dbi_msg', "Cannot connect to data source:".$DATA_SOURCE." using:".$uid." E:".$@);
         db_set_vim_var('g:dbext_dbi_result', -1);
         return -1;
@@ -947,7 +959,7 @@ sub db_connect
         db_set_vim_var('g:dbext_dbi_msg', $msg);
         if ( $level eq "E" ) {
             db_set_vim_var('g:dbext_dbi_result', -1);
-            db_debug("db_connect:$msg - exiting");
+            db_debug("db_connect:Connect failed:[$msg] exiting");
             return -1;
         }
     }
@@ -977,6 +989,8 @@ sub db_connect
         my $vim_dir = db_vim_eval("expand('".'$VIM'."')");
         $conn_local->trace($trace_level, $vim_dir.'\dbi_trace.txt');
     }
+
+    db_debug("db_connect:Connection Successful");
     return 0;
 }
 
@@ -1172,7 +1186,6 @@ sub db_query
 
     ($conn_local, $driver) = db_get_connection();
     my $sth = undef;
-    #$conn_local->{LastRequest} = localtime;
 
     $sth = $conn_local->prepare( $sql );
     # db_echo( "db_query:25".DBI::errstr );
