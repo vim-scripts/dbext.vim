@@ -103,6 +103,10 @@ if !exists(':DBExecVisualSQL')
     command! -nargs=0 -range DBExecVisualSQL :call dbext#DB_execSql(DB_getVisualBlock())
     xmap <unique> <script> <Plug>DBExecVisualSQL :DBExecVisualSQL<CR>
 endif
+if !exists(':DBExecBufferSQL')
+    command! -nargs=0 -range DBExecBufferSQL :call dbext#DB_execSql(DB_getBuffer())
+    nmap <unique> <script> <Plug>DBExecBufferSQL :DBExecBufferSQL<CR>
+endif
 if !exists(':DBExecVisualSQLTopX')
     command! -nargs=0 -range DBExecVisualSQLTopX :call dbext#DB_execSqlTopX(DB_getVisualBlock())
     xmap <unique> <script> <Plug>DBExecVisualTopXSQL :DBExecVisualSQLTopX<CR>
@@ -245,6 +249,9 @@ if g:dbext_default_usermaps != 0
     if maparg(g:dbext_map_prefix.'e', 'x') == ''
         exec 'xmap <unique> '.g:dbext_map_prefix.'e <Plug>DBExecVisualSQL'
     endif
+    if maparg(g:dbext_map_prefix.'eb', 'n') == ''
+        exec 'nmap <unique> '.g:dbext_map_prefix.'eb <Plug>DBExecBufferSQL'
+    endif
     if maparg(g:dbext_map_prefix.'E', 'x') == ''
         exec 'xmap <unique> '.g:dbext_map_prefix.'E <Plug>DBExecVisualTopXSQL'
     endif
@@ -369,6 +376,7 @@ if has("gui_running") && has("menu") && g:dbext_default_menu_mode != 0
 
     if g:dbext_map_or_cmd == 'map'
         exec 'vnoremenu <script> '.menuRoot.'.Execute\ SQL\ (Visual\ selection)<TAB>'.leader.'se :DBExecVisualSQL<CR>'
+        exec 'noremenu <script> '.menuRoot.'.Execute\ SQL\ (Buffer)<TAB>'.leader.'seb :DBExecBufferSQL<CR>'
         exec 'noremenu  <script> '.menuRoot.'.Execute\ SQL\ (Under\ cursor)<TAB>'.leader.'se  :call feedkeys("'.leader.'se")<CR>'
         exec 'vnoremenu <script> '.menuRoot.'.Execute\ SQL\ TopX\ (Visual\ selection)<TAB>'.leader.'sE  :DBExecVisualSQLTopX<CR>'
         exec 'noremenu  <script> '.menuRoot.'.Execute\ SQL\ TopX\ (Under\ cursor)<TAB>'.leader.'sE  :call feedkeys("'.leader.'sE")<CR>'
@@ -410,6 +418,7 @@ if has("gui_running") && has("menu") && g:dbext_default_menu_mode != 0
         exec 'noremenu  <script> '.menuRoot.'.List\ Connections\ (DBI) :DBListConnections<CR>'
     else
         exec 'vnoremenu <script> '.menuRoot.'.Execute\ SQL\ (Visual\ selection)<TAB>'.leader.'se :DBExecVisualSQL<CR>'
+        exec 'noremenu <script> '.menuRoot.'.Execute\ SQL\ Buffer)<TAB>'.leader.'seb :DBExecBufferSQL<CR>'
         exec 'noremenu  <script> '.menuRoot.'.Execute\ SQL\ (Under\ cursor)<TAB>'.leader.'se  :DBExecSQLUnderCursor<CR>'
         exec 'vnoremenu <script> '.menuRoot.'.Execute\ SQL\ TopX\ (Visual\ selection)<TAB>'.leader.'sE  :DBExecVisualSQLTopX<CR>'
         exec 'noremenu  <script> '.menuRoot.'.Execute\ SQL\ TopX\ (Under\ cursor)<TAB>'.leader.'sE  :DBExecSQLUnderCursorTopX<CR>'
@@ -496,6 +505,23 @@ function! DB_getListColumn(...)
     endif
 
     return dbext#DB_getListColumn(table_name, silent_mode, use_newline_sep)
+endfunction
+
+function! DB_getBuffer() range
+    let save = @"
+    " Mark the current line to return to
+    let curline     = line("'<")
+    let curcol      = virtcol("'<")
+
+    silent normal ggvGy
+    let vis_cmd = @"
+    let @" = save
+
+    " Return to previous location
+    " Accounting for beginning of the line
+    " call cursor(curline, curcol)
+
+    return vis_cmd
 endfunction
 
 function! DB_getVisualBlock() range
