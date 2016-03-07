@@ -3503,6 +3503,9 @@ function! s:DB_ORA_execSql(str)
     exe 'redir! > ' . s:dbext_tempfile
     silent echo output
     redir END
+    
+    " fix encoding to latin1[dos] before sending to sqlplus
+    execute 'sp ' . s:dbext_tempfile .' | write ++enc=latin1 ++ff=dos | q!'
 
     let dbext_bin = s:DB_fullPath2Bin(dbext#DB_getWType("bin"))
 
