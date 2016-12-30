@@ -200,6 +200,7 @@ endif
 "     sub db_escape
 "         - Escape strings for expressions
 "     sub db_remove_newlines
+"     sub db_strdisplaywidth
 "     sub db_get_available_drivers
 "         - Returns a list of installed DBI drivers
 "     sub db_list_connections
@@ -569,6 +570,13 @@ sub db_remove_newlines
     $escaped =~ s/\n/ /g;
 
     return $escaped;
+}
+
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_strdisplaywidth');
+sub db_strdisplaywidth
+{
+    my $str = shift;
+    return db_vim_eval('strdisplaywidth("' . db_escape($str) . '")');
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_get_available_drivers');
@@ -1295,14 +1303,24 @@ sub db_format_results
         }
         while( my $row = $sth->fetchrow_arrayref()  ) {
             $i = 0;
-            push @table,[ @$row ];
             # For every column retrieved, check if it is longer than any of
             # the previous columns.  If so, update the maximum length.
             # This must be done column by column since I am not aware of
             # a way to check the maximum length of an array without checking
             # every entry which we are already doing here.
             foreach my $col ( @{$row} ) {
-                $temp_length = length((defined($col)?$col:""));
+                $col = defined($col) ? $col : 'NULL';
+                # Remove any unprintable characters
+                # $col =~ tr/\x80-\xFF/ /d;
+                $col =~ tr/\x80-\xFF/ /;
+                # Remove the NULL character since Vim will treat this as
+                # the end of the line
+                # For more of these see:
+                #    http://www.asciitable.com/
+                #$col =~ tr/\x00/ /d;
+                $col =~ tr/\x00/ /;
+
+                $temp_length = db_strdisplaywidth($col);
                 $col_length[$i] = ( $temp_length > $col_length[$i] ? $temp_length : $col_length[$i] );
                 if (  $col_max_width > 0 ) {
                     # $col_max_width is set via g:dbext_DBI_max_column_width
@@ -1310,6 +1328,7 @@ sub db_format_results
                 }
                 $i++;
             }
+            push @table,[ @$row ];
 
             # Cap the number of rows displayed.
             $row_count++;
@@ -1386,7 +1405,6 @@ sub db_format_array()
 {
     # For each row returned concatenate the columns together
     my $result   = "DBI:";
-    my $fragment = "";
     my $i;
     my $val;
     db_debug( "db_format_array:".$result );
@@ -1399,23 +1417,11 @@ sub db_format_array()
     foreach my $row2 ( @result_set ) {
         $i = 0;
         db_debug( "db_format_array: i:$i" );
-        $fragment = "";
         # Ensure each column is the maximum width for the column by
         # blank padding each string.
         # Add an additional 3 spaces between columns.
         foreach my $col2 ( @{$row2} ) {
-            $val = (defined($col2)?$col2:"NULL");
-            # Remove any unprintable characters
-            #$val =~ tr/\x80-\xFF/ /d;
-            $val =~ tr/\x80-\xFF/ /;
-            # Remove the NULL character since Vim will treat this as
-            # the end of the line
-            # For more of these see:
-            #    http://www.asciitable.com/
-            #$val =~ tr/\x00/ /d;
-            $val =~ tr/\x00/ /;
-            $fragment = substr ($val.(' ' x $result_col_length[$i]), 0, $result_col_length[$i]);
-            $col2 = $fragment;
+            $col2 = $col2 . (' ' x ($result_col_length[$i] - db_strdisplaywidth($col2)));
             $i++;
         }
         # Finally, escape any double quotes with a preceeding slash
