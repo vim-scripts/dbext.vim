@@ -163,7 +163,7 @@ let s:cpo_save = &cpo
 set cpo&vim
 
 function! dbext_dbi#DBI_initialize()
-    if !exists("dbext_dbi_debug")
+    if !exists("g:dbext_dbi_debug")
        let g:dbext_dbi_debug = 0
     endif
     if !exists("dbext_dbi_result")
@@ -306,12 +306,17 @@ use diagnostics;
 use warnings;
 use strict;
 use Data::Dumper qw( Dumper );
+use utf8;
+use open ':std', ':encoding(UTF-8)';
 use DBI;
+use DBD::Oracle qw(:ora_types);
+use Encode;
 
 my %connections;
 my @result_headers;
 my @result_set;
 my @result_col_length;
+my @dbms_output;
 my $result_max_col_width = 0;
 my $max_rows      = 300;
 my $min_col_width = 4;   # First NULL
@@ -530,6 +535,7 @@ sub db_vim_print
     }
     if ( ! defined($line_nbr) ) {
         db_echo('db_vim_print invalid line number');
+        db_debug("db_vim_print: line_nbr is invalid");
         return -1;
     }
 
@@ -537,7 +543,13 @@ sub db_vim_print
         $line_txt = "";
     }
 
-    my @lines = split("\n", $line_txt);
+    # ans, 2022-04-08 - allow to print from dbms_output empty lines
+    my @lines = ();
+    if (!defined ($line_txt) || length($line_txt) == 0) {
+      @lines = ("");
+    } else {
+      @lines = split("\n", $line_txt);
+    }
 
     foreach my $line (@lines) {
         if ( $printed_lines > 0 ) {
@@ -550,6 +562,7 @@ sub db_vim_print
         }
         # $main::curbuf->Append($line_nbr, $line);
         db_vim_op("Append", $line_nbr, $line);
+        db_debug("db_vim_print: line_nbr=$line_nbr, line=$line");
         $line_nbr++;
         $printed_lines++;
     }
@@ -795,6 +808,7 @@ sub db_get_connection
     my $bufnr        = shift;
     my $driver       = '';
     my $conn_local;
+    my $z_user_data;
 
     if( ! defined($bufnr) ) {
         db_debug('db_get_connected:$bufnr undefined');
@@ -823,11 +837,12 @@ sub db_get_connection
     db_debug('db_get_connection:returning:'.$bufnr);
     db_debug("db_get_connection:".Dumper($connections{$bufnr}));
 
-    $conn_local = $connections{$bufnr}->{'conn'};
-    $driver     = $connections{$bufnr}->{'driver'};
+    $conn_local  = $connections{$bufnr}->{'conn'};
+    $driver      = $connections{$bufnr}->{'driver'};
+    $z_user_data = $connections{$bufnr}->{z_user_data};
     $connections{$bufnr}->{LastRequest} = localtime;
 
-    return ($conn_local, $driver);
+    return ($conn_local, $driver, $z_user_data);
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_check_error');
@@ -958,6 +973,9 @@ sub db_connect
                     LongTruncOk => 1,
                     RaiseError => 0,
                     PrintError => 0,
+                     ## hello from ans
+      ora_charset                     => 'AL32UTF8',
+      ora_ncharset                    => 'AL32UTF8',
                     PrintWarn => 0 }
                     );
         # or die $DBI::errstr;
@@ -992,6 +1010,7 @@ sub db_connect
                            ,'AutoCommit'         => 1
                            ,'CommitOnDisconnect' => 1
                            ,'LastRequest'        => localtime
+                           ,z_user_data          => {}
                            };
     # db_debug('db_connected:checking if successful');
     # if ( ! db_is_connected() ) {
@@ -1007,6 +1026,11 @@ sub db_connect
     }
 
     db_debug("db_connect:Connection Successful");
+
+    # ans, 2022-04-09 enable server output by default
+    &db_enable_srv_out;
+    db_debug("db_enable_srv_out done.");
+
     return 0;
 }
 
@@ -1264,6 +1288,90 @@ sub db_query
     return 0;
 }
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# 2021-09-19 ans: fetch all rows of dbms_output
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+sub fetch_dbms_output {
+  my ($conn_local) = (@_);
+
+  my $max_line_size = 32768; # anything we put here can be too short...
+  #my $max_line_size = 500; # anything we put here can be too short...
+  my $get_lines_st = $conn_local->prepare_cached("begin dbms_output.get_lines(:l,:n); end;");
+  my $num_lines_asked = 500;
+  my $num_lines = $num_lines_asked;
+  my @lines = map { ''; } ( 1..$num_lines ); # create 500 elements array
+  db_debug("\@lines size = ", scalar(@lines));
+  my $lines_cur = \@lines;
+  $get_lines_st->bind_param_inout(':l', \$lines_cur, $max_line_size, {ora_type => ORA_VARCHAR2_TABLE});
+  $get_lines_st->bind_param_inout(':n', \$num_lines, 50, {ora_type => 1});
+
+  $get_lines_st->execute();
+  db_debug("executed get_lines() ok. num_lines = $num_lines");
+
+  my @text_2 = ();
+  if ($num_lines) {
+    push @text_2, @lines[0..($num_lines-1)]; # copy to @text array
+  }
+
+  while ($num_lines == $num_lines_asked) {
+    $num_lines = $num_lines_asked;
+    @lines = map { ''; } ( 1..$num_lines ); # create 500 elements array
+    $get_lines_st->execute();
+    db_debug("executed get_lines()/again ok. num_lines fetched = $num_lines");
+    if ($num_lines) {
+      push @text_2, @lines[0..($num_lines-1)]; # copy to @text array
+    }
+  }
+
+  #push @text_2, "WARNING: please not foget to close the statement, debug version only!!!";
+  $get_lines_st = undef;
+
+  ## max_line_size exceeded {
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # it sounds like dirty hack. and it is in fact.
+  # seems that if the max_line_size is exceeded in bind_param_inout for
+  # ORA_VARCHAR2_TABLE, requested number (500) of completely empty (null)
+  # strings are returned. That makes no real sense to me, but at least we
+  # are trying to handle this condition "gracefully" - well, that has to
+  # be told to called normally and caller has to decide, what means
+  # "gracefully" in that case - we just replace all the NULL strings with
+  # diagnostic string which is visible to caller and can be interpreted
+  # by human eye at least.
+  # more straight approach is to die() and let caller intercept us with
+  # eval {} and how to proceed in case he recognize we had a problem here
+  my $undefsFound = 0;
+  LINE: for my $l (@text_2) {
+    if (! defined($l)) {
+      $undefsFound++;
+      #last LINE;
+    }
+  }
+
+  # only in case $num_lines_asked and "number of lines returned" - e.g. entries
+  # count in @text_2 we have a problem. otherwise we assume it is really occasional
+  # strings of size = 0 returned by server
+  if ($undefsFound && $num_lines_asked == scalar(@text_2)) {
+    die ("E: some <undefs> are found in result, requested: $num_lines_asked, returned: ".scalar(@text_2).", undef: $undefsFound");
+  }
+
+  ## if ($undefsFound) {
+  ##   db_debug("undefs found in the dbms_output, probably max_line_size=$max_line_size were exceeded?");
+  ##   my @text_3 = @text_2;
+  ##   @text_2 = ();
+  ##   for my $l (@text_3) {
+  ##     if (! defined($l)) {
+  ##       push @text_2, "max_line_size=$max_line_size exceeded?";
+  ##     } else {
+  ##       push @text_2, $l;
+  ##     }
+  ##   }
+  ## }
+  ## max_line_size exceeded }
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  @text_2;
+}
+
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_format_results');
 # Loops through the results and creates an array for display in a Vim buffer.
 # Only gathers DBI_max_rows from the result set.
@@ -1287,10 +1395,12 @@ sub db_format_results
     my @col_length;
     my @table;
     my @headers;
+    my $z_user_data;
 
+    db_debug("ans: db_format_results() called");
     return -1 unless defined $sth;
 
-    ($conn_local, $driver) = db_get_connection();
+    ($conn_local, $driver, $z_user_data) = db_get_connection();
 
     # Check if the NUM_OF_FIELDS is > 0.
     # In mysql a COMMIT does not provide a result set.
@@ -1366,6 +1476,21 @@ sub db_format_results
         }
     }
 
+   #@dbms_output = $conn_local->func( 'dbms_output_get' );
+    my @times_dbms_output = ( scalar localtime );
+    if ($z_user_data->{z_srv_out_enabled}) {
+      eval { @dbms_output = fetch_dbms_output ($conn_local); };
+      unshift @dbms_output, "query started: " . $times_dbms_output[0];
+      push @times_dbms_output, scalar localtime;
+      push @dbms_output, "query finished: " . $times_dbms_output[1];
+      if (defined ($@) and length ($@)) {
+          my $err_str_from_eval = 'eval failed: '.$@;
+          db_debug($err_str_from_eval);
+          @dbms_output = ($err_str_from_eval);
+      }
+      db_debug('db_format_results:DbOu count:'.scalar(@dbms_output));
+    }
+
     # db_echo(Dumper($sth));
     $sth->finish;
 
@@ -1425,10 +1550,14 @@ sub db_format_array()
         # blank padding each string.
         # Add an additional 3 spaces between columns.
         foreach my $col2 ( @{$row2} ) {
+            # ans: show NULL's as <really nothing>
             $val = (defined($col2)?$col2:"NULL");
+            #$val = (defined($col2)?$col2:"");
+
             # Remove any unprintable characters
             #$val =~ tr/\x80-\xFF/ /d;
-            $val =~ tr/\x80-\xFF/ /;
+            # ans: this prevent unicode utf8 symbols from being displayed in first place
+            #$val =~ tr/\x80-\xFF/ /;
             # Remove the NULL character since Vim will treat this as
             # the end of the line
             # For more of these see:
@@ -1478,7 +1607,7 @@ sub db_print_results
     }
     db_set_vim_var('g:dbext_dbi_msg', '');
 
-    db_debug("db_print_results: Using format: $format");
+    db_debug("db_print_results: Using format: $format, last_line=$last_line");
     if ( $format eq "horizontal" ) {
         # Print column names
         foreach my $row2 ( @result_headers ) {
@@ -1506,8 +1635,14 @@ sub db_print_results
             $line .= '-' x $result_col_length[$i].$col_sep_vert;
             $i++;
         }
-        db_vim_print($last_line, $line);
-        $last_line++;
+        # ans: here it is "waschechtes" bug because everything goes lost otherwise unless we have some non-zero length headers string
+        if ($line ne "") {
+          db_vim_print($last_line, $line);
+          $last_line++;
+          db_debug("db_print_results: printed line <$line> as underlines of column headers, last_line=$last_line");
+        } else {
+          db_debug("db_print_results: skipped printing empty line <$line> as underlines of column headers, last_line=$last_line");
+        }
 
         # Print each row
         foreach my $row3 ( @result_set ) {
@@ -1560,7 +1695,52 @@ sub db_print_results
             }
         }
     }
+    db_debug("db_print_results: before last_line(...rows...), last_line=$last_line");
     db_vim_print($last_line, "(".scalar(@result_set)." rows)");
+    if (@dbms_output) {
+      $last_line++;
+      # ans: we need this "join and afterwards split" trick because otherwise
+      # individual rows from @dbms_output are coming encoded differently, see as well
+      # exploit Perl_Oracle_DBD_dbms_output/perl_dbd_oracle_dbms_output__inside_vim__simple.vim
+      # call :so % | call Check_my_perl__load()
+      ##my @dbms_output_remade = split ("\n", join("\n", @dbms_output));
+      # ans: 2021-09-19 now we use decode("utf8"...) and other method of
+      # fetching of array, there are chances we dont need  this ugly workaround
+      # any more
+      db_debug("db_print_results: \@dbms_output size: ".scalar(@dbms_output));
+      my @dbms_output_remade = @dbms_output;
+      for my $dol0 (@dbms_output_remade) {
+        #### THIS IS MAGIC !!!!!!!
+        #### THIS_IS_MAGIC !!!!!!!
+        #### THIS IS MAGIC !!!!!!!
+        my $dol = decode('utf8', ($dol0 // ''));
+        db_debug("db_print_results: printed dbms_output[i] (raw non-splitted)    : ".$dol);
+        #chomp($dol);
+
+        # we try to overtake the line number from the "printer" method
+        $last_line += db_vim_print($last_line, $dol);
+        #$last_line++;
+
+        #my @lines = split("\n", $dol);
+        #for my $diag_ln (@lines) {
+        #  db_debug("db_print_results: printed dbms_output[i] (splitted redundantly): ".$diag_ln);
+        #}
+      }
+      db_debug("db_print_results: printed dbms_output: " . join ("\n", map { $_ // '' } @dbms_output))
+        if ($debug);
+      @dbms_output = ();
+      $last_line += db_vim_print($last_line, "printed at: " . scalar localtime); 
+    } else {
+      $last_line++;
+      my ($connection_ignored, $driver_ignored, $z_user_data) = db_get_connection();
+      if ($z_user_data->{z_srv_out_enabled}) {
+        db_vim_print($last_line,   "dbms_output is empty.");
+        db_debug("db_print_results: dbms_output is empty.");
+      } else {
+        db_vim_print($last_line, "ACHTUNG: dbms_output is OFF.");
+        db_debug("db_print_results:        dbms_output is OFF.");
+      }
+    }
     db_debug("db_print_results: returning 0");
     return 0;
 }
@@ -1761,6 +1941,239 @@ sub db_results_list
     }
 
     return 0;
+}
+
+
+sub db_enable_srv_out
+{
+
+  # see ~/Documents/0.mop/Perl_Oracle_DBD_dbms_output/dbms_output_test_case_1.vim
+  # for automated test case:
+  # vim -c 'source ~/Documents/0.mop/Perl_Oracle_DBD_dbms_output/dbms_output_test_case_1.vim|call Test_Case_1()'
+
+  my ($conn_local, $driver, $z_user_data) = db_get_connection();
+  if ($z_user_data->{z_srv_out_enabled}) {
+    db_debug("skip <enable> of already enabled server output");
+  }
+  else {
+    $conn_local->func( 1000000, 'dbms_output_enable' );
+    $z_user_data->{z_srv_out_enabled} = 1;
+  }
+
+  #db_set_vim_var('g:dbext_dbi_msg', 'A request_type must be specified');
+  #db_set_vim_var('g:dbext_dbi_result', -1);
+}
+
+sub db_disable_srv_out
+{
+  my ($conn_local, $driver, $z_user_data) = db_get_connection();
+  if ($z_user_data->{z_srv_out_enabled}) {
+    my $stmt = $conn_local->prepare_cached( 'begin dbms_output.disable; end;' );
+    $stmt->execute();
+    $z_user_data->{z_srv_out_enabled} = 0;
+  }
+  else {
+    db_debug("skip <disable> of already disabled server output");
+  }
+
+  #db_set_vim_var('g:dbext_dbi_msg', 'A request_type must be specified');
+  #db_set_vim_var('g:dbext_dbi_result', -1);
+}
+
+db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_ora_extract_ddl');
+# Used to extract DDL and show dbms_output
+# like lists of tables, columns, stored procedures
+# and so on.
+sub db_ora_extract_ddl
+{
+  my $object_name_like = shift;
+  my $level;
+  my $err;
+  my $msg;
+  my $state;
+
+  # $debug         = db_is_debug();
+  if ( length($object_name_like) == 0 ) {
+      db_set_vim_var('g:dbext_dbi_msg', 'A object_name_like must be specified');
+      db_set_vim_var('g:dbext_dbi_result', -1);
+      return -1;
+  }
+  if ( ! db_is_connected() ) {
+      db_debug("You must connect first");
+      db_set_vim_var('g:dbext_dbi_msg', 'You are not connected to a database');
+      db_set_vim_var('g:dbext_dbi_result', -1);
+      return -1;
+  }
+
+  db_debug("object_name_like=$object_name_like");
+
+  my $sql = qq(
+    declare
+      vObjNameLike varchar2(200) := '$object_name_like';
+      iNL integer; ddl CLOB;
+      part varchar2(32767); sNL varchar2(20) := CHR(10);
+      type str2num is table of number index by varchar2(100);
+      vTblLen str2num;
+      procedure l(s varchar2) is begin dbms_output.put_line(s); end;
+    begin
+      <<FOR_ALL_OBJ_LIKE>>
+      for viRec in (select * from user_objects where object_name like upper(vObjNameLike)) loop
+        ddl := DBMS_METADATA.GET_DDL(viRec.object_type, viRec.object_name);
+        exit FOR_ALL_OBJ_LIKE;
+      end loop;
+      iNL := 1;
+      while (iNL > 0) loop
+        iNL := instr(ddl, sNL);
+        if (iNL <> 0) then
+          -- explanations to fix with "iNL-1" below:
+          --begin -- that produces NO empty lines - dbms_output.put_line simply do nothing if NL is single char in the string it gets!
+          --  dbms_output.put_line(CHR(10));
+          --  dbms_output.put_line('aaa');
+          --  dbms_output.put_line(CHR(10));
+          --  dbms_output.put_line('bbb');
+          --end;;
+          --begin -- that produces empty lines just fine
+          --  dbms_output.put_line(null);
+          --  dbms_output.put_line('aaa');
+          --  dbms_output.put_line(null);
+          --  dbms_output.put_line('bbb');
+          --end;;
+          part := substr(ddl, 1, iNL-1); ddl := substr(ddl, iNL+1);
+        else
+          part := ddl; ddl := null;
+        end if;
+        l(part);
+        iNL := instr(ddl, sNL);
+      end loop;
+      l(ddl);
+
+
+      declare
+        len number; nm varchar2(100);
+        vStr varchar2(32767);
+        --
+        vObjNameLikeIndex varchar2(30) := vObjNameLike;
+        type str2num is table of number index by varchar2(100);
+        vTblLen str2num;
+        vIdxFound boolean := false;
+      begin
+        vTblLen('INDEX_NAME') := length('INDEX_NAME');
+        vTblLen('UNIQUENESS') := length('UNIQUENESS');
+        vTblLen('LAST_ANALYZED') := length('LAST_ANALYZED');
+        vTblLen('NUM_ROWS') := length('NUM_ROWS');
+        vTblLen('CONSTRAINT_INDEX') := length('CONSTRAINT_INDEX');
+        for viIdx in (select * from user_indexes where upper(table_name) like upper(vObjNameLikeIndex)) loop
+            len := length(viIdx.INDEX_NAME); nm := 'INDEX_NAME';
+            if (len > vTblLen(nm)) then vTblLen(nm) := len; end if;
+            len := length(viIdx.UNIQUENESS); nm := 'UNIQUENESS';
+            if (len > vTblLen(nm)) then vTblLen(nm) := len; end if;
+            len := length(viIdx.LAST_ANALYZED); nm := 'LAST_ANALYZED';
+            if (len > vTblLen(nm)) then vTblLen(nm) := len; end if;
+            len := length(viIdx.NUM_ROWS); nm := 'NUM_ROWS';
+            if (len > vTblLen(nm)) then vTblLen(nm) := len; end if;
+            len := length(viIdx.CONSTRAINT_INDEX); nm := 'CONSTRAINT_INDEX';
+            if (len > vTblLen(nm)) then vTblLen(nm) := len; end if;
+        end loop;
+        for viIdx in (select * from user_indexes where upper(table_name) like upper(vObjNameLikeIndex)) loop
+          if (not vIdxFound) then
+            -- first row
+            dbms_output.put_line('Indexes found:');
+            vStr :=
+                   rpad('INDEX_NAME', vTblLen('INDEX_NAME'), ' ')
+                || ' ' || rpad('UNIQUENESS', vTblLen('UNIQUENESS'), ' ')
+                || ' ' || rpad('LAST_ANALYZED', vTblLen('LAST_ANALYZED'), ' ')
+                || ' ' || rpad('NUM_ROWS', vTblLen('NUM_ROWS'), ' ')
+                || ' ' || rpad('CONSTRAINT_INDEX', vTblLen('CONSTRAINT_INDEX'), ' ')
+                ;
+            dbms_output.put_line(vStr);
+            vStr :=
+                          rpad('=', vTblLen('INDEX_NAME'), '=')
+                || ' ' || rpad('=', vTblLen('UNIQUENESS'), '=')
+                || ' ' || rpad('=', vTblLen('LAST_ANALYZED'), '=')
+                || ' ' || rpad('=', vTblLen('NUM_ROWS'), '=')
+                || ' ' || rpad('=', vTblLen('CONSTRAINT_INDEX'), '=')
+                ;
+            dbms_output.put_line(vStr);
+          end if;
+          vIdxFound := true;
+
+          dbms_output.put_line(
+                   rpad(viIdx.INDEX_NAME, vTblLen('INDEX_NAME'), ' ')
+                || ' ' || rpad(viIdx.UNIQUENESS, vTblLen('UNIQUENESS'), ' ')
+                || ' ' || rpad(viIdx.LAST_ANALYZED, vTblLen('LAST_ANALYZED'), ' ')
+                || ' ' || rpad(viIdx.NUM_ROWS, vTblLen('NUM_ROWS'), ' ')
+                || ' ' || rpad(viIdx.CONSTRAINT_INDEX, vTblLen('CONSTRAINT_INDEX'), ' ')
+          );
+
+        end loop;
+      end;
+
+      dbms_output.put_line('gesmtlaenge='||length(ddl)||', iNL='||iNL);
+      exception when others then
+        l('exception happened');
+        declare
+          emsg varchar2(32767);
+        begin
+          emsg := dbms_utility.format_error_backtrace;
+          l(emsg);
+        end;
+    end;
+  );
+
+  db_debug("sql=$sql");
+
+  my ($conn_local, $driver, $z_user_data) = db_get_connection();
+  if ($z_user_data->{z_srv_out_enabled}) {
+    db_debug("skip <enable> of already enabled server output");
+  }
+  else {
+    db_enable_srv_out;
+  }
+
+  #($conn_local, $driver) = db_get_connection();
+  my $sth = undef;
+
+  eval {
+      $sth = $conn_local->prepare( $sql );
+  };
+
+  if ($@) {
+      db_debug("db_ora_extract_ddl statement error for object_name_like $object_name_like\n".db_escape($@));
+      db_set_vim_var('g:dbext_dbi_msg', 'Invalid statement for object_name_like:'.$object_name_like.":".db_escape($@));
+      db_set_vim_var('g:dbext_dbi_result', -1);
+      return -1;
+  }
+  if ( defined($sth) ) {
+      db_debug("db_ora_extract_ddl statement is defined");
+      $sth->execute;
+      ( $level, $err, $msg, $state ) = db_check_error($driver);
+      if ( ! $msg eq "" ) {
+          $msg = "$level. DBcate:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"");
+          db_set_vim_var('g:dbext_dbi_msg', $msg);
+          if ( $level eq "E" ) {
+              db_set_vim_var('g:dbext_dbi_result', -1);
+              db_debug("db_catalogue:$msg - exiting");
+              return -1;
+          }
+      }
+      db_format_results( $sth );
+  } else {
+      db_set_vim_var('g:dbext_dbi_result', -1);
+      ( $level, $err, $msg, $state ) = db_check_error($driver);
+      if ( ! $msg eq "" ) {
+          $msg = "$level. DBcats:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"");
+          db_set_vim_var('g:dbext_dbi_msg', $msg);
+          if ( $level eq "E" ) {
+              db_set_vim_var('g:dbext_dbi_result', -1);
+              db_debug("db_catalogue:$msg - exiting");
+              return -1;
+          }
+      }
+      db_debug("db_catalogue statement failed:".$DBI::err.":".db_escape($DBI::errstr));
+      return -1;
+  }
+
+  return 0;
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_catalogue');

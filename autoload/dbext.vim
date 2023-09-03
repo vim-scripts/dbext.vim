@@ -1157,6 +1157,11 @@ function! s:DB_resetGlobalParameters()
         silent! let g:
         redir END
 
+        " ans 2022-04-09: prevent dbext barking on us because FuzzyFinder
+        " remembers something in his global variable FuzzyFinderMode about db_ext!!! (something
+        " of my recent searches apparently)
+        let @a = substitute(@a, "\nFuzzyFin.*\n","\n",'')
+
         if @a =~ 'db_ext'
             call s:DB_warningMsg("You have used a previous version of db_ext. ")
             call s:DB_warningMsg("The configuration parameters have changed.  ")
@@ -5015,6 +5020,42 @@ function! s:DB_DBI_getListTable(table_prefix)
     return result
 endfunction
 
+function! s:DB_DBI_extractDdl(object_name_like)
+    "let owner      = s:DB_getObjectOwner(a:object_name_like)
+    "let table_name = s:DB_getObjectName(a:object_name_like)
+
+    if s:DB_DBI_Autoload() == -1
+        return -1
+    endif
+
+    if dbext#DB_connect("extract ddl " . a:object_name_like) == -1
+        return -1
+    endif
+
+    " If empty, use undef, if not, place single quotes around it and add a %
+    "let owner      = (owner == ''?'undef':"'".owner."%'")
+    "let table_name = (table_name == ''?'undef':"'".table_name."%'")
+    "let driver     = s:DB_get('driver')
+    "let table_type = s:DB_getDefault('DBI_table_type_'.driver)
+    "if table_type == ""
+    "    let table_type = s:DB_getDefault('DBI_table_type')
+    "endif
+    "let table_type = "'".table_type."'"
+
+    let cmd = "perl db_ora_extract_ddl('".a:object_name_like."')"
+    exec cmd
+    if g:dbext_dbi_result == -1
+        " call s:DB_errorMsg(g:dbext_dbi_msg)
+        call s:DB_runCmd("perl DBI", cmd, g:dbext_dbi_msg)
+        return -1
+    endif
+
+    let result = g:dbext_dbi_result
+    call s:DB_runCmd("perl DBI", cmd, result)
+
+    return result
+endfunction
+
 function! s:DB_DBI_getListProcedure(proc_prefix)
     let owner   = s:DB_getObjectOwner(a:proc_prefix)
     let object  = s:DB_getObjectName(a:proc_prefix)
@@ -6177,7 +6218,35 @@ function! s:DB_getLoginScript(filename)
         endif
     endif
 
+    "ans: debug the login_script
+    "echomsg "login_script:"
+    "echomsg sql
     return sql
+endfunction
+
+function! dbext#DB_enableSrvOut(...)
+
+    let cmd = "perl db_enable_srv_out('dummy')"
+    exec cmd
+    if g:dbext_dbi_result == -1
+        " call s:DB_errorMsg(g:dbext_dbi_msg)
+        call s:DB_runCmd("perl DBI", cmd, g:dbext_dbi_msg)
+        return -1
+    endif
+
+endfunction
+
+function! dbext#DB_disableSrvOut(...)
+
+
+    let cmd = "perl db_disable_srv_out('dummy')"
+    exec cmd
+    if g:dbext_dbi_result == -1
+        " call s:DB_errorMsg(g:dbext_dbi_msg)
+        call s:DB_runCmd("perl DBI", cmd, g:dbext_dbi_msg)
+        return -1
+    endif
+
 endfunction
 
 function! dbext#DB_describeTable(...)
@@ -6297,6 +6366,25 @@ function! dbext#DB_getListTable(...)
         endif
     endif
     return dbext#DB_execFuncTypeWCheck('getListTable', table_prefix)
+endfunction
+
+function! dbext#DB_extractDdl(...)
+    if(a:0 > 0)
+        " Strip any leading or trailing spaces
+        let object_name_like = substitute(a:1,'\s*\(\w*\)\s*','\1','')
+    else
+        let object_name_like = s:DB_getInput(
+                    \ "Enter object_name_like: ",
+                    \ '',
+                    \ "dbext_cancel"
+                    \ )
+        if object_name_like == "dbext_cancel"
+            return ""
+        endif
+    endif
+    " it is only oracle and DBI specific, but we need generic handling fro
+    " winnr() etc to assign s:dbext_prev_winnr and friends properly...
+    return dbext#DB_execFuncTypeWCheck('extractDdl', object_name_like)
 endfunction
 
 function! dbext#DB_getListProcedure(...)
@@ -7840,6 +7928,7 @@ function! s:DB_addToResultBuffer(output, do_clear)
             " silent! exec "put = data"
             let cmd = "perl db_print_results('".dbi_orient."')"
             exec cmd
+            "norm Goans was here(2).
         else
             let g:dbext_rows_affected = 0
             let l:start_of_output = line('$')
@@ -7854,11 +7943,13 @@ function! s:DB_addToResultBuffer(output, do_clear)
     endif
 
     " Since this is a small window, remove any blanks lines
-    silent %g/^\s*$/d
+    " ans: this squashes my DDL output - because empty lines will be removed
+    "silent %g/^\s*$/d
     " Fix the ^M characters, if any
     silent execute "%s/\<C-M>\\+$//e"
     " Dont allow modifications, and do not wrap the text, since
     " the data may be lined up for columns
+    "norm Goans was here.
     setlocal nomodified
     setlocal nowrap
     setlocal noswapfile

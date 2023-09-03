@@ -159,6 +159,14 @@ if !exists(':DBDescribeTable')
                 \ :call dbext#DB_describeTable(<args>)
     nmap <unique> <script> <Plug>DBDescribeTable :DBDescribeTable<CR>
 endif
+if !exists(':DBEnableSrvOut')
+    command! -nargs=* -range DBEnableSrvOut
+                \ :call dbext#DB_enableSrvOut(<args>)
+endif
+if !exists(':DBDisableSrvOut')
+    command! -nargs=* -range DBDisableSrvOut
+                \ :call dbext#DB_disableSrvOut(<args>)
+endif
 if !exists(':DBDescribeTableAskName')
     command! -nargs=0 DBDescribeTableAskName
                 \ :call dbext#DB_describeTablePrompt()
@@ -192,6 +200,12 @@ if !exists(':DBListTable')
                 \ :call dbext#DB_getListTable(<f-args>)
     nmap <unique> <script> <Plug>DBListTable
                 \ :DBListTable<CR>
+endif
+if !exists(':DBXtractDdl')
+    command! -nargs=? DBXtractDdl
+                \ :call dbext#DB_extractDdl(<f-args>)
+    nmap <unique> <script> <Plug>DBXtractDdl
+                \ :DBXtractDdl<CR>
 endif
 if !exists(':DBListProcedure')
     command! -nargs=? DBListProcedure
