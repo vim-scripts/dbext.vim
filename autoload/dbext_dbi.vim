@@ -1,4 +1,4 @@
-" dbext.vim - Commn Database Utility
+" dbext.vim - Common Database Utility
 " Copyright (C) 2002-16, Peter Bagyinszki, David Fishburn
 " ---------------------------------------------------------------
 " File:          dbext_dbi.vim
@@ -7,10 +7,10 @@
 "                It adds transaction support and the ability
 "                to reach any database currently supported
 "                by Perl and DBI.
-" Version:       23.00
+" Version:       26.00
 " Maintainer:    David Fishburn <dfishburn dot vim at gmail dot com>
 " Authors:       David Fishburn <dfishburn dot vim at gmail dot com>
-" Last Modified: 2015 Jan 06
+" Last Modified: 2016 Sep 04
 " Created:       2007-05-24
 " Homepage:      http://vim.sourceforge.net/script.php?script_id=356
 "
@@ -70,7 +70,7 @@
 "
 "    Installing the Oracle DBI module
 "        cd Perl_Root_dir\bin
-"        ppm-shell.bat
+"        ppm.bat
 "            install DBD::Oracle
 "            quit
 "
@@ -100,21 +100,37 @@
 "
 "    Installing the binary MySQL DBI module
 "        cd Perl_Root_dir\bin
-"        ppm-shell.bat
+"        ppm.bat
 "            install DBD-mysql
+"            quit
+"
+"    Installing the binary SQLite DBI module
+"        cd Perl_Root_dir\bin
+"        perl -MCPAN -e shell
+"            install DBD::SQLite
 "            quit
 "
 "    Installing the Sybase ASE or SQL Server DBI module
 "        http://lists.ibiblio.org/pipermail/freetds/2001q3/004748.html
 "        cd Perl_Root_dir\bin
-"        ppm-shell.bat
+"        ppm.bat
 "            install Sybase-TdsServer
 " Testing:
 "     http://www.easysoft.com/developer/languages/perl/sql_server_unix_tutorial.html
 "       perl -MCPAN -e shell
 "       perl -e "use DBD::ODBC;"
 "       perl -MDBD::ODBC -e "print $DBD::ODBC::VERSION;"
+"     This will show the various DBI drivers installed on your system:
 "       perl -MDBI -e "DBI->installed_versions;"
+"           Perl            : 5.020002    (MSWin32-x86-multi-thread-64int)
+"           OS              : MSWin32     (6.3)
+"           DBI             : 1.636
+"           DBD::mysql      : 4.036
+"           DBD::SQLite     : 1.50
+"           DBD::SQLAnywhere: 2.13
+"           DBD::Pg         : 3.5.1
+"           DBD::ODBC       : 1.50
+"           DBD::Crate      : 0.0.1
 "
 " Usage:
 "    dbext_dbi.vim is designed to be used by the dbext.vim plugin.
@@ -140,7 +156,7 @@
 if exists("g:loaded_dbext_dbi")
    finish
 endif
-let g:loaded_dbext_dbi = 2300
+let g:loaded_dbext_dbi = 2600
 
 " Turn on support for line continuations when creating the script
 let s:cpo_save = &cpo
@@ -202,7 +218,7 @@ endif
 "     sub db_remove_newlines
 "     sub db_get_available_drivers
 "         - Returns a list of installed DBI drivers
-"     sub db_list_connections
+"     db_list_connections
 "         - Lists all open database connections
 "     sub db_get_info
 "         - Returns information about the DBI driver
@@ -1024,7 +1040,7 @@ sub db_disconnect
 
     db_debug("db_disconnect:B:$bufnr A:".$conn_local->{AutoCommit}." C:".$connections{$bufnr}->{'CommitOnDisconnect'});
     if( $conn_local->{AutoCommit} == 0 && $connections{$bufnr}->{'CommitOnDisconnect'} == 1 ) {
-        db_debug('db_disconnected: forcing COMMIT');
+        db_debug('db_disconnected:forcing COMMIT');
         $conn_local->commit;
     }
 
@@ -1213,7 +1229,7 @@ sub db_query
     if ( ! $msg eq "" ) {
         $msg = "$level. DBQp:".(($level ne "I")?"SQLCode:$err:":"").$msg.(($state ne "")?":$state":"");
         db_set_vim_var('g:dbext_dbi_msg', $msg);
-        if ( $level eq "E" ) {
+        if ( $level eq "E" || ! defined($sth) ) {
             db_set_vim_var('g:dbext_dbi_result', -1);
             db_debug("db_query:$msg - exiting");
             return -1;
@@ -1302,7 +1318,12 @@ sub db_format_results
             # a way to check the maximum length of an array without checking
             # every entry which we are already doing here.
             foreach my $col ( @{$row} ) {
-                $temp_length = length((defined($col)?$col:""));
+                #$temp_length = length((defined($col)?$col:""));
+                # For some reason the above can sometimes return the wrong length.
+                # The following two lines fix that problem
+                my $xstr = $col;
+                $temp_length = length((defined($col)?$xstr:""));
+
                 $col_length[$i] = ( $temp_length > $col_length[$i] ? $temp_length : $col_length[$i] );
                 if (  $col_max_width > 0 ) {
                     # $col_max_width is set via g:dbext_DBI_max_column_width

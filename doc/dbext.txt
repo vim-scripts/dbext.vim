@@ -1,4 +1,4 @@
-*dbext.txt*	For Vim version 7.0.  Last change: 2016 Jan 03
+*dbext.txt*	For Vim version 7.0.  Last change: 2017 Nov 17
 
 
                 	  VIM REFERENCE MANUAL
@@ -7,7 +7,7 @@
                      Peter Bagyinszki
 
 	  	Database extension plugin (dbext.vim) manual
-	  	dbext.vim version 23.00
+	  	dbext.vim version 26.00
 
 For instructions on installing this file, type
 	:help add-local-help
@@ -17,7 +17,8 @@ Homepage: http://vim.sourceforge.net/script.php?script_id=356
 
 *dbext* *dbext.vim* *db_ext* *db_ext.vim* *database-extension* *pgsql* *mysql*
 *asa* *ase* *ingres* *interbase* *sqlite* *sqlsrv* *ora* *oracle*
-*db2* *DBI* *ODBC* *sqlanywhere* *firebird*
+*db2* *DBI* *ODBC* *sqlanywhere* *ultralite* *hana* *firebird*
+*CrateIO* *RDBMS*
 
 1.  Getting Started			      |dbext-getting-started|
 2.  Whats New   			      |dbext-new|
@@ -29,7 +30,7 @@ Homepage: http://vim.sourceforge.net/script.php?script_id=356
     5.3 Database Specific Options             |dbext-configure-options|
     5.4 DB2 Modes                             |dbext-configure-db2|
     5.5 DBI Installation                      |dbext-configure-dbi|
-6.  Mappings and commands		      |dbext-mappings|
+6.  Mappings and commands		      |dbext-maps-commands|
 7.  Adding new database types		      |dbext-newdb|
 8.  Prompting for input parameters	      |dbext-prompting|
 9.  Setting up connection information	      |dbext-connect|
@@ -50,7 +51,7 @@ Homepage: http://vim.sourceforge.net/script.php?script_id=356
     14.1 Using filetype support               |dbext-filetypes-using|
     14.2 Adding new filetypes                 |dbext-filetypes-adding|
 15. Using SQL History                         |dbext-history|
-16. Open Source                               |dbext-sourceforge|
+16. Job Support                               |dbext-job|
 17. Tutorial                                  |dbext-tutorial|
     17.1  Creating the connection             |dbext-tutorial-connection|
     17.2  The result buffer                   |dbext-tutorial-results|
@@ -116,6 +117,72 @@ David Fishburn
 
 ==============================================================================
 2. What's New						*dbext-new*
+
+Version 26.00 (Nov 17, 2017)
+
+ New Features
+ ------------
+ - New option g:dbext_default_job_show_msgs to control whether information
+   messages are displayed when starting and stop jobs.  Regular status
+   messages continue to display.
+ - New option g:dbext_default_job_pipe_regex to control how to identify
+   and strip piped in files and specify it separately via job options.
+ - Renamed option g:dbext_default_use_jobs to g:dbext_default_job_enable
+   to better support tab completion for the DBSetOption command.
+
+ Bug Fixes
+ ---------
+ - Also check for 'timers' when checking for job support.
+ - Revamped job support.  Tested on Windows, Linux and OSX.  Works on
+   long running and very short jobs where it was erratic on first release.
+
+Version 25.00 (Jan 30, 2017)
+
+ New Features
+ ------------
+ - Added support for using Vim's Job / Channel feature for asynchronous
+   execution.  If the job fails to start, the usual synchronous way
+   of launching the process happens (after displaying a message).
+   The main purpose for this feature is to allow you to continue
+   editing your files while waiting for the results from SQL 
+   statements to complete.  Prior to Vim's Job feature, this 
+   was a synchronous process which could interrupt your development
+   needlessly.
+ - New commands DBJobStatus, DBJobStop, DBJobTimerStart, DBJobTimerStop.
+ - New options g:dbext_default_use_jobs defaults to 1 (enabled),
+   g:dbext_default_job_status_update_ms defaults to 2000.
+
+ Bug Fixes
+ ---------
+ - None
+
+Version 24.00 (Sept 30, 2016)
+
+ New Features
+ ------------
+ - Added missing menu items for Execute All (sea), Execute Line (sel),
+   Execute Previous Visual Selection (sep) (pull #18) (Raphaël Bade)
+ - When using ?s as input parameters, these can now be remembered
+   and used when saving previous values when executing the query.
+ - Additional examples of connecting to Oracle using DBI/ODBC
+   without a TNSNAMES entry.
+ - Strip off ending cmd terminators for the DBI database types
+   as some databases (Oracle) complain about them (Bruce Hunsaker).
+ - For native Oracle connections, when retrieving database objects
+   (tables, procedures, columns, ...) ignore case (Dimitri Belov).
+
+ Bug Fixes
+ ---------
+ - For Java, CSharp, JSP, HTML and JavaScript files, remove line
+   continuation (backslash) characters before sending request to database.
+ - Better error handling for the DBI / ODBC databases (Michael Graham, 
+   Bruce Hunsaker, Dimitri Belov, Will Wyatt).
+ - The @ask[bg] parameter was not supported properly in later 
+   releases (Richard Tsai, Nan Jia).
+ - Vim error - Invalid range reported for the SQL history (Bruce Hunsaker).
+ - DBI / ODBC CommitOnDisconnect driver parameter is not supported by all
+   drivers, handle cleanly (Dimitri Belov).
+ - DBI / ODBC Disconnect reported a Vim error (Dimitri Belov).
 
 Version 23.00 (Dec 30, 2015)
 
@@ -983,11 +1050,11 @@ Version 2.01 (Jul 22, 2004)
  - New functionality for better integration with the Intellisense SQL plugin.
  - Ability to change the title of the window/buffer.
  - Integrated Login support for windows.
- - Added new functionality to these commands:   |dbext-mappings|
+ - Added new functionality to these commands:
      DBGetOption
      DBSetOption
      DBExecRangeSQL
- - Added 4 new options:                         |dbext-configure-variables|
+ - Added 4 new options:
      replace_title
      custom_title
      use_tbl_alias
@@ -1033,10 +1100,11 @@ Version 2.00 (Jul 11, 2004)
         Oracle
         Oracle Rdb on an Open VMS Node
         SQLite
-        Sybase Adaptive Server Anywhere
+        Sybase Adaptive Server Anywhere (SA / ASA)
         Sybase UltraLite
-        Sybase Adaptive Server Enterprise
+        Sybase Adaptive Server Enterprise (ASE)
         SAP HANA
+        CrateIO
  When using a Perl enabled Vim ( :echo has('perl') ):
         DBI
         ODBC
@@ -1784,6 +1852,41 @@ Version 2.00 (Jul 11, 2004)
         specify. >
             :DBSetOption filetype=sql
             let g:dbext_default_profile_test = 'type=ASA:user=DBA:passwd=SQL:filetype=sql'
+    dbext_default_job_enable
+<       Default: 1
+        New feature to version 26.0.  Useful when using any of the database
+        types that must spawn an executable (i.e. not DBI or ODBC).
+        Vim 8 introduced a new Job / Channel feature which allows asynchronous
+        execution of background jobs.  So, if executing a query (without jobs)
+        you can no longer edit your code until the query finishes execution
+        and displays a result.  When using this feature (:echo has('job')) the
+        query will take place in the background allowing you to continue
+        editing your code until it completes. >
+            :DBSetOption job_enable=1
+            let g:dbext_default_job_enable = 1
+    dbext_default_job_status_update_ms
+<       Default: 2000
+        New feature to version 25.0.  When running a SQL statement via
+        jobs, a status is displayed to the user every 2 seconds. >
+            :DBSetOption job_status_update_ms=5000
+            let g:dbext_default_job_status_update_ms = 5000
+    dbext_default_job_show_msgs
+<       Default: 1
+        New feature to version 25.0.  When running a SQL statement via
+        jobs, a status is displayed to the user every 2 seconds. These
+        are echomsgs, rather than messages displayed in the result buffer.
+        Version 26 adds additional information into the result buffer
+        so this can allow you to reduce some messages. >
+            :DBSetOption job_show_msgs=0
+            let g:dbext_default_job_show_msgs = 0
+    dbext_default_job_pipe_regex
+<       Default: \%(@\|<\)
+        New feature to version 26.0.  For the database types which run a
+        command from a shell which pipe the SQL statements into the utility
+        using a pipe command, then when running a job, the input file is 
+        specified in a different way.  This allows a configurable way of
+        identifing and removing the pipe when setting up the job. >
+            let g:dbext_default_job_pipe_regex = '\%(@\|<\)'
 
 
 <
@@ -2152,7 +2255,7 @@ Version 2.00 (Jul 11, 2004)
             quit
 
 ==============================================================================
-6. Mappings and commands				*dbext-mappings*
+6. Mappings and commands				*dbext-maps-commands*
 
  Default visual/normal mode mappings (|:vmap|,|:nmap|):
 
@@ -2418,6 +2521,22 @@ Version 2.00 (Jul 11, 2004)
                             which is especially useful for one or two rows of
                             output.
                             This will toggle the current display.
+    DBJobStatus           - Shows the status of the currently running job. 
+    DBJobStop             - Allows the user to terminate the currently running
+                            job.  Command completion has been enabled for this
+                            to list the various options Vim supports to cancel
+                            jobs.  Though Vim's defaults are usually
+                            sufficient.
+    DBJobTimerStop        - When a job is started a timer runs which indicates
+                            to the user a job is in progress and how many
+                            milliseconds it has been running.  Stopping the
+                            timer does not does not stop the job it merely
+                            stops notifying the user. 
+    DBJobTimerStart       - Added for completeness.  Running a SQL statement
+                            which starts a job automatically starts a status
+                            timer.  This command will allow you to restart the
+                            timer, assuming you had stopped it using
+                            DBJobTimerStop.
 
 
 ==============================================================================
@@ -2486,7 +2605,7 @@ Version 2.00 (Jul 11, 2004)
           INTO p1, p2
           FROM customer
          WHERE name    = @name
-           AND address = ?
+           AND country = ?
            AND phone   = :phone_nbr
            AND email   = 'bob@something.com'
            AND c2      = 'property:name';
@@ -2503,13 +2622,24 @@ Version 2.00 (Jul 11, 2004)
     4.  When prompted for a value for @name, I would enter 'Homer' (including
         the single quotes).
     5.  When prompted for a value for ? it will indicate which ? this is, by
-        counting them and prompting you for a value for ? number 6.
+        counting them and prompting you for a value for ? number 1.  Enter
+        a value of 'Canada' (again, including quotes).
 
+ The resulting query which is sent to the database will be: >
+        SELECT varexists('@dave'), column2
+          FROM customer
+         WHERE name    = 'Homer'
+           AND country = 'Canada'
+           AND phone   = :phone_nbr
+           AND email   = 'bob@something.com'
+           AND c2      = 'property:name';
+<
  To modify what variables that are searched for consider the following
  example: >
         INSERT INTO sync_log ( user_id, table_name, line )
         VALUES( i_user, i_table_name, i_str );
-<This is an INSERT statement within a stored procedure.  The stored procedure
+<
+ This is an INSERT statement within a stored procedure.  The stored procedure
  takes 3 input parameters.  The author of the stored procedure places a i_
  ahead of all input variables.  You can modify the buffer variable for this
  file as follows: >
@@ -2643,8 +2773,10 @@ To specify the type of database you connect to most often, you can place the
     let g:dbext_default_profile_ORA = 'type=ORA:srvname=ffs42ga:user=john:passwd=whatever'
     " Oracle SQL Connect URL string (notice the : is escaped for the port option)
     let g:dbext_default_profile_ORA_URL = 'type=ORA:srvname=//localhost\:3333/instance_name:user=scott:passwd=tiger'
-    " Different form of Oracle server name
+    " These 2 examples connect without using an entry in TNSNAMES
     let g:dbext_default_profile_ORA_Extended = 'type=ORA:user=scott:passwd=tiger:srvname=(description=(address=(protocol=TCP)(host=localhost)(port=1521))(connect_data=(server=dedicated)(service_name=10gR2)))'
+    let g:dbext_default_profile_ORA_Extended_DBI = 'type=DBI:user=system:passwd=oracle:driver=Oracle:conn_parms=SID=orcl12c;HOST=localhost;PORT=1521'
+
 
     " PostgreSQL
     let g:dbext_default_profile_PG = 'type=PGSQL:user=postgres'
@@ -2661,6 +2793,9 @@ To specify the type of database you connect to most often, you can place the
 
     " SQLite
     let g:dbext_default_profile_POPFile = 'type=SQLITE:SQLITE_bin=C:\Programs\POPFile\sqlite.exe:dbname=C:\Programs\POPFile\popfile.db'
+    let g:dbext_default_profile_SQLite = 'type=SQLITE:SQLITE_bin=C:\download\OpenSrc\Databases\SQLite\sqlite3.exe:dbname=\vim\test\dbext\sqlite\test.db'
+    let g:dbext_default_profile_SQLite_DBI = 'type=DBI:driver=SQLite:conn_parms=dbname=\vim\test\dbext\sqlite\test.db'
+    let g:dbext_default_profile_SQLite_diff_cmdT = 'type=SQLITE:dbname=C:\vim\test\dbext\sqlite\test.db:cmd_terminator=~'
 
     " ULTRALITE
     let g:dbext_default_profile_UL_CustDB = 'type=ULTRALITE:user=dba:passwd=sql:dbname='.expand('$SQLANYSAMP11\ultralite\custdb\custdb.udb')
@@ -3089,11 +3224,46 @@ To specify the type of database you connect to most often, you can place the
  for more details.
 
 ==============================================================================
-16. Open Source                         	*dbext-sourceforge*
+16. Job Support                         	*dbext-job*
 
- dbext is now an open source project found at: >
-     https://sourceforge.net/projects/dbext/
-<
+ If your Vim supports Jobs (:echo has('job')), by default when using a 
+ database type other than DBI or ODBC, dbext will create a job to run
+ the SQL statement against the database.  The advantage of using jobs
+ is they are asynchronous.  This means you can continue to edit your 
+ buffer, while waiting for the SQL statement to complete and show the
+ results.
+
+ Jobs cannot be used for the DBI and ODBC interfaces, as those use the 
+ built in Perl support of Vim and do not run external to Vim.
+
+ Jobs cannot be used when not using the result buffer option 
+ (g:dbext_default_use_result_buffer = 0).  This is automatically enabled
+ for example when using the OMNI SQL completion functions provided by Vim's
+ SQL filetype plugin in conjunction with dbext (|dbext-completion|).
+
+ Only one dbext background job can be running at one time.
+
+ If a job fails to start, it will fall back to synchronous execution.
+
+ There are a few additional commands available to manage the jobs created: >
+    DBJobStatus
+<       Shows the status of the currently running job. >
+    DBJobStop
+<       Allows the user to terminate the currently running job.  
+       Command completion has been enabled for this to list the various
+       options Vim supports to cancel jobs.  Though Vim's defaults are 
+       usually sufficient. >
+    DBJobTimerStop
+<       When a job is started a timer runs which indicates to the user
+       a job is in progress and how many milliseconds it has
+       been running.  Stopping the timer does not does not stop the job
+       it merely stops notifying the user. >
+    DBJobTimerStart
+<      Added for completeness.  Running a SQL statement which starts a job
+      automatically starts a status timer.  This command will allow you to
+      restart the timer, assuming you had stopped it using DBJobTimerStop.
+
+
 ==============================================================================
 17. Tutorial                            	*dbext-tutorial*
 
