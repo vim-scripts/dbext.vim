@@ -543,12 +543,12 @@ sub db_vim_print
         $line_txt = "";
     }
 
-    # ans, 2022-04-08 - allow to print from dbms_output empty lines
     my @lines = ();
     if (!defined ($line_txt) || length($line_txt) == 0) {
-      @lines = ("");
+        # from dbms_output it is possible to get empty lines to print
+        @lines = ("");
     } else {
-      @lines = split("\n", $line_txt);
+        @lines = split("\n", $line_txt);
     }
 
     foreach my $line (@lines) {
@@ -973,9 +973,8 @@ sub db_connect
                     LongTruncOk => 1,
                     RaiseError => 0,
                     PrintError => 0,
-                     ## hello from ans
-      ora_charset                     => 'AL32UTF8',
-      ora_ncharset                    => 'AL32UTF8',
+                    ora_charset => 'AL32UTF8',
+                    ora_ncharset => 'AL32UTF8',
                     PrintWarn => 0 }
                     );
         # or die $DBI::errstr;
@@ -1288,10 +1287,9 @@ sub db_query
     return 0;
 }
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# 2021-09-19 ans: fetch all rows of dbms_output
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-sub fetch_dbms_output {
+# Fetches all available rows of dbms_output from server
+sub fetch_dbms_output
+{
   my ($conn_local) = (@_);
 
   my $max_line_size = 32768; # anything we put here can be too short...
@@ -1306,7 +1304,7 @@ sub fetch_dbms_output {
   $get_lines_st->bind_param_inout(':n', \$num_lines, 50, {ora_type => 1});
 
   $get_lines_st->execute();
-  db_debug("executed get_lines() ok. num_lines = $num_lines");
+  db_debug("executed get_lines() ok. num_lines fetched = $num_lines");
 
   my @text_2 = ();
   if ($num_lines) {
@@ -1323,7 +1321,6 @@ sub fetch_dbms_output {
     }
   }
 
-  #push @text_2, "WARNING: please not foget to close the statement, debug version only!!!";
   $get_lines_st = undef;
 
   ## max_line_size exceeded {
@@ -1698,48 +1695,34 @@ sub db_print_results
     db_debug("db_print_results: before last_line(...rows...), last_line=$last_line");
     db_vim_print($last_line, "(".scalar(@result_set)." rows)");
     if (@dbms_output) {
-      $last_line++;
-      # ans: we need this "join and afterwards split" trick because otherwise
-      # individual rows from @dbms_output are coming encoded differently, see as well
-      # exploit Perl_Oracle_DBD_dbms_output/perl_dbd_oracle_dbms_output__inside_vim__simple.vim
-      # call :so % | call Check_my_perl__load()
-      ##my @dbms_output_remade = split ("\n", join("\n", @dbms_output));
-      # ans: 2021-09-19 now we use decode("utf8"...) and other method of
-      # fetching of array, there are chances we dont need  this ugly workaround
-      # any more
-      db_debug("db_print_results: \@dbms_output size: ".scalar(@dbms_output));
-      my @dbms_output_remade = @dbms_output;
-      for my $dol0 (@dbms_output_remade) {
-        #### THIS IS MAGIC !!!!!!!
-        #### THIS_IS_MAGIC !!!!!!!
-        #### THIS IS MAGIC !!!!!!!
-        my $dol = decode('utf8', ($dol0 // ''));
-        db_debug("db_print_results: printed dbms_output[i] (raw non-splitted)    : ".$dol);
-        #chomp($dol);
+        $last_line++;
+        db_debug("db_print_results: \@dbms_output size: ".scalar(@dbms_output));
+        for my $dol0 (@dbms_output) {
+            # needed due to (DBI?) encoding problems when receiving from oracle with plsql
+            # in/out table, see https://github.com/ant0sha/dbext.vim/commit/b83befafd0fdc45f683aca1fa89b52ab959e8277
+            my $dol = decode('utf8', ($dol0 // ''));
+            db_debug("db_print_results: printed dbms_output[i] (raw non-splitted)    : ".$dol);
+            #chomp($dol);
 
-        # we try to overtake the line number from the "printer" method
-        $last_line += db_vim_print($last_line, $dol);
-        #$last_line++;
-
-        #my @lines = split("\n", $dol);
-        #for my $diag_ln (@lines) {
-        #  db_debug("db_print_results: printed dbms_output[i] (splitted redundantly): ".$diag_ln);
-        #}
-      }
-      db_debug("db_print_results: printed dbms_output: " . join ("\n", map { $_ // '' } @dbms_output))
-        if ($debug);
-      @dbms_output = ();
-      $last_line += db_vim_print($last_line, "printed at: " . scalar localtime); 
+            # we try to overtake the line number from the "printer" method
+            $last_line += db_vim_print($last_line, $dol);
+            #$last_line++;
+        }
+        if ($debug) {
+          db_debug("db_print_results: printed dbms_output: " . join ("\n", map { $_ // '' } @dbms_output))
+        }
+        @dbms_output = ();
+        $last_line += db_vim_print($last_line, "printed at: " . scalar localtime); 
     } else {
-      $last_line++;
-      my ($connection_ignored, $driver_ignored, $z_user_data) = db_get_connection();
-      if ($z_user_data->{z_srv_out_enabled}) {
-        db_vim_print($last_line,   "dbms_output is empty.");
-        db_debug("db_print_results: dbms_output is empty.");
-      } else {
-        db_vim_print($last_line, "ACHTUNG: dbms_output is OFF.");
-        db_debug("db_print_results:        dbms_output is OFF.");
-      }
+        $last_line++;
+        my ($connection_ignored, $driver_ignored, $z_user_data) = db_get_connection();
+        if ($z_user_data->{z_srv_out_enabled}) {
+            db_vim_print($last_line,   "dbms_output is empty.");
+            db_debug("db_print_results: dbms_output is empty.");
+        } else {
+            db_vim_print($last_line, "ACHTUNG: dbms_output is OFF.");
+            db_debug("db_print_results:        dbms_output is OFF.");
+        }
     }
     db_debug("db_print_results: returning 0");
     return 0;
@@ -1947,37 +1930,39 @@ sub db_results_list
 sub db_enable_srv_out
 {
 
-  # see ~/Documents/0.mop/Perl_Oracle_DBD_dbms_output/dbms_output_test_case_1.vim
-  # for automated test case:
-  # vim -c 'source ~/Documents/0.mop/Perl_Oracle_DBD_dbms_output/dbms_output_test_case_1.vim|call Test_Case_1()'
+    # TODO: refactor/publish related automated test case for dbms_output, which
+    # can be called like this:
+    #
+    # vim -c 'source \
+    # Perl_Oracle_DBD_dbms_output/dbms_output_test_case_1.vim|call \
+    # Test_Case_1()'
 
-  my ($conn_local, $driver, $z_user_data) = db_get_connection();
-  if ($z_user_data->{z_srv_out_enabled}) {
-    db_debug("skip <enable> of already enabled server output");
-  }
-  else {
-    $conn_local->func( 1000000, 'dbms_output_enable' );
-    $z_user_data->{z_srv_out_enabled} = 1;
-  }
+    my ($conn_local, $driver, $z_user_data) = db_get_connection();
+    if ($z_user_data->{z_srv_out_enabled}) {
+        db_debug("skip <enable> of already enabled server output");
+    }
+    else {
+        $conn_local->func( 1000000, 'dbms_output_enable' );
+        $z_user_data->{z_srv_out_enabled} = 1;
+    }
 
-  #db_set_vim_var('g:dbext_dbi_msg', 'A request_type must be specified');
-  #db_set_vim_var('g:dbext_dbi_result', -1);
+    #db_set_vim_var('g:dbext_dbi_msg', 'A request_type must be specified');
+    #db_set_vim_var('g:dbext_dbi_result', -1);
 }
 
 sub db_disable_srv_out
 {
-  my ($conn_local, $driver, $z_user_data) = db_get_connection();
-  if ($z_user_data->{z_srv_out_enabled}) {
-    my $stmt = $conn_local->prepare_cached( 'begin dbms_output.disable; end;' );
-    $stmt->execute();
-    $z_user_data->{z_srv_out_enabled} = 0;
-  }
-  else {
-    db_debug("skip <disable> of already disabled server output");
-  }
+    my ($conn_local, $driver, $z_user_data) = db_get_connection();
+    if ($z_user_data->{z_srv_out_enabled}) {
+        my $stmt = $conn_local->prepare_cached( 'begin dbms_output.disable; end;' );
+        $stmt->execute();
+        $z_user_data->{z_srv_out_enabled} = 0;
+    } else {
+        db_debug("skip <disable> of already disabled server output");
+    }
 
-  #db_set_vim_var('g:dbext_dbi_msg', 'A request_type must be specified');
-  #db_set_vim_var('g:dbext_dbi_result', -1);
+    #db_set_vim_var('g:dbext_dbi_msg', 'A request_type must be specified');
+    #db_set_vim_var('g:dbext_dbi_result', -1);
 }
 
 db_set_vim_var('g:loaded_dbext_dbi_msg', 'db_ora_extract_ddl');
@@ -2108,7 +2093,7 @@ sub db_ora_extract_ddl
         end loop;
       end;
 
-      dbms_output.put_line('gesmtlaenge='||length(ddl)||', iNL='||iNL);
+    --dbms_output.put_line('gesmtlaenge='||length(ddl)||', iNL='||iNL);
       exception when others then
         l('exception happened');
         declare

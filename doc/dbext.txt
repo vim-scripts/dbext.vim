@@ -118,6 +118,37 @@ David Fishburn
 ==============================================================================
 2. What's New						*dbext-new*
 
+Version ??.?? (<Mon> ??, YYYY)
+
+ New Features
+ ------------
+- :DBXtractDdl - new command (oracle+DBI specific), which uses dbms_output to
+  extract (and display) DDL of requested DB object.
+- :DBEnableSrvOut - new command (oracle+DBI specific), which enables
+  dbms_output to be collected by oracle for our session and as well enables
+  fetching of collected output so far after every PL/SQL or SQL query. NOTE:
+  dbms_output is enabled by default.
+- :DBDisableSrvOut - new command (oracle+DBI specific), which disables
+  dbms_output to be collected by oracle for our session and as well disables
+  fetching
+- empty lines in output coming from the DB are now forced to stay - otherwise
+  output of DDL (via dbms_output) is not useable
+
+ Bug Fixes
+ ---------
+
+- dbext_dbi_debug - changed spelling to use 'g:' prefix
+- dbext_dbi.vim - several enhancements for the case of non-ASCII output
+  - explicitly asking perl to use UTF8 in both source code and input/output
+    encoding
+  - get rid of $val =~tr/\x80-\xFF/ /; which replaced all non-ASCII things
+    with blanks
+- dbext_dbi.vim - fixed bug in db_print_results() if empty line happened in
+  the non-expected place
+- FuzzyFinder badly interact with dbext in that it creates global variable
+  FuzzyFinderMode. Filter out this variable during check for upgrade of old
+  profile.
+
 Version 26.00 (Nov 17, 2017)
 
  New Features
@@ -4317,6 +4348,52 @@ To specify the type of database you connect to most often, you can place the
         read c:\temp\my.sql;
         read /temp/my.sql;
 <
+ **DDL extraction - oracle specific**
+
+ Given you have a Table like this: >
+        create table tmp_for_dbext (
+          c1 number,
+          s1 varchar2(20),
+          d1 date
+        );
+<
+ You can use >
+        :DBXtractDdl tmp_for_dbext
+<
+ to see the DDL of that table: >
+        CREATE TABLE "CAQCSM"."TMP_FOR_DBEXT" 
+         (	"C1" NUMBER, 
+              "S1" VARCHAR2(20 CHAR), 
+              "D1" DATE
+         ) SEGMENT CREATION DEFERRED 
+        PCTFREE 10 PCTUSED 40 INITRANS 1 MAXTRANS 255 
+       NOCOMPRESS LOGGING
+        TABLESPACE "SOME_TABLESPACE"   NO INMEMORY 
+< 
+ (the output is coming as-is from DBMS_METADATA.GET_DDL() package and
+ displayed to the user with dbms_output oracle feature. Only for tables
+ additional query is used to fetch index data from user_indexes table). This
+ works as well for triggers/packages/types/views. 
+
+ **Working with DBMS_OUTPUT - oracle specific**
+
+ After issue of: >
+        :DBEnableSrvOut
+< 
+
+ dbext will fetch collected dbms_output on server, e.g. if you execute for
+ example following PLSQL block: >
+        begin for i in 1..3 loop dbms_output.put_line('iteration #'||i); end loop; end;;
+<
+ you will see as expected: >
+        iteration #1
+        iteration #2
+        iteration #3
+<
+ After issue of: >
+        :DBDisableSrvOut
+<
+ no output at all will come from PLSQL block above.
 
  Summary
  -------
